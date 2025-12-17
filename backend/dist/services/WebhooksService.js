@@ -221,7 +221,7 @@ class WebhooksService {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'User-Agent': 'Trackdesk-Webhook/1.0'
+                    'User-Agent': 'TC-Nutrition-Athlete-Portal-Webhook/1.0'
                 },
                 body: JSON.stringify(payload)
             });

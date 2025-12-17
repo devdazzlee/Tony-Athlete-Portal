@@ -306,22 +306,22 @@ class IntegrationManualsModel {
     static async createDefaultManuals(accountId) {
         const defaultManuals = [
             {
-                title: 'Getting Started with Trackdesk',
-                description: 'Learn how to set up your Trackdesk account and start tracking your first affiliate links',
+                title: 'Getting Started with TC Nutrition Athlete Portal',
+                description: 'Learn how to set up your TC Nutrition Athlete Portal account and start tracking your first affiliate links',
                 category: 'AFFILIATE',
                 type: 'GUIDE',
                 difficulty: 'BEGINNER',
                 estimatedTime: 15,
                 prerequisites: [],
                 tags: ['getting-started', 'setup', 'basics'],
-                content: 'This guide will walk you through the process of setting up your Trackdesk account...',
-                htmlContent: '<h1>Getting Started with Trackdesk</h1><p>This guide will walk you through the process of setting up your Trackdesk account...</p>',
+                content: 'This guide will walk you through the process of setting up your TC Nutrition Athlete Portal account...',
+                htmlContent: '<h1>Getting Started with TC Nutrition Athlete Portal</h1><p>This guide will walk you through the process of setting up your TC Nutrition Athlete Portal account...</p>',
                 steps: [
                     {
                         id: 'step1',
                         title: 'Create Your Account',
-                        description: 'Sign up for a Trackdesk account',
-                        content: 'Visit the Trackdesk website and click the "Sign Up" button...',
+                        description: 'Sign up for a TC Nutrition Athlete Portal account',
+                        content: 'Visit the TC Nutrition Athlete Portal website and click the "Sign Up" button...',
                         order: 1,
                         isOptional: false,
                         estimatedTime: 5,
@@ -334,7 +334,7 @@ class IntegrationManualsModel {
                         id: 'step2',
                         title: 'Verify Your Email',
                         description: 'Check your email and verify your account',
-                        content: 'Check your email inbox for a verification email from Trackdesk...',
+                        content: 'Check your email inbox for a verification email from TC Nutrition Athlete Portal...',
                         order: 2,
                         isOptional: false,
                         estimatedTime: 2,
@@ -364,15 +364,15 @@ class IntegrationManualsModel {
             },
             {
                 title: 'API Integration Guide',
-                description: 'Learn how to integrate Trackdesk with your application using our REST API',
+                description: 'Learn how to integrate TC Nutrition Athlete Portal with your application using our REST API',
                 category: 'DEVELOPER',
                 type: 'API_DOCS',
                 difficulty: 'INTERMEDIATE',
                 estimatedTime: 45,
                 prerequisites: ['Basic programming knowledge', 'Understanding of REST APIs'],
                 tags: ['api', 'integration', 'developer', 'rest'],
-                content: 'This guide covers the Trackdesk REST API and how to integrate it with your application...',
-                htmlContent: '<h1>API Integration Guide</h1><p>This guide covers the Trackdesk REST API and how to integrate it with your application...</p>',
+                content: 'This guide covers the TC Nutrition Athlete Portal REST API and how to integrate it with your application...',
+                htmlContent: '<h1>API Integration Guide</h1><p>This guide covers the TC Nutrition Athlete Portal REST API and how to integrate it with your application...</p>',
                 steps: [
                     {
                         id: 'step1',
@@ -401,7 +401,7 @@ class IntegrationManualsModel {
                                 title: 'Basic API Request',
                                 description: 'Example of a basic API request using curl',
                                 language: 'bash',
-                                code: 'curl -X GET "https://api.trackdesk.com/v1/links" \\\n  -H "Authorization: Bearer YOUR_API_KEY"',
+                                code: 'curl -X GET "https://api.tcnutrition.com/v1/links" \\\n  -H "Authorization: Bearer YOUR_API_KEY"',
                                 explanation: 'This example shows how to make a basic GET request to retrieve your links.',
                                 isExecutable: true
                             }

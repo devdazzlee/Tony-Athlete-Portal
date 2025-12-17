@@ -21,7 +21,7 @@ class EmailService {
     async sendEmail(options) {
         try {
             const mailOptions = {
-                from: process.env.SMTP_FROM || '"Trackdesk" <noreply@trackdesk.com>',
+                from: process.env.SMTP_FROM || '"TC Nutrition Athlete Portal" <noreply@tcnutrition.com>',
                 to: options.to,
                 subject: options.subject,
                 html: options.html,
@@ -43,7 +43,7 @@ class EmailService {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Verify Your Email - Trackdesk</title>
+          <title>Verify Your Email - TC Nutrition Athlete Portal</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -105,13 +105,13 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">🎯 Trackdesk</div>
+              <div class="logo">🎯 TC Nutrition</div>
             </div>
             
             <div class="content">
-              <h2>Welcome to Trackdesk, ${firstName}!</h2>
+              <h2>Welcome to TC Nutrition Athlete Portal, ${firstName}!</h2>
               
-              <p>Thank you for signing up. To complete your registration and start using Trackdesk, please verify your email address by clicking the button below:</p>
+              <p>Thank you for signing up. To complete your registration and start using TC Nutrition Athlete Portal, please verify your email address by clicking the button below:</p>
               
               <div style="text-align: center;">
                 <a href="${verificationUrl}" class="button">Verify Email Address</a>
@@ -121,12 +121,12 @@ class EmailService {
               <p style="word-break: break-all; color: #3b82f6;">${verificationUrl}</p>
               
               <div class="warning">
-                <strong>⚠️ Security Notice:</strong> This verification link will expire in 24 hours. If you didn't create an account with Trackdesk, please ignore this email.
+                <strong>⚠️ Security Notice:</strong> This verification link will expire in 24 hours. If you didn't create an account with TC Nutrition Athlete Portal, please ignore this email.
               </div>
             </div>
             
             <div class="footer">
-              <p>© ${new Date().getFullYear()} Trackdesk. All rights reserved.</p>
+              <p>© ${new Date().getFullYear()} TC Nutrition. All rights reserved.</p>
               <p>This is an automated email. Please do not reply to this message.</p>
             </div>
           </div>
@@ -134,19 +134,19 @@ class EmailService {
       </html>
     `;
         const text = `
-Welcome to Trackdesk, ${firstName}!
+Welcome to TC Nutrition Athlete Portal, ${firstName}!
 
-Thank you for signing up. To complete your registration and start using Trackdesk, please verify your email address by clicking the link below:
+Thank you for signing up. To complete your registration and start using TC Nutrition Athlete Portal, please verify your email address by clicking the link below:
 
 ${verificationUrl}
 
-This verification link will expire in 24 hours. If you didn't create an account with Trackdesk, please ignore this email.
+This verification link will expire in 24 hours. If you didn't create an account with TC Nutrition Athlete Portal, please ignore this email.
 
-© ${new Date().getFullYear()} Trackdesk. All rights reserved.
+© ${new Date().getFullYear()} TC Nutrition. All rights reserved.
     `.trim();
         await this.sendEmail({
             to: email,
-            subject: "Verify Your Email - Trackdesk",
+            subject: "Verify Your Email - TC Nutrition Athlete Portal",
             html,
             text,
         });
@@ -158,7 +158,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Welcome to Trackdesk!</title>
+          <title>Welcome to TC Nutrition Athlete Portal!</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -229,8 +229,8 @@ This verification link will expire in 24 hours. If you didn't create an account 
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">Trackdesk</div>
-              <h1>Welcome to Trackdesk, ${firstName}! 🎉</h1>
+              <div class="logo">TC Nutrition</div>
+              <h1>Welcome to TC Nutrition Athlete Portal, ${firstName}! 🎉</h1>
             </div>
             
             <p>We're excited to have you on board! Your affiliate account has been successfully created and verified.</p>
@@ -242,7 +242,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
             </div>
             
             <div class="features">
-              <h3 style="margin-top: 0;">What you can do with Trackdesk:</h3>
+              <h3 style="margin-top: 0;">What you can do with TC Nutrition Athlete Portal:</h3>
               <div class="feature-item">Generate unique affiliate links</div>
               <div class="feature-item">Track clicks and conversions in real-time</div>
               <div class="feature-item">Monitor your earnings and commissions</div>
@@ -262,7 +262,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
             
             <div class="footer">
               <p>Happy tracking! 🚀</p>
-              <p>The Trackdesk Team</p>
+              <p>The TC Nutrition Team</p>
               <p style="font-size: 12px; color: #9ca3af; margin-top: 10px;">
                 This email was sent to ${email}. If you didn't create this account, please ignore this email.
               </p>
@@ -272,11 +272,11 @@ This verification link will expire in 24 hours. If you didn't create an account 
       </html>
     `;
         const text = `
-      Welcome to Trackdesk, ${firstName}!
+      Welcome to TC Nutrition Athlete Portal, ${firstName}!
       
       We're excited to have you on board! Your affiliate account has been successfully created and verified.
       
-      What you can do with Trackdesk:
+      What you can do with TC Nutrition Athlete Portal:
       - Generate unique affiliate links
       - Track clicks and conversions in real-time
       - Monitor your earnings and commissions
@@ -292,11 +292,11 @@ This verification link will expire in 24 hours. If you didn't create an account 
       Get Started: ${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login
       
       Happy tracking!
-      The Trackdesk Team
+      The TC Nutrition Team
     `.trim();
         await this.sendEmail({
             to: email,
-            subject: "Welcome to Trackdesk - Let's Get Started! 🚀",
+            subject: "Welcome to TC Nutrition Athlete Portal - Let's Get Started! 🚀",
             html,
             text,
         });
@@ -308,7 +308,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Reset Your Password - Trackdesk</title>
+          <title>Reset Your Password - TC Nutrition Athlete Portal</title>
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -329,7 +329,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
     `;
         await this.sendEmail({
             to: email,
-            subject: "Reset Your Password - Trackdesk",
+            subject: "Reset Your Password - TC Nutrition Athlete Portal",
             html,
         });
     }
@@ -341,7 +341,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Commission Payment Received - Trackdesk</title>
+          <title>Commission Payment Received - TC Nutrition Athlete Portal</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -525,7 +525,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">🎯 Trackdesk</div>
+              <div class="logo">🎯 TC Nutrition</div>
               <div class="success-icon">💰</div>
               <h1>Payment Processed!</h1>
               <p class="subtitle">Your commission has been successfully paid</p>
@@ -608,7 +608,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
                 <strong>Keep up the great work! 🚀</strong>
               </p>
               <p class="footer-text">
-                The Trackdesk Team
+                The TC Nutrition Team
               </p>
               <div class="social-links">
                 <a href="#">Help Center</a> • 
@@ -617,7 +617,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
               </div>
               <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
                 This email was sent to <strong>${email}</strong> regarding your affiliate account.<br>
-                © ${new Date().getFullYear()} Trackdesk. All rights reserved.
+                © ${new Date().getFullYear()} TC Nutrition. All rights reserved.
               </p>
               <p style="font-size: 11px; color: #d1d5db; margin-top: 10px;">
                 This is an automated email notification. Please do not reply to this message.
@@ -628,7 +628,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       </html>
     `;
         const text = `
-Commission Payment Processed - Trackdesk
+Commission Payment Processed - TC Nutrition Athlete Portal
 
 Hi ${firstName},
 
@@ -653,7 +653,7 @@ View your commission history: ${dashboardUrl}
 
 Thank you for being a valued affiliate partner!
 
-The Trackdesk Team
+The TC Nutrition Team
     `.trim();
         await this.sendEmail({
             to: email,
@@ -670,7 +670,7 @@ The Trackdesk Team
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Offer Available - Trackdesk</title>
+          <title>New Offer Available - TC Nutrition Athlete Portal</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -834,7 +834,7 @@ The Trackdesk Team
         <body>
           <div class="container">
             <div class="header">
-              <div class="logo">🎯 Trackdesk</div>
+              <div class="logo">🎯 TC Nutrition</div>
               <div class="offer-icon">🎁</div>
               <h1>New Offer Available!</h1>
               <p class="subtitle">You've been assigned a new promotional offer</p>
@@ -926,7 +926,7 @@ The Trackdesk Team
                   <strong>Happy promoting! 🚀</strong>
                 </p>
                 <p class="footer-text">
-                  The Trackdesk Team
+                  The TC Nutrition Team
                 </p>
                 <div class="social-links">
                   <a href="#">Help Center</a> • 
@@ -935,7 +935,7 @@ The Trackdesk Team
                 </div>
                 <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
                   This email was sent to <strong>${email}</strong> regarding your affiliate account.<br>
-                  © ${new Date().getFullYear()} Trackdesk. All rights reserved.
+                  © ${new Date().getFullYear()} TC Nutrition. All rights reserved.
                 </p>
                 <p style="font-size: 11px; color: #d1d5db; margin-top: 10px;">
                   This is an automated email notification. Please do not reply to this message.
@@ -947,7 +947,7 @@ The Trackdesk Team
       </html>
     `;
         const text = `
-      New Offer Available - Trackdesk
+      New Offer Available - TC Nutrition Athlete Portal
 
       Hi ${firstName},
 
@@ -968,7 +968,7 @@ The Trackdesk Team
 
       Happy promoting! 🚀
 
-      The Trackdesk Team
+      The TC Nutrition Team
     `.trim();
         await this.sendEmail({
             to: email,

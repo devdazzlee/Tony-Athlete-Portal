@@ -166,7 +166,7 @@ class PayoutAutomationModel {
                     onSuccess: true,
                     onFailure: true,
                     onPayoutCreated: true,
-                    recipients: ['admin@trackdesk.com']
+                    recipients: ['admin@tcnutrition.com']
                 },
                 retrySettings: {
                     maxRetries: 3,

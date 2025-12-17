@@ -41,6 +41,9 @@ interface Order {
   discountCode: string;
   customerEmail?: string;
   customerName?: string;
+  subtotal?: string;
+  tax?: string;
+  commissionRate?: string;
   shipping: {
     address: string | null;
     firstName?: string;

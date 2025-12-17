@@ -21,7 +21,7 @@ const payoutQuerySchema = zod_1.z.object({
         .enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
         .optional(),
 });
-router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         let validatedQuery;
         try {
@@ -182,7 +182,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), as
         res.status(500).json({ error: "Failed to fetch payouts" });
     }
 });
-router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -240,7 +240,7 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
         res.status(500).json({ error: "Failed to update payout status" });
     }
 });
-router.post("/process-bulk", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.post("/process-bulk", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { payoutIds, status = "PROCESSING" } = req.body;
         if (!Array.isArray(payoutIds) || payoutIds.length === 0) {
@@ -274,7 +274,7 @@ router.post("/process-bulk", auth_1.authenticateToken, (0, auth_1.requireRole)([
         res.status(500).json({ error: "Failed to process bulk payouts" });
     }
 });
-router.get("/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { period = "30d" } = req.query;
         const analytics = {

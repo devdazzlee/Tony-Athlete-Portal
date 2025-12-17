@@ -75,10 +75,10 @@ export declare class OfferService {
             totalClicks: number;
             totalConversions: number;
             description: string;
+            tags: string[];
             accountId: string;
             startDate: Date;
             endDate: Date | null;
-            tags: string[];
             totalRevenue: number;
             totalCommissions: number;
         }[];
@@ -121,6 +121,7 @@ export declare class OfferService {
                 conversionRate: number;
                 lastActivityAt: Date | null;
                 deliverablesNote: string | null;
+                spendingLimit: number | null;
             };
         } & {
             id: string;
@@ -153,10 +154,10 @@ export declare class OfferService {
         totalClicks: number;
         totalConversions: number;
         description: string;
+        tags: string[];
         accountId: string;
         startDate: Date;
         endDate: Date | null;
-        tags: string[];
         totalRevenue: number;
         totalCommissions: number;
     }>;
@@ -170,10 +171,10 @@ export declare class OfferService {
         totalClicks: number;
         totalConversions: number;
         description: string;
+        tags: string[];
         accountId: string;
         startDate: Date;
         endDate: Date | null;
-        tags: string[];
         totalRevenue: number;
         totalCommissions: number;
     }>;
@@ -187,10 +188,10 @@ export declare class OfferService {
         totalClicks: number;
         totalConversions: number;
         description: string;
+        tags: string[];
         accountId: string;
         startDate: Date;
         endDate: Date | null;
-        tags: string[];
         totalRevenue: number;
         totalCommissions: number;
     }>;
@@ -227,6 +228,7 @@ export declare class OfferService {
                 conversionRate: number;
                 lastActivityAt: Date | null;
                 deliverablesNote: string | null;
+                spendingLimit: number | null;
             };
         } & {
             id: string;

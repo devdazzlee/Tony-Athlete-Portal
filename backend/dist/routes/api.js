@@ -322,11 +322,11 @@ router.get('/api/security/logs', auth_1.authenticateToken, (0, auth_1.requireRol
 router.get('/api/enterprise/white-label', auth_1.authenticateToken, (0, auth_1.requireRole)(['ADMIN']), async (req, res) => {
     try {
         const settings = {
-            companyName: 'Trackdesk Pro',
-            logo: '/logos/trackdesk-pro.png',
+            companyName: 'TC Nutrition Athlete Portal',
+            logo: '/logos/tc-nutrition.png',
             primaryColor: '#3b82f6',
             secondaryColor: '#10b981',
-            customDomain: 'affiliate.trackdesk.com',
+            customDomain: 'athletes.tcnutrition.com',
             removeBranding: true
         };
         res.json(settings);

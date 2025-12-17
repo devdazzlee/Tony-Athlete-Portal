@@ -30,7 +30,7 @@ const upload = multer({
 router.post(
   '/avatar',
   authenticateToken,
-  upload.single('avatar'),
+  upload.single('avatar') as any,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.file) {
@@ -101,7 +101,7 @@ router.post(
 router.post(
   '/deliverable',
   authenticateToken,
-  upload.single('photo'),
+  upload.single('photo') as any,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.file) {

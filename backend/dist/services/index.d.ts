@@ -45,10 +45,10 @@ export declare class AnalyticsService {
                         totalClicks: number;
                         totalConversions: number;
                         description: string;
+                        tags: string[];
                         accountId: string;
                         startDate: Date;
                         endDate: Date | null;
-                        tags: string[];
                         totalRevenue: number;
                         totalCommissions: number;
                     };
@@ -112,10 +112,10 @@ export declare class AnalyticsService {
                     totalClicks: number;
                     totalConversions: number;
                     description: string;
+                    tags: string[];
                     accountId: string;
                     startDate: Date;
                     endDate: Date | null;
-                    tags: string[];
                     totalRevenue: number;
                     totalCommissions: number;
                 };
@@ -165,10 +165,10 @@ export declare class AnalyticsService {
                     totalClicks: number;
                     totalConversions: number;
                     description: string;
+                    tags: string[];
                     accountId: string;
                     startDate: Date;
                     endDate: Date | null;
-                    tags: string[];
                     totalRevenue: number;
                     totalCommissions: number;
                 };
@@ -218,10 +218,10 @@ export declare class AnalyticsService {
                     totalClicks: number;
                     totalConversions: number;
                     description: string;
+                    tags: string[];
                     accountId: string;
                     startDate: Date;
                     endDate: Date | null;
-                    tags: string[];
                     totalRevenue: number;
                     totalCommissions: number;
                 };

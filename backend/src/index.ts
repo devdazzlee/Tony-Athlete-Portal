@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config(); // Load env vars BEFORE any other imports
+
 import express, { Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -5,7 +8,6 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import dotenv from "dotenv";
 import winston from "winston";
 import path from "path";
 

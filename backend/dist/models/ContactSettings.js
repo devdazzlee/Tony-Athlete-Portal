@@ -499,7 +499,7 @@ class ContactSettingsModel {
                                 type: "NOTIFY",
                                 parameters: {
                                     method: "email",
-                                    recipients: ["admin@trackdesk.com"],
+                                    recipients: ["admin@tcnutrition.com"],
                                 },
                                 enabled: true,
                             },

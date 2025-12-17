@@ -145,7 +145,7 @@ router.put("/profile", authenticateToken, async (req: any, res) => {
 router.post(
   "/profile/avatar",
   authenticateToken,
-  upload.single("avatar"),
+  upload.single("avatar") as any,
   async (req: any, res) => {
     try {
       if (req.user.role !== "ADMIN") {

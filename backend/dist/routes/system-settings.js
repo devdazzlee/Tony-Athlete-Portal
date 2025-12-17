@@ -26,7 +26,7 @@ router.get("/", auth_1.authenticateToken, async (req, res) => {
                 data: {
                     accountId: ACCOUNT_ID,
                     general: {
-                        programName: "Trackdesk",
+                        programName: "TC Nutrition Athlete Portal",
                         programDescription: "Professional affiliate management platform",
                         timezone: "America/New_York",
                         currency: "USD",

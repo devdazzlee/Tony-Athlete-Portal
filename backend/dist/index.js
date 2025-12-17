@@ -3,13 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const http_1 = require("http");
 const socket_io_1 = require("socket.io");
-const dotenv_1 = __importDefault(require("dotenv"));
 const winston_1 = __importDefault(require("winston"));
 const path_1 = __importDefault(require("path"));
 const auth_1 = __importDefault(require("./routes/auth"));
@@ -51,10 +52,15 @@ const admin_offers_1 = __importDefault(require("./routes/admin-offers"));
 const admin_settings_1 = __importDefault(require("./routes/admin-settings"));
 const admin_affiliate_codes_1 = __importDefault(require("./routes/admin-affiliate-codes"));
 const admin_deliverables_1 = __importDefault(require("./routes/admin-deliverables"));
+const admin_feedback_1 = __importDefault(require("./routes/admin-feedback"));
 const system_settings_1 = __importDefault(require("./routes/system-settings"));
 const upload_1 = __importDefault(require("./routes/upload"));
 const websites_1 = __importDefault(require("./routes/websites"));
 const athlete_1 = __importDefault(require("./routes/athlete"));
+const shopify_1 = __importDefault(require("./routes/shopify"));
+const manager_shopify_1 = __importDefault(require("./routes/manager-shopify"));
+const admin_shopify_1 = __importDefault(require("./routes/admin-shopify"));
+const ShopifySyncScheduler_1 = __importDefault(require("./services/ShopifySyncScheduler"));
 dotenv_1.default.config();
 const isProduction = process.env.NODE_ENV === "production";
 const isVercel = !!process.env.VERCEL;
@@ -181,10 +187,14 @@ app.use("/api/admin/offers", admin_offers_1.default);
 app.use("/api/admin/settings", admin_settings_1.default);
 app.use("/api/admin/affiliate-codes", admin_affiliate_codes_1.default);
 app.use("/api/admin/deliverables", admin_deliverables_1.default);
+app.use("/api/admin/feedback", admin_feedback_1.default);
 app.use("/api/system/settings", system_settings_1.default);
 app.use("/api/upload", upload_1.default);
 app.use("/api/websites", websites_1.default);
 app.use("/api/athlete", athlete_1.default);
+app.use("/api/shopify", shopify_1.default);
+app.use("/api/manager/shopify", manager_shopify_1.default);
+app.use("/api/admin/shopify", admin_shopify_1.default);
 io.on("connection", (socket) => {
     logger.info(`Client connected: ${socket.id}`);
     socket.on("join_affiliate", (affiliateId) => {
@@ -205,7 +215,7 @@ app.use((error, req, res, next) => {
 });
 app.get("/", (req, res) => {
     res.json({
-        message: "Trackdesk Affiliate Management Platform API",
+        message: "TC Nutrition Athlete Portal API",
         version: "1.0.0",
         status: "running",
         endpoints: {
@@ -233,8 +243,8 @@ app.get("/", (req, res) => {
             notifications: "/api/notifications",
             programUpdates: "/api/program-updates",
         },
-        documentation: "https://docs.trackdesk.com",
-        support: "support@trackdesk.com",
+        documentation: "https://docs.tcnutrition.com",
+        support: "support@tcnutrition.com",
     });
 });
 app.get("/health", (req, res) => {
@@ -250,12 +260,17 @@ app.use("*", (req, res) => {
 });
 const PORT = process.env.PORT || 3002;
 server.listen(PORT, () => {
-    logger.info(`🚀 Trackdesk Backend Server running on port ${PORT}`);
+    logger.info(`🚀 TC Nutrition Athlete Portal Backend Server running on port ${PORT}`);
     logger.info(`📡 WebSocket server running on port ${PORT}`);
     logger.info(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
+    if (process.env.ENABLE_SHOPIFY_SYNC !== 'false') {
+        ShopifySyncScheduler_1.default.startScheduler();
+        logger.info(`🔄 Shopify auto-sync scheduler started (hourly)`);
+    }
 });
 process.on("SIGTERM", async () => {
     logger.info("SIGTERM received, shutting down gracefully");
+    ShopifySyncScheduler_1.default.stopScheduler();
     server.close(() => {
         logger.info("Server closed");
         process.exit(0);

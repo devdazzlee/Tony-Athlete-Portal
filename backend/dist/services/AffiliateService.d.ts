@@ -105,6 +105,7 @@ export declare class AffiliateService {
             conversionRate: number;
             lastActivityAt: Date | null;
             deliverablesNote: string | null;
+            spendingLimit: number | null;
         })[];
         pagination: {
             page: number;
@@ -146,6 +147,7 @@ export declare class AffiliateService {
         conversionRate: number;
         lastActivityAt: Date | null;
         deliverablesNote: string | null;
+        spendingLimit: number | null;
     }>;
     createAffiliate(data: CreateAffiliateData): Promise<{
         createdAt: Date;
@@ -191,6 +193,7 @@ export declare class AffiliateService {
         conversionRate: number;
         lastActivityAt: Date | null;
         deliverablesNote: string | null;
+        spendingLimit: number | null;
     }>;
     deleteAffiliate(id: string): Promise<void>;
     getMyProfile(userId: string): Promise<{
@@ -225,6 +228,7 @@ export declare class AffiliateService {
         conversionRate: number;
         lastActivityAt: Date | null;
         deliverablesNote: string | null;
+        spendingLimit: number | null;
     }>;
     updateMyProfile(userId: string, data: UpdateAffiliateData): Promise<{
         user: {
@@ -258,6 +262,7 @@ export declare class AffiliateService {
         conversionRate: number;
         lastActivityAt: Date | null;
         deliverablesNote: string | null;
+        spendingLimit: number | null;
     }>;
     getAffiliateLinks(affiliateId: string, params: any): Promise<{
         links: {
@@ -326,10 +331,10 @@ export declare class AffiliateService {
                     totalClicks: number;
                     totalConversions: number;
                     description: string;
+                    tags: string[];
                     accountId: string;
                     startDate: Date;
                     endDate: Date | null;
-                    tags: string[];
                     totalRevenue: number;
                     totalCommissions: number;
                 };

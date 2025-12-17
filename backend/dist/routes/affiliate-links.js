@@ -177,7 +177,7 @@ router.post('/', async (req, res) => {
                 }
             }
         });
-        const baseUrl = process.env.FRONTEND_URL || 'https://trackdesk.com';
+        const baseUrl = process.env.FRONTEND_URL || 'https://tcnutrition.com';
         const affiliateUrl = data.customAlias
             ? `${baseUrl}/go/${data.customAlias}`
             : `${baseUrl}/track/${trackingCode}`;
@@ -238,7 +238,7 @@ router.get('/:id', async (req, res) => {
         const conversionRate = totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(2) : '0.00';
         const countryStats = {};
         const deviceStats = {};
-        const baseUrl = process.env.FRONTEND_URL || 'https://trackdesk.com';
+        const baseUrl = process.env.FRONTEND_URL || 'https://tcnutrition.com';
         const affiliateUrl = link.customSlug
             ? `${baseUrl}/go/${link.customSlug}`
             : `${baseUrl}/track/${link.id}`;
@@ -304,7 +304,7 @@ router.put('/:id', async (req, res) => {
                 }
             }
         });
-        const baseUrl = process.env.FRONTEND_URL || 'https://trackdesk.com';
+        const baseUrl = process.env.FRONTEND_URL || 'https://tcnutrition.com';
         const affiliateUrl = updatedLink.customSlug
             ? `${baseUrl}/go/${updatedLink.customSlug}`
             : `${baseUrl}/track/${updatedLink.id}`;

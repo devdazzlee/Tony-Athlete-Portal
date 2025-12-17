@@ -62,6 +62,7 @@ export declare class AuthService {
                 conversionRate: number;
                 lastActivityAt: Date | null;
                 deliverablesNote: string | null;
+                spendingLimit: number | null;
             };
             adminProfile: {
                 id: string;
@@ -118,6 +119,7 @@ export declare class AuthService {
             conversionRate: number;
             lastActivityAt: Date | null;
             deliverablesNote: string | null;
+            spendingLimit: number | null;
         };
         adminProfile: {
             id: string;
@@ -153,6 +155,7 @@ export declare class AuthService {
             conversionRate: number;
             lastActivityAt: Date | null;
             deliverablesNote: string | null;
+            spendingLimit: number | null;
         };
         adminProfile: {
             id: string;

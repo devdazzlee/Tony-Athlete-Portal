@@ -326,7 +326,7 @@ router.post("/generate", async (req: Request, res: Response) => {
 // Import coupons from CSV
 router.post(
   "/import",
-  upload.single("csvFile"),
+  upload.single("csvFile") as any,
   async (req: Request, res: Response) => {
     try {
       if (!req.file) {

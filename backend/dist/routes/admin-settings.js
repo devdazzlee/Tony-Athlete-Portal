@@ -145,7 +145,7 @@ router.post("/profile/avatar", auth_1.authenticateToken, upload.single("avatar")
             select: { avatar: true },
         });
         const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'trackdesk/admin/profiles');
+        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'tc-nutrition/admin/profiles');
         if (currentUser?.avatar && currentUser.avatar.includes('cloudinary.com')) {
             try {
                 const urlParts = currentUser.avatar.split('/');

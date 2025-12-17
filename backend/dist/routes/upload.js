@@ -38,7 +38,7 @@ router.post('/avatar', auth_1.authenticateToken, upload.single('avatar'), async 
         });
         console.log("🖼️ Uploading avatar for user:", userId);
         const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'trackdesk/profiles');
+        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'tc-nutrition/profiles');
         console.log("☁️ Cloudinary upload successful:", uploadResult.url);
         const updatedUser = await prisma_1.prisma.user.update({
             where: { id: userId },
@@ -80,7 +80,7 @@ router.post('/deliverable', auth_1.authenticateToken, upload.single('photo'), as
         }
         console.log("🖼️ Uploading deliverable photo for user:", req.user.id);
         const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'trackdesk/deliverables');
+        const uploadResult = await (0, cloudinary_1.uploadImage)(base64Image, 'tc-nutrition/deliverables');
         console.log("☁️ Cloudinary upload successful:", uploadResult.url);
         res.json({
             success: true,

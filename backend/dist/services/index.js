@@ -28,12 +28,12 @@ class EmailService {
         const mailOptions = {
             from: process.env.SMTP_FROM,
             to: email,
-            subject: 'Welcome to Trackdesk!',
+            subject: 'Welcome to TC Nutrition Athlete Portal!',
             html: `
-        <h1>Welcome to Trackdesk, ${firstName}!</h1>
+        <h1>Welcome to TC Nutrition Athlete Portal, ${firstName}!</h1>
         <p>Your account has been successfully created.</p>
         <p>You can now start tracking your affiliate links and earning commissions.</p>
-        <p>Best regards,<br>The Trackdesk Team</p>
+        <p>Best regards,<br>The TC Nutrition Team</p>
       `
         };
         return this.transporter.sendMail(mailOptions);
@@ -47,7 +47,7 @@ class EmailService {
         <h1>Congratulations!</h1>
         <p>You've earned a new commission of $${amount.toFixed(2)}!</p>
         <p>Check your dashboard for more details.</p>
-        <p>Best regards,<br>The Trackdesk Team</p>
+        <p>Best regards,<br>The TC Nutrition Team</p>
       `
         };
         return this.transporter.sendMail(mailOptions);
@@ -61,7 +61,7 @@ class EmailService {
         <h1>Payout Processed</h1>
         <p>Your payout of $${amount.toFixed(2)} has been processed via ${method}.</p>
         <p>You should receive the funds within 1-3 business days.</p>
-        <p>Best regards,<br>The Trackdesk Team</p>
+        <p>Best regards,<br>The TC Nutrition Team</p>
       `
         };
         return this.transporter.sendMail(mailOptions);

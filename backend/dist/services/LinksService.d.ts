@@ -186,6 +186,10 @@ export declare class LinksService {
         maxUsage: number | null;
         freeShipping: boolean;
         isAffiliate: boolean;
+        syncedToShopify: boolean;
+        shopifyPriceRuleIds: import("@prisma/client/runtime/library").JsonValue | null;
+        shopifyDiscountIds: import("@prisma/client/runtime/library").JsonValue | null;
+        syncedStores: string[];
     }>;
 }
 declare const _default: LinksService;

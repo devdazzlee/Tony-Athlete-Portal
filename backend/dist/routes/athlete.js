@@ -7,8 +7,10 @@ const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
+const ShopifyService_1 = __importDefault(require("../services/ShopifyService"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
+const DEFAULT_COMMISSION_RATE = 0.10;
 router.use(auth_1.authenticateToken);
 router.get("/profile", async (req, res) => {
     try {
@@ -60,7 +62,7 @@ router.get("/profile", async (req, res) => {
             instagram: socialMedia.instagram || null,
             tiktok: socialMedia.tiktok || null,
             discountCodes,
-            spendingLimit: null,
+            spendingLimit: affiliate.spendingLimit ? `$${affiliate.spendingLimit.toFixed(2)}` : "Not Set",
             deliverablesNote: affiliate.deliverablesNote || null,
         });
     }
@@ -76,10 +78,8 @@ router.get("/performance", async (req, res) => {
         const affiliate = await prisma.affiliateProfile.findFirst({
             where: { userId },
             include: {
-                referralCodes: {
-                    where: { isActive: true },
-                    take: 1,
-                    orderBy: { createdAt: "desc" },
+                coupons: {
+                    where: { status: "ACTIVE" },
                 },
             },
         });
@@ -138,82 +138,89 @@ router.get("/performance", async (req, res) => {
         }
         const endDate = new Date(now);
         endDate.setHours(23, 59, 59, 999);
-        let currentConversions = 0;
-        let currentCommissionAmount = 0;
-        let previousConversions = 0;
-        let previousCommissionAmount = 0;
-        let conversionChange = 0;
-        let commissionChange = 0;
+        const commissionRate = (affiliate.commissionRate || 10) / 100;
+        const [currentOrders, previousOrders] = await Promise.all([
+            prisma.affiliateOrder.findMany({
+                where: {
+                    affiliateId: affiliate.id,
+                    orderCreatedAt: { gte: startDate, lte: endDate },
+                    status: { not: "CANCELLED" },
+                },
+                orderBy: { orderCreatedAt: "asc" },
+            }),
+            prisma.affiliateOrder.findMany({
+                where: {
+                    affiliateId: affiliate.id,
+                    orderCreatedAt: { gte: previousStartDate, lte: previousEndDate },
+                    status: { not: "CANCELLED" },
+                },
+            }),
+        ]);
+        const currentConversions = currentOrders.length;
+        const currentCommissionAmount = currentOrders.reduce((sum, order) => sum + order.commissionAmount, 0);
+        const previousConversions = previousOrders.length;
+        const previousCommissionAmount = previousOrders.reduce((sum, order) => sum + order.commissionAmount, 0);
+        const conversionChange = previousConversions > 0
+            ? ((currentConversions - previousConversions) / previousConversions) * 100
+            : currentConversions > 0 ? 100 : 0;
+        const commissionChange = previousCommissionAmount > 0
+            ? ((currentCommissionAmount - previousCommissionAmount) / previousCommissionAmount) * 100
+            : currentCommissionAmount > 0 ? 100 : 0;
         let chartData = [];
-        if (dateRange === "last_6_months") {
-            currentConversions = 67;
-            currentCommissionAmount = 151.56;
-            previousConversions = 46;
-            previousCommissionAmount = 103.80;
-            conversionChange = 46;
-            commissionChange = 46;
-            const months = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov"];
-            const conversionValues = [4, 27, 20, 7, 6, 3];
-            const commissionValues = [0, 65, 35, 0, 0, 0];
-            chartData = months.map((month, index) => ({
-                name: month,
-                conversions: conversionValues[index],
-                commission: commissionValues[index],
+        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 7) {
+            const grouped = new Map();
+            currentOrders.forEach(order => {
+                const date = new Date(order.orderCreatedAt || order.createdAt);
+                const key = date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" });
+                if (!grouped.has(key))
+                    grouped.set(key, []);
+                grouped.get(key).push(order);
+            });
+            chartData = Array.from(grouped.entries()).map(([name, dayOrders]) => ({
+                name,
+                conversions: dayOrders.length,
+                commission: dayOrders.reduce((sum, o) => sum + o.commissionAmount, 0),
             }));
         }
-        else if (dateRange === "yesterday") {
-            currentConversions = 0;
-            currentCommissionAmount = 0;
-            previousConversions = 0;
-            previousCommissionAmount = 0;
-            conversionChange = 0;
-            commissionChange = 0;
-            chartData = [{
-                    name: "Yesterday",
-                    conversions: 0,
-                    commission: 0,
-                }];
-        }
-        else if (dateRange === "last_30_days") {
-            currentConversions = 15;
-            currentCommissionAmount = 35.75;
-            previousConversions = 12;
-            previousCommissionAmount = 28.50;
-            conversionChange = 25;
-            commissionChange = 25.4;
-            const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
-            chartData = weeks.map((week, index) => ({
-                name: week,
-                conversions: 3 + Math.floor(Math.random() * 2),
-                commission: 8 + Math.floor(Math.random() * 3),
+        else if (daysDiff <= 60) {
+            const grouped = new Map();
+            currentOrders.forEach(order => {
+                const date = new Date(order.orderCreatedAt || order.createdAt);
+                const weekNum = Math.ceil(((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) / 7);
+                const key = `Week ${weekNum}`;
+                if (!grouped.has(key))
+                    grouped.set(key, []);
+                grouped.get(key).push(order);
+            });
+            chartData = Array.from(grouped.entries()).map(([name, weekOrders]) => ({
+                name,
+                conversions: weekOrders.length,
+                commission: weekOrders.reduce((sum, o) => sum + o.commissionAmount, 0),
             }));
-        }
-        else if (dateRange === "last_7_days") {
-            currentConversions = 5;
-            currentCommissionAmount = 12.25;
-            previousConversions = 4;
-            previousCommissionAmount = 10.00;
-            conversionChange = 25;
-            commissionChange = 22.5;
-            chartData = [{
-                    name: "Last 7 days",
-                    conversions: currentConversions,
-                    commission: currentCommissionAmount,
-                }];
         }
         else {
-            chartData = [{
-                    name: "Yesterday",
-                    conversions: 0,
-                    commission: 0,
-                }];
+            const grouped = new Map();
+            currentOrders.forEach(order => {
+                const date = new Date(order.orderCreatedAt || order.createdAt);
+                const key = date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+                if (!grouped.has(key))
+                    grouped.set(key, []);
+                grouped.get(key).push(order);
+            });
+            chartData = Array.from(grouped.entries()).map(([name, monthOrders]) => ({
+                name,
+                conversions: monthOrders.length,
+                commission: monthOrders.reduce((sum, o) => sum + o.commissionAmount, 0),
+            }));
         }
-        const commissionEarned = `£${currentCommissionAmount.toFixed(2)} (Pending)`;
-        const discountCode = affiliate.referralCodes[0]?.code || null;
-        let discountCodeUsage = 67;
-        if (discountCode) {
-            discountCodeUsage = 67;
-        }
+        const currency = currentOrders[0]?.currency || "USD";
+        const currencySymbol = currency === "CAD" ? "CA$" : currency === "GBP" ? "£" : "$";
+        const hasPendingOrders = currentOrders.some(o => o.status === "PENDING");
+        const commissionEarned = `${currencySymbol}${currentCommissionAmount.toFixed(2)}${hasPendingOrders ? " (Pending)" : ""}`;
+        const discountCodeUsage = await prisma.affiliateOrder.count({
+            where: { affiliateId: affiliate.id },
+        });
         res.json({
             conversions: currentConversions,
             commissionEarned,
@@ -317,11 +324,16 @@ router.get("/deliverables", async (req, res) => {
 });
 const feedbackSchema = zod_1.z.object({
     feedback: zod_1.z.string().min(1),
+    name: zod_1.z.string().optional(),
+    email: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().email().optional()),
 });
 router.post("/feedback", async (req, res) => {
     try {
         const userId = req.user.id;
         const data = feedbackSchema.parse(req.body);
+        const hasName = data.name && data.name.trim().length > 0;
+        const hasEmail = data.email && data.email.trim().length > 0;
+        const isAnonymous = !hasName && !hasEmail;
         await prisma.activity.create({
             data: {
                 userId,
@@ -329,7 +341,9 @@ router.post("/feedback", async (req, res) => {
                 resource: "Feedback",
                 details: {
                     feedback: data.feedback,
-                    anonymous: true,
+                    anonymous: isAnonymous,
+                    name: hasName ? data.name?.trim() : undefined,
+                    email: hasEmail ? data.email?.trim() : undefined,
                 },
                 ipAddress: req.ip,
                 userAgent: req.get("User-Agent"),
@@ -348,33 +362,58 @@ router.post("/feedback", async (req, res) => {
 router.get("/orders", async (req, res) => {
     try {
         const userId = req.user.id;
-        const { limit = 50, offset = 0 } = req.query;
+        const { limit = 50, offset = 0, storeId } = req.query;
         const affiliate = await prisma.affiliateProfile.findFirst({
             where: { userId },
         });
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
         }
+        const whereClause = { affiliateId: affiliate.id };
+        if (storeId && storeId !== "all") {
+            whereClause.storeId = storeId;
+        }
         const orders = await prisma.affiliateOrder.findMany({
-            where: { affiliateId: affiliate.id },
-            orderBy: { createdAt: "desc" },
+            where: whereClause,
+            orderBy: { orderCreatedAt: "desc" },
             take: parseInt(limit),
             skip: parseInt(offset),
         });
-        const formattedOrders = orders.map((order) => ({
-            id: order.orderId,
-            placedOn: order.createdAt.toLocaleString(),
-            orderTotal: `£${order.orderValue.toFixed(2)}`,
-            items: order.items?.length || 0,
-            date: order.createdAt.toLocaleString(),
-            store: order.storeId,
-            shipping: {
-                address: null,
-                method: "Standard",
-                timeframe: "3-5 Working Days",
-            },
-            orderItems: order.items || [],
-        }));
+        const stores = ShopifyService_1.default.getAllStores();
+        const storeMap = new Map(stores.map(s => [s.id, s.name]));
+        const formattedOrders = orders.map((order) => {
+            const currencySymbol = order.currency === "CAD" ? "CA$" : order.currency === "GBP" ? "£" : "$";
+            const storeName = storeMap.get(order.storeId) || order.storeId;
+            const shippingAddress = order.shippingAddress;
+            return {
+                id: order.orderId,
+                shopifyOrderNumber: order.shopifyOrderNumber,
+                placedOn: (order.orderCreatedAt || order.createdAt).toLocaleString(),
+                orderTotal: `${currencySymbol}${order.orderValue.toFixed(2)}`,
+                orderValue: order.orderValue,
+                currency: order.currency,
+                items: order.items?.length || 0,
+                date: (order.orderCreatedAt || order.createdAt).toLocaleString(),
+                storeId: order.storeId,
+                store: storeName,
+                status: order.status,
+                financialStatus: order.financialStatus,
+                fulfillmentStatus: order.fulfillmentStatus,
+                commission: `${currencySymbol}${order.commissionAmount.toFixed(2)}`,
+                commissionAmount: order.commissionAmount,
+                discountCode: order.referralCode,
+                customerEmail: order.customerEmail,
+                customerName: order.customerName,
+                shipping: {
+                    address: shippingAddress ?
+                        `${shippingAddress.address1 || ""} ${shippingAddress.address2 || ""}, ${shippingAddress.city || ""}, ${shippingAddress.province || ""} ${shippingAddress.zip || ""}, ${shippingAddress.country || ""}`.trim()
+                        : null,
+                    method: "Standard",
+                    timeframe: "3-5 Working Days",
+                },
+                orderItems: order.items || [],
+            };
+        });
         res.json(formattedOrders);
     }
     catch (error) {
@@ -401,19 +440,56 @@ router.get("/orders/:orderId", async (req, res) => {
         if (!order) {
             return res.status(404).json({ error: "Order not found" });
         }
+        const stores = ShopifyService_1.default.getAllStores();
+        const store = stores.find(s => s.id === order.storeId);
+        const storeName = store?.name || order.storeId;
+        const currencySymbol = order.currency === "CAD" ? "CA$" : order.currency === "GBP" ? "£" : "$";
+        const shippingAddress = order.shippingAddress;
         const formattedOrder = {
             id: order.orderId,
-            placedOn: order.createdAt.toLocaleString(),
-            orderTotal: `£${order.orderValue.toFixed(2)}`,
+            shopifyOrderNumber: order.shopifyOrderNumber,
+            placedOn: (order.orderCreatedAt || order.createdAt).toLocaleString(),
+            orderTotal: `${currencySymbol}${order.orderValue.toFixed(2)}`,
+            subtotal: order.subtotalPrice ? `${currencySymbol}${order.subtotalPrice.toFixed(2)}` : null,
+            tax: order.totalTax ? `${currencySymbol}${order.totalTax.toFixed(2)}` : null,
+            orderValue: order.orderValue,
+            currency: order.currency,
             items: order.items?.length || 0,
-            date: order.createdAt.toLocaleString(),
-            store: order.storeId,
+            date: (order.orderCreatedAt || order.createdAt).toLocaleString(),
+            storeId: order.storeId,
+            store: storeName,
+            status: order.status,
+            financialStatus: order.financialStatus,
+            fulfillmentStatus: order.fulfillmentStatus,
+            commission: `${currencySymbol}${order.commissionAmount.toFixed(2)}`,
+            commissionAmount: order.commissionAmount,
+            commissionRate: `${order.commissionRate}%`,
+            discountCode: order.referralCode,
+            discountCodes: order.discountCodes,
+            customerEmail: order.customerEmail,
+            customerName: order.customerName,
             shipping: {
-                address: null,
+                address: shippingAddress ?
+                    `${shippingAddress.address1 || ""} ${shippingAddress.address2 || ""}, ${shippingAddress.city || ""}, ${shippingAddress.province || ""} ${shippingAddress.zip || ""}, ${shippingAddress.country || ""}`.trim()
+                    : null,
+                firstName: shippingAddress?.first_name,
+                lastName: shippingAddress?.last_name,
+                city: shippingAddress?.city,
+                province: shippingAddress?.province,
+                country: shippingAddress?.country,
+                zip: shippingAddress?.zip,
                 method: "Standard",
                 timeframe: "3-5 Working Days",
             },
-            orderItems: order.items || [],
+            orderItems: (order.items || []).map((item) => ({
+                name: item.title,
+                variant: item.variant_title,
+                quantity: item.quantity,
+                price: `${currencySymbol}${parseFloat(item.price).toFixed(2)}`,
+                sku: item.sku,
+            })),
+            note: order.note,
+            tags: order.tags,
         };
         res.json(formattedOrder);
     }
@@ -713,6 +789,217 @@ router.get("/commission-summary", async (req, res) => {
     catch (error) {
         console.error("Error fetching commission summary:", error);
         res.status(500).json({ error: "Failed to fetch commission summary" });
+    }
+});
+router.get("/stores", async (req, res) => {
+    try {
+        const stores = ShopifyService_1.default.getAllStores();
+        const storesWithStatus = await Promise.all(stores.map(async (store) => {
+            try {
+                const connection = await ShopifyService_1.default.testConnection(store.id);
+                return {
+                    id: store.id,
+                    name: store.name,
+                    domain: store.domain,
+                    currency: store.currency,
+                    country: store.country,
+                    connected: connection.success,
+                    shopName: connection.shop?.name,
+                };
+            }
+            catch (error) {
+                return {
+                    id: store.id,
+                    name: store.name,
+                    domain: store.domain,
+                    currency: store.currency,
+                    country: store.country,
+                    connected: false,
+                };
+            }
+        }));
+        res.json({ stores: storesWithStatus });
+    }
+    catch (error) {
+        console.error("Error fetching stores:", error);
+        res.status(500).json({ error: "Failed to fetch stores" });
+    }
+});
+router.get("/shop", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+            include: {
+                coupons: {
+                    where: { status: "ACTIVE" },
+                },
+            },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        const stores = ShopifyService_1.default.getAllStores();
+        const storesInfo = await Promise.all(stores.map(async (store) => {
+            try {
+                const connection = await ShopifyService_1.default.testConnection(store.id);
+                return {
+                    id: store.id,
+                    name: store.name,
+                    domain: store.domain,
+                    currency: store.currency,
+                    country: store.country,
+                    connected: connection.success,
+                    shopName: connection.shop?.name,
+                };
+            }
+            catch (error) {
+                return {
+                    id: store.id,
+                    name: store.name,
+                    domain: store.domain,
+                    currency: store.currency,
+                    country: store.country,
+                    connected: false,
+                };
+            }
+        }));
+        const recentOrders = await prisma.affiliateOrder.findMany({
+            where: { affiliateId: affiliate.id },
+            orderBy: { orderCreatedAt: "desc" },
+            take: 10,
+        });
+        const orderStats = await Promise.all(stores.map(async (store) => {
+            const [count, sum] = await Promise.all([
+                prisma.affiliateOrder.count({
+                    where: { affiliateId: affiliate.id, storeId: store.id },
+                }),
+                prisma.affiliateOrder.aggregate({
+                    where: { affiliateId: affiliate.id, storeId: store.id },
+                    _sum: { orderValue: true, commissionAmount: true },
+                }),
+            ]);
+            const currencySymbol = store.currency === "CAD" ? "CA$" : store.currency === "GBP" ? "£" : "$";
+            return {
+                storeId: store.id,
+                storeName: store.name,
+                totalOrders: count,
+                totalRevenue: sum._sum.orderValue || 0,
+                totalCommission: sum._sum.commissionAmount || 0,
+                formattedRevenue: `${currencySymbol}${(sum._sum.orderValue || 0).toFixed(2)}`,
+                formattedCommission: `${currencySymbol}${(sum._sum.commissionAmount || 0).toFixed(2)}`,
+            };
+        }));
+        const storeMap = new Map(stores.map(s => [s.id, s]));
+        const formattedOrders = recentOrders.map((order) => {
+            const store = storeMap.get(order.storeId);
+            const currencySymbol = order.currency === "CAD" ? "CA$" : order.currency === "GBP" ? "£" : "$";
+            return {
+                id: order.orderId,
+                shopifyOrderNumber: order.shopifyOrderNumber,
+                date: (order.orderCreatedAt || order.createdAt).toLocaleString(),
+                orderTotal: `${currencySymbol}${order.orderValue.toFixed(2)}`,
+                commission: `${currencySymbol}${order.commissionAmount.toFixed(2)}`,
+                store: store?.name || order.storeId,
+                status: order.status,
+                financialStatus: order.financialStatus,
+            };
+        });
+        res.json({
+            stores: storesInfo,
+            orderStats,
+            recentOrders: formattedOrders,
+            discountCodes: affiliate.coupons.map(c => ({
+                code: c.code,
+                discount: c.discount,
+                status: c.status,
+            })),
+        });
+    }
+    catch (error) {
+        console.error("Error fetching shop data:", error);
+        res.status(500).json({ error: "Failed to fetch shop data" });
+    }
+});
+router.post("/sync-orders", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { days = 30, testMode = false } = req.body;
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+            include: {
+                coupons: {
+                    where: { status: "ACTIVE" },
+                },
+            },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        if (!testMode && affiliate.coupons.length === 0) {
+            return res.json({ message: "No discount codes found", synced: 0 });
+        }
+        const discountCodes = affiliate.coupons.map(c => c.code);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - Number(days));
+        const orders = await ShopifyService_1.default.getOrdersByDiscountCodesAllStores(discountCodes, {
+            created_at_min: startDate.toISOString(),
+            testMode,
+            limit: testMode ? 50 : 250,
+        });
+        let synced = 0;
+        let skipped = 0;
+        for (const order of orders) {
+            const existingOrder = await prisma.affiliateOrder.findUnique({
+                where: { orderId: order.id.toString() },
+            });
+            if (existingOrder) {
+                skipped++;
+                continue;
+            }
+            const orderValue = parseFloat(order.total_price);
+            const commissionRate = (affiliate.commissionRate || 10) / 100;
+            const commissionAmount = orderValue * commissionRate;
+            await prisma.affiliateOrder.create({
+                data: {
+                    affiliateId: affiliate.id,
+                    referralCode: order.matchedCode,
+                    storeId: order.storeId,
+                    orderId: order.id.toString(),
+                    shopifyOrderId: order.id.toString(),
+                    shopifyOrderNumber: order.name,
+                    orderValue,
+                    subtotalPrice: parseFloat(order.subtotal_price),
+                    totalTax: parseFloat(order.total_tax),
+                    currency: order.currency,
+                    customerEmail: order.email || order.customer?.email,
+                    customerName: order.customer
+                        ? `${order.customer.first_name} ${order.customer.last_name}`.trim()
+                        : null,
+                    commissionAmount,
+                    commissionRate: commissionRate * 100,
+                    status: "PENDING",
+                    financialStatus: order.financial_status,
+                    fulfillmentStatus: order.fulfillment_status,
+                    items: order.line_items,
+                    shippingAddress: order.shipping_address,
+                    discountCodes: order.discount_codes,
+                    referringSite: order.referring_site,
+                    orderCreatedAt: new Date(order.created_at),
+                },
+            });
+            synced++;
+        }
+        res.json({
+            message: "Sync completed",
+            synced,
+            skipped,
+            total: orders.length,
+        });
+    }
+    catch (error) {
+        console.error("Error syncing orders:", error);
+        res.status(500).json({ error: "Failed to sync orders" });
     }
 });
 function formatDate(date) {

@@ -42,7 +42,7 @@ const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
-router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { page = 1, limit = 20, status, tier, search } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -138,7 +138,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), as
         res.status(500).json({ error: "Failed to fetch affiliates" });
     }
 });
-router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const affiliate = await prisma.affiliateProfile.findUnique({
@@ -236,7 +236,7 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]),
         res.status(500).json({ error: "Failed to fetch affiliate details" });
     }
 });
-router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -259,7 +259,7 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
         res.status(500).json({ error: "Failed to update affiliate status" });
     }
 });
-router.patch("/:id/tier", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/tier", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { tier, commissionRate } = req.body;
@@ -303,7 +303,7 @@ router.patch("/:id/tier", auth_1.authenticateToken, (0, auth_1.requireRole)(["AD
         res.status(500).json({ error: "Failed to update affiliate tier" });
     }
 });
-router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const affiliate = await prisma.affiliateProfile.findUnique({
@@ -325,7 +325,7 @@ router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"
         res.status(500).json({ error: "Failed to delete affiliate" });
     }
 });
-router.patch("/:id/deliverables-note", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/deliverables-note", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { deliverablesNote } = req.body;
@@ -355,7 +355,37 @@ router.patch("/:id/deliverables-note", auth_1.authenticateToken, (0, auth_1.requ
         res.status(500).json({ error: "Failed to update deliverables note" });
     }
 });
-router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/spending-limit", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { spendingLimit } = req.body;
+        const schema = zod_1.z.object({
+            spendingLimit: zod_1.z.number().min(0).nullable(),
+        });
+        const validatedData = schema.parse({ spendingLimit });
+        const updatedAffiliate = await prisma.affiliateProfile.update({
+            where: { id },
+            data: {
+                spendingLimit: validatedData.spendingLimit,
+            },
+        });
+        res.json({
+            success: true,
+            message: "Spending limit updated successfully",
+            affiliate: updatedAffiliate,
+        });
+    }
+    catch (error) {
+        console.error("Error updating spending limit:", error);
+        if (error instanceof zod_1.z.ZodError) {
+            return res
+                .status(400)
+                .json({ error: "Invalid input data", details: error.errors });
+        }
+        res.status(500).json({ error: "Failed to update spending limit" });
+    }
+});
+router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { code, discount, description, expiresAt, maxUsage } = req.body;
@@ -414,7 +444,7 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
         res.status(500).json({ error: "Failed to create discount code" });
     }
 });
-router.post("/:id/referral-code", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.post("/:id/referral-code", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { commissionRate, expiresAt } = req.body;
@@ -459,7 +489,7 @@ router.post("/:id/referral-code", auth_1.authenticateToken, (0, auth_1.requireRo
         res.status(500).json({ error: "Failed to create tracking code" });
     }
 });
-router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { instagram, tiktok } = req.body;
@@ -501,7 +531,7 @@ router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRo
         res.status(500).json({ error: "Failed to update social media links" });
     }
 });
-router.get("/:id/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/:id/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { period = "30d" } = req.query;

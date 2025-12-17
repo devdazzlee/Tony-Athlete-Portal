@@ -10,7 +10,7 @@ const zod_1 = require("zod");
 const EmailService_1 = __importDefault(require("../services/EmailService"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
-router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { page = 1, limit = 20, status, affiliateId } = req.query;
         const whereClause = {};
@@ -156,7 +156,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), as
         res.status(500).json({ error: "Failed to fetch offers" });
     }
 });
-router.get("/affiliates", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/affiliates", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const affiliates = await prisma.affiliateProfile.findMany({
             where: {
@@ -214,7 +214,7 @@ router.get("/affiliates", auth_1.authenticateToken, (0, auth_1.requireRole)(["AD
         res.status(500).json({ error: "Failed to fetch affiliates" });
     }
 });
-router.post("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.post("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { name, description, commissionRate, startDate, endDate, tags, affiliateId, referralCodeIds, } = req.body;
         const schema = zod_1.z.object({
@@ -269,7 +269,7 @@ router.post("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), a
         }
         const offer = await prisma.offer.create({
             data: {
-                accountId: "trackdesk-system",
+                accountId: "tc-nutrition-system",
                 name: validatedData.name,
                 description: validatedData.description,
                 commissionRate: validatedData.commissionRate,
@@ -374,7 +374,7 @@ router.post("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), a
         });
     }
 });
-router.put("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.put("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, description, commissionRate, startDate, endDate, tags, status, referralCodeIds, } = req.body;
@@ -508,7 +508,7 @@ router.put("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]),
         res.status(500).json({ error: "Failed to update offer" });
     }
 });
-router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const offer = await prisma.offer.findUnique({
@@ -543,7 +543,7 @@ router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"
         res.status(500).json({ error: "Failed to delete offer" });
     }
 });
-router.post("/:id/assign", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.post("/:id/assign", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { affiliateIds } = req.body;
@@ -605,7 +605,7 @@ router.post("/:id/assign", auth_1.authenticateToken, (0, auth_1.requireRole)(["A
         res.status(500).json({ error: "Failed to assign offer" });
     }
 });
-router.get("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.get("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const creatives = await prisma.creative.findMany({
@@ -632,7 +632,7 @@ router.get("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)([
         res.status(500).json({ error: "Failed to fetch creatives" });
     }
 });
-router.post("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.post("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, type, size, format, url, downloadUrl } = req.body;
@@ -715,7 +715,7 @@ router.post("/:id/creatives", auth_1.authenticateToken, (0, auth_1.requireRole)(
         res.status(500).json({ error: "Failed to add creative" });
     }
 });
-router.put("/:offerId/creatives/:creativeId", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.put("/:offerId/creatives/:creativeId", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { offerId, creativeId } = req.params;
         const { name, type, size, format, url, downloadUrl } = req.body;
@@ -802,7 +802,7 @@ router.put("/:offerId/creatives/:creativeId", auth_1.authenticateToken, (0, auth
         res.status(500).json({ error: "Failed to update creative" });
     }
 });
-router.delete("/:offerId/creatives/:creativeId", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+router.delete("/:offerId/creatives/:creativeId", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { offerId, creativeId } = req.params;
         const creative = await prisma.creative.findUnique({

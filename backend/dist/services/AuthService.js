@@ -139,7 +139,7 @@ class AuthService {
                 resource: "User Account",
                 details: "Successful login",
                 ipAddress: ipAddress || "127.0.0.1",
-                userAgent: userAgent || "Trackdesk API",
+                userAgent: userAgent || "TC Nutrition Athlete Portal API",
             },
         });
         return {
