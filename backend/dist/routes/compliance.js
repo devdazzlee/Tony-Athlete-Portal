@@ -1,0 +1,35 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const ComplianceController_1 = require("../controllers/ComplianceController");
+const auth_1 = require("../middleware/auth");
+const router = express_1.default.Router();
+const complianceController = new ComplianceController_1.ComplianceController();
+router.use(auth_1.authenticateToken);
+router.get('/gdpr', complianceController.getGDPRSettings);
+router.put('/gdpr', (0, auth_1.requireRole)(['ADMIN']), complianceController.updateGDPRSettings);
+router.get('/gdpr/data-requests', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), complianceController.getDataRequests);
+router.post('/gdpr/data-requests', complianceController.createDataRequest);
+router.put('/gdpr/data-requests/:id', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), complianceController.updateDataRequest);
+router.get('/data-retention', (0, auth_1.requireRole)(['ADMIN']), complianceController.getDataRetentionSettings);
+router.put('/data-retention', (0, auth_1.requireRole)(['ADMIN']), complianceController.updateDataRetentionSettings);
+router.post('/data-retention/cleanup', (0, auth_1.requireRole)(['ADMIN']), complianceController.runDataCleanup);
+router.get('/audit-trail', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), complianceController.getAuditTrail);
+router.get('/audit-trail/export', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), complianceController.exportAuditTrail);
+router.get('/privacy-policy', complianceController.getPrivacyPolicy);
+router.put('/privacy-policy', (0, auth_1.requireRole)(['ADMIN']), complianceController.updatePrivacyPolicy);
+router.get('/terms-of-service', complianceController.getTermsOfService);
+router.put('/terms-of-service', (0, auth_1.requireRole)(['ADMIN']), complianceController.updateTermsOfService);
+router.get('/cookie-consent', complianceController.getCookieConsentSettings);
+router.put('/cookie-consent', (0, auth_1.requireRole)(['ADMIN']), complianceController.updateCookieConsentSettings);
+router.post('/cookie-consent/track', complianceController.trackCookieConsent);
+router.post('/data-export', complianceController.requestDataExport);
+router.get('/data-export/:id', complianceController.getDataExport);
+router.get('/data-export/:id/download', complianceController.downloadDataExport);
+router.post('/data-deletion', complianceController.requestDataDeletion);
+router.get('/data-deletion/:id', complianceController.getDataDeletionStatus);
+exports.default = router;
+//# sourceMappingURL=compliance.js.map

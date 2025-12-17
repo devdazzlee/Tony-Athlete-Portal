@@ -1,0 +1,2025 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole   @default(AFFILIATE)
+  status    UserStatus @default(ACTIVE)
+  avatar    String?
+  phone     String?
+  timezone  String     @default("UTC")
+  language  String     @default("en")
+
+  // Two-factor authentication
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+
+  // Password reset
+  resetToken        String?
+  resetTokenExpires DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  // Relations
+  affiliateProfile AffiliateProfile?
+  adminProfile     AdminProfile?
+  sessions         Session[]
+  notifications    Notification[]
+  activities       Activity[]
+  referralUsages   ReferralUsage[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Affiliate Management
+model AffiliateProfile {
+  id               String        @id @default(cuid())
+  userId           String        @unique
+  companyName      String?
+  website          String?
+  phone            String?
+  socialMedia      Json?
+  paymentMethod    PaymentMethod
+  paymentEmail     String?
+  taxId            String?
+  address          Json?
+  bankAccount      String?
+  kycVerified      Boolean       @default(false)
+  tier             AffiliateTier @default(BRONZE)
+  commissionRate   Float         @default(30.0)
+  totalEarnings    Float         @default(0)
+  totalClicks      Int           @default(0)
+  totalConversions Int           @default(0)
+  conversionRate   Float         @default(0)
+  lastActivityAt   DateTime?
+  status           String        @default("ACTIVE")
+  deliverablesNote String?       // Custom note for deliverables requirements
+  spendingLimit    Float?        // Product allowance amount for affiliate
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clicks          Click[]
+  conversions     Conversion[]
+  tierAssignments TierAssignment[]
+  tierProgress    TierProgress[]
+  commissions     Commission[]
+  payouts         Payout[]
+  links           AffiliateLink[]
+  coupons         Coupon[]
+  applications    OfferApplication[]
+  fraudEvents     FraudEvent[]
+  referralCodes   ReferralCode[]
+  affiliateClicks AffiliateClick[]
+  affiliateOrders AffiliateOrder[]
+
+  @@map("affiliate_profiles")
+}
+
+model AdminProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  permissions String[] @default([])
+  department  String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+// Offer Management
+model Offer {
+  id             String      @id @default(cuid())
+  accountId      String
+  name           String
+  description    String
+  commissionRate Float
+  status         OfferStatus @default(ACTIVE)
+  startDate      DateTime
+  endDate        DateTime?
+  tags           String[]    @default([])
+
+  // Tracking
+  totalClicks      Int   @default(0)
+  totalConversions Int   @default(0)
+  totalRevenue     Float @default(0)
+  totalCommissions Float @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  applications OfferApplication[]
+  conversions  Conversion[]
+  links        AffiliateLink[]
+  creatives    Creative[]
+
+  @@map("offers")
+}
+
+model OfferApplication {
+  id          String            @id @default(cuid())
+  affiliateId String
+  offerId     String
+  status      ApplicationStatus @default(PENDING)
+  message     String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  offer     Offer            @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([affiliateId, offerId])
+  @@map("offer_applications")
+}
+
+// Link Management
+model AffiliateLink {
+  id          String  @id @default(cuid())
+  affiliateId String
+  offerId     String?
+  originalUrl String
+  shortUrl    String  @unique
+  customSlug  String?
+
+  // Tracking
+  clicks      Int   @default(0)
+  conversions Int   @default(0)
+  earnings    Float @default(0)
+
+  // Settings
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  affiliate    AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  offer        Offer?           @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  clickRecords Click[]
+
+  @@map("affiliate_links")
+}
+
+// Click Tracking
+model Click {
+  id          String  @id @default(cuid())
+  linkId      String
+  affiliateId String
+  userId      String?
+
+  // Tracking data
+  ipAddress String
+  userAgent String
+  referrer  String?
+  country   String?
+  city      String?
+  device    String?
+  browser   String?
+  os        String?
+  source    String?
+
+  // Conversion tracking
+  converted    Boolean @default(false)
+  conversionId String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  timestamp DateTime @default(now())
+
+  // Relations
+  link       AffiliateLink    @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  affiliate  AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  conversion Conversion?
+
+  @@map("clicks")
+}
+
+// Conversion Tracking
+model Conversion {
+  id          String  @id @default(cuid())
+  clickId     String  @unique
+  affiliateId String
+  offerId     String
+  userId      String?
+
+  // Conversion data
+  customerEmail    String?
+  customerValue    Float
+  orderValue       Float
+  commissionAmount Float
+  status           ConversionStatus @default(PENDING)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  click          Click            @relation(fields: [clickId], references: [id], onDelete: Cascade)
+  affiliate      AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  offer          Offer            @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  commission     Commission?
+  redirectEvents RedirectEvent[]
+  clickEvents    ClickEvent[]
+
+  @@map("conversions")
+}
+
+model ConversionEvent {
+  id             String   @id @default(cuid())
+  trackingLinkId String
+  clickEventId   String
+  affiliateId    String
+  offerId        String?
+  value          Float    @default(0)
+  currency       String   @default("USD")
+  commission     Float
+  data           Json     @default("{}")
+  timestamp      DateTime @default(now())
+
+  // Relations
+  trackingLink TrackingLink @relation(fields: [trackingLinkId], references: [id], onDelete: Cascade)
+  clickEvent   ClickEvent   @relation(fields: [clickEventId], references: [id], onDelete: Cascade)
+
+  @@map("conversion_events")
+}
+
+// Commission Management
+model Commission {
+  id           String  @id @default(cuid())
+  conversionId String  @unique
+  affiliateId  String
+  payoutId     String?
+
+  // Commission data
+  amount     Float
+  rate       Float
+  status     CommissionStatus @default(PENDING)
+  payoutDate DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  conversion Conversion       @relation(fields: [conversionId], references: [id], onDelete: Cascade)
+  affiliate  AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  payout     Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@map("commissions")
+}
+
+// Referral Code Management
+model ReferralCode {
+  id             String       @id @default(cuid())
+  affiliateId    String
+  code           String       @unique
+  type           ReferralType @default(BOTH)
+  commissionRate Float
+  productId      String?
+  maxUses        Int?
+  currentUses    Int          @default(0)
+  expiresAt      DateTime?
+  isActive       Boolean      @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  usages    ReferralUsage[]
+
+  @@map("referral_codes")
+}
+
+// Referral Usage Tracking
+model ReferralUsage {
+  id               String         @id @default(cuid())
+  referralCodeId   String
+  userId           String
+  type             ReferralType
+  productId        String?
+  orderValue       Float?
+  commissionAmount Float
+  status           ReferralStatus @default(PENDING)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relations
+  referralCode ReferralCode @relation(fields: [referralCodeId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("referral_usages")
+}
+
+// Affiliate Click Tracking
+model AffiliateClick {
+  id           String  @id @default(cuid())
+  affiliateId  String
+  referralCode String
+  storeId      String
+  url          String
+  referrer     String?
+  userAgent    String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  ipAddress    String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relations
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+  @@index([referralCode])
+  @@index([createdAt])
+  @@map("affiliate_clicks")
+}
+
+// Shopify Store Configuration
+model ShopifyStore {
+  id          String  @id @default(cuid())
+  storeId     String  @unique // e.g., "store-usa", "store-canada"
+  name        String  // e.g., "TC Nutrition USA"
+  domain      String  // e.g., "tc-nutrition.com"
+  apiKey      String?
+  apiSecret   String?
+  accessToken String?
+  currency    String  @default("USD")
+  country     String  @default("US")
+  isActive    Boolean @default(true)
+  webhookId   String? // Shopify webhook ID for order events
+  lastSyncAt  DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("shopify_stores")
+}
+
+// Affiliate Order Tracking
+model AffiliateOrder {
+  id               String  @id @default(cuid())
+  affiliateId      String
+  referralCode     String  // Discount code used
+  storeId          String  // Store identifier (e.g., "store-usa", "store-canada")
+  orderId          String  @unique // Shopify order ID
+  shopifyOrderId   String? // Shopify internal order ID (numeric)
+  shopifyOrderNumber String? // Shopify order number (e.g., "#1001")
+  orderValue       Float
+  subtotalPrice    Float?  // Subtotal before tax/shipping
+  totalTax         Float?
+  currency         String  @default("USD")
+  customerEmail    String?
+  customerName     String?
+  commissionAmount Float
+  commissionRate   Float
+  status           String  @default("PENDING") // PENDING, APPROVED, PAID, CANCELLED, REFUNDED
+  financialStatus  String? // Shopify financial status (paid, pending, refunded)
+  fulfillmentStatus String? // Shopify fulfillment status (fulfilled, partial, null)
+  items            Json?   // Line items from Shopify
+  shippingAddress  Json?   // Shipping address from Shopify
+  discountCodes    Json?   // All discount codes used
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  referringSite    String? // Shopify referring_site
+  note             String? // Order notes
+  tags             String? // Shopify order tags
+
+  // Timestamps
+  orderCreatedAt DateTime? // When order was created in Shopify
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+  @@index([referralCode])
+  @@index([storeId])
+  @@index([orderId])
+  @@index([shopifyOrderId])
+  @@index([status])
+  @@index([financialStatus])
+  @@index([createdAt])
+  @@index([orderCreatedAt])
+  @@map("affiliate_orders")
+}
+
+// Payout Management
+model Payout {
+  id              String  @id @default(cuid())
+  affiliateId     String
+  paymentMethodId String?
+
+  // Payout data
+  amount      Float
+  method      PaymentMethod
+  status      PayoutStatus  @default(PENDING)
+  referenceId String?
+  processedAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  commissions Commission[]
+
+  @@map("payouts")
+}
+
+// Creative Assets
+model Creative {
+  id          String       @id @default(cuid())
+  offerId     String
+  name        String
+  type        CreativeType
+  size        String
+  format      String
+  url         String
+  downloadUrl String
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@map("creatives")
+}
+
+// Coupon Management
+model Coupon {
+  id           String       @id @default(cuid())
+  affiliateId  String
+  code         String       @unique
+  description  String
+  discount     String
+  validUntil   DateTime
+  usage        Int          @default(0)
+  maxUsage     Int?
+  status       CouponStatus @default(ACTIVE)
+  freeShipping Boolean      @default(false)
+  isAffiliate  Boolean      @default(false) // Marks if this is an affiliate allowance code
+
+  // Shopify sync fields
+  syncedToShopify     Boolean @default(false)
+  shopifyPriceRuleIds Json?   // { "store-usa": 123, "store-canada": 456 }
+  shopifyDiscountIds  Json?   // { "store-usa": 789, "store-canada": 012 }
+  syncedStores        String[] @default([]) // ["store-usa", "store-canada"]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@map("coupons")
+}
+
+// Notification System
+model Notification {
+  id      String           @id @default(cuid())
+  userId  String
+  title   String
+  message String
+  type    NotificationType
+  read    Boolean          @default(false)
+  data    Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// Activity Logging
+model Activity {
+  id        String  @id @default(cuid())
+  userId    String
+  action    String
+  resource  String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+
+  // Approval fields for deliverables
+  status       String?   // PENDING, APPROVED, REJECTED
+  reviewedBy   String?   // Admin user ID who reviewed
+  reviewedAt   DateTime?
+  adminComment String?   // Admin's comment on the submission
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
+// Webhook Management
+model Webhook {
+  id            String        @id @default(cuid())
+  name          String
+  url           String
+  events        String[]
+  secret        String
+  status        WebhookStatus @default(ACTIVE)
+  lastTriggered DateTime?
+  successRate   Float         @default(0)
+  totalCalls    Int           @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("webhooks")
+}
+
+// Traffic Control Rules
+model TrafficRule {
+  id            String     @id @default(cuid())
+  name          String
+  description   String
+  type          RuleType
+  conditions    Json
+  action        RuleAction
+  status        RuleStatus @default(ACTIVE)
+  hits          Int        @default(0)
+  lastTriggered DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("traffic_rules")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  AFFILIATE
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum PaymentMethod {
+  PAYPAL
+  STRIPE
+  BANK_TRANSFER
+  CRYPTO
+  WISE
+}
+
+enum AffiliateTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum OfferStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ConversionStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  REFUNDED
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum ReferralType {
+  SIGNUP
+  PRODUCT
+  BOTH
+}
+
+enum ReferralStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WebsiteStatus {
+  ACTIVE
+  PAUSED
+  INACTIVE
+}
+
+enum CreativeType {
+  BANNER
+  LOGO
+  SOCIAL_MEDIA
+  EMAIL_TEMPLATE
+  VIDEO
+}
+
+enum CouponStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  SYSTEM
+}
+
+enum WebhookStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+}
+
+enum RuleType {
+  IP_BLOCKING
+  RATE_LIMITING
+  BOT_DETECTION
+  GEO_BLOCKING
+  DEVICE_BLOCKING
+}
+
+enum RuleAction {
+  BLOCK
+  ALLOW
+  REDIRECT
+  CAPTCHA
+}
+
+enum RuleStatus {
+  ACTIVE
+  INACTIVE
+  TESTING
+}
+
+// Redirect Tracking Models
+model RedirectRule {
+  id          String         @id @default(cuid())
+  accountId   String
+  name        String
+  description String
+  sourceUrl   String
+  targetUrl   String
+  type        RedirectType
+  status      RedirectStatus @default(ACTIVE)
+  conditions  Json           @default("[]")
+  settings    Json
+  stats       Json           @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events RedirectEvent[]
+
+  @@map("redirect_rules")
+}
+
+model RedirectEvent {
+  id             String   @id @default(cuid())
+  redirectRuleId String
+  ruleId         String
+  clickId        String   @unique
+  sourceUrl      String
+  targetUrl      String
+  queryParams    Json     @default("{}")
+  headers        Json     @default("{}")
+  ipAddress      String
+  userAgent      String
+  referrer       String?
+  country        String?
+  city           String?
+  device         String?
+  browser        String?
+  os             String?
+  timestamp      DateTime @default(now())
+
+  // Relations
+  rule         RedirectRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  conversion   Conversion?  @relation(fields: [conversionId], references: [id])
+  bounce       BounceEvent?
+  conversionId String?
+
+  @@map("redirect_events")
+}
+
+model BounceEvent {
+  id              String   @id @default(cuid())
+  redirectEventId String   @unique
+  timeOnPage      Int // seconds
+  pagesViewed     Int      @default(1)
+  exitPage        String?
+  data            Json     @default("{}")
+  timestamp       DateTime @default(now())
+
+  // Relations
+  redirectEvent RedirectEvent @relation(fields: [redirectEventId], references: [id], onDelete: Cascade)
+
+  @@map("bounce_events")
+}
+
+// Registration Models
+model RegistrationForm {
+  id          String     @id @default(cuid())
+  accountId   String
+  name        String
+  description String
+  fields      Json       @default("[]")
+  settings    Json
+  status      FormStatus @default(DRAFT)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  submissions RegistrationSubmission[]
+  workflows   RegistrationWorkflow[]
+
+  @@map("registration_forms")
+}
+
+model RegistrationSubmission {
+  id          String           @id @default(cuid())
+  formId      String
+  data        Json
+  status      SubmissionStatus @default(PENDING)
+  submittedAt DateTime         @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  notes       String?
+  ipAddress   String?
+  userAgent   String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  form RegistrationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@map("registration_submissions")
+}
+
+model RegistrationWorkflow {
+  id          String         @id @default(cuid())
+  accountId   String
+  formId      String
+  name        String
+  description String
+  steps       Json           @default("[]")
+  conditions  Json           @default("{}")
+  status      WorkflowStatus @default(ACTIVE)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  form RegistrationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@map("registration_workflows")
+}
+
+// Smart Links Models
+model SmartLink {
+  id          String        @id @default(cuid())
+  accountId   String
+  name        String
+  description String
+  baseUrl     String
+  shortCode   String        @unique
+  type        SmartLinkType
+  status      LinkStatus    @default(ACTIVE)
+  settings    Json
+  targets     Json          @default("[]")
+  rules       Json          @default("[]")
+  stats       Json          @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events      SmartLinkEvent[]
+  conversions SmartLinkConversion[]
+
+  @@map("smart_links")
+}
+
+model SmartLinkEvent {
+  id          String   @id @default(cuid())
+  smartLinkId String
+  clickId     String   @unique
+  targetId    String?
+  ipAddress   String
+  userAgent   String
+  referrer    String?
+  country     String?
+  city        String?
+  device      String?
+  browser     String?
+  os          String?
+  data        Json     @default("{}")
+  timestamp   DateTime @default(now())
+
+  // Relations
+  smartLink  SmartLink            @relation(fields: [smartLinkId], references: [id], onDelete: Cascade)
+  conversion SmartLinkConversion?
+
+  @@map("smart_link_events")
+}
+
+model SmartLinkConversion {
+  id               String   @id @default(cuid())
+  smartLinkId      String
+  smartLinkEventId String   @unique
+  eventId          String   @unique
+  value            Float    @default(0)
+  currency         String   @default("USD")
+  commission       Float
+  data             Json     @default("{}")
+  timestamp        DateTime @default(now())
+
+  // Relations
+  smartLink SmartLink      @relation(fields: [smartLinkId], references: [id], onDelete: Cascade)
+  event     SmartLinkEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("smart_link_conversions")
+}
+
+// Website Management
+model Website {
+  id          String        @id @default(cuid())
+  websiteId   String        @unique // Unique identifier for tracking (e.g., "store-1-production")
+  name        String
+  domain      String
+  description String?
+  status      WebsiteStatus @default(ACTIVE)
+  createdBy   String? // User ID who created it (admin)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("websites")
+}
+
+// Tracking Code Models
+model TrackingCode {
+  id         String         @id @default(cuid())
+  accountId  String
+  name       String
+  code       String         @unique
+  type       TrackingType
+  placement  String         @default("HEAD")
+  events     String[]       @default([])
+  parameters Json           @default("{}")
+  settings   Json
+  status     TrackingStatus @default(ACTIVE)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  trackingEvents TrackingEvent[]
+
+  @@map("tracking_codes")
+}
+
+model TrackingEvent {
+  id             String   @id @default(cuid())
+  trackingCodeId String
+  eventType      String
+  event          String
+  ipAddress      String?
+  userAgent      String?
+  referrer       String?
+  data           Json
+  timestamp      DateTime @default(now())
+  sessionId      String?
+  websiteId      String?
+
+  // Relations
+  trackingCode TrackingCode @relation(fields: [trackingCodeId], references: [id], onDelete: Cascade)
+
+  @@map("tracking_events")
+}
+
+model TrackingSession {
+  id          String    @id @default(cuid())
+  sessionId   String    @unique
+  websiteId   String?
+  userId      String?
+  ipAddress   String?
+  userAgent   String?
+  country     String?
+  city        String?
+  device      String?
+  browser     String?
+  os          String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  duration    Int? // in seconds
+  pageViews   Int       @default(0)
+  events      Int       @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tracking_sessions")
+}
+
+model TrackingStats {
+  id                 String   @id @default(cuid())
+  websiteId          String?
+  date               DateTime
+  pageViews          Int      @default(0)
+  uniqueVisitors     Int      @default(0)
+  sessions           Int      @default(0)
+  events             Int      @default(0)
+  conversions        Int      @default(0)
+  revenue            Float    @default(0)
+  bounceRate         Float    @default(0)
+  avgSessionDuration Float    @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([websiteId, date])
+  @@map("tracking_stats")
+}
+
+// Tracking Links Models
+model TrackingLink {
+  id          String     @id @default(cuid())
+  accountId   String
+  affiliateId String
+  offerId     String?
+  name        String
+  description String?
+  originalUrl String
+  trackingUrl String
+  shortCode   String     @unique
+  type        String     @default("STANDARD")
+  parameters  Json       @default("[]")
+  rules       Json       @default("[]")
+  stats       Json       @default("{}")
+  settings    Json
+  status      LinkStatus @default(ACTIVE)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  clicks           ClickEvent[]
+  conversionEvents ConversionEvent[]
+
+  @@map("tracking_links")
+}
+
+model ClickEvent {
+  id             String   @id @default(cuid())
+  trackingLinkId String
+  affiliateId    String
+  offerId        String?
+  ipAddress      String
+  userAgent      String
+  referrer       String?
+  country        String?
+  city           String?
+  device         String?
+  browser        String?
+  os             String?
+  data           Json     @default("{}")
+  timestamp      DateTime @default(now())
+
+  // Relations
+  trackingLink    TrackingLink      @relation(fields: [trackingLinkId], references: [id], onDelete: Cascade)
+  conversion      Conversion?       @relation(fields: [conversionId], references: [id])
+  conversionId    String?
+  ConversionEvent ConversionEvent[]
+
+  @@map("click_events")
+}
+
+// System Settings Models
+model SystemSettings {
+  id            String @id @default(cuid())
+  accountId     String @unique
+  general       Json
+  security      Json
+  currencies    Json
+  notifications Json
+  integrations  Json
+  performance   Json
+  compliance    Json
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// Terms and Conditions Models
+model TermsConditions {
+  id                 String    @id @default(cuid())
+  accountId          String
+  type               String    @default("AFFILIATE_TERMS")
+  title              String
+  content            String
+  version            String
+  status             String    @default("DRAFT")
+  isActive           Boolean   @default(false)
+  effectiveDate      DateTime
+  expiryDate         DateTime?
+  requiresAcceptance Boolean   @default(false)
+  acceptanceRequired String[]  @default([])
+  lastModifiedBy     String
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  acceptances TermsAcceptance[]
+
+  @@map("terms_conditions")
+}
+
+model TermsAcceptance {
+  id         String   @id @default(cuid())
+  termsId    String
+  userId     String
+  userRole   String
+  version    String
+  ipAddress  String?
+  userAgent  String?
+  acceptedAt DateTime @default(now())
+
+  // Relations
+  terms TermsConditions @relation(fields: [termsId], references: [id], onDelete: Cascade)
+
+  @@map("terms_acceptances")
+}
+
+model TermsTemplate {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  type        String
+  category    String
+  content     String
+  variables   Json    @default("[]")
+  isDefault   Boolean @default(false)
+  isPublic    Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("terms_templates")
+}
+
+// Integration Manuals Models
+model ManualProgress {
+  id         String   @id @default(cuid())
+  userId     String
+  manualId   String
+  progress   Float    @default(0)
+  completed  Boolean  @default(false)
+  lastReadAt DateTime @default(now())
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // Relations
+  manual    Manual   @relation(fields: [manualId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, manualId])
+  @@map("manual_progress")
+}
+
+model ManualCategory {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  order       Int     @default(0)
+  status      String  @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  manuals Manual[]
+
+  @@map("manual_categories")
+}
+
+model Manual {
+  id         String @id @default(cuid())
+  categoryId String
+  title      String
+  content    String
+  order      Int    @default(0)
+  status     String @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  category ManualCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  progress ManualProgress[]
+
+  @@map("manuals")
+}
+
+model ManualTag {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("manual_tags")
+}
+
+// Menu Customization Models
+model MenuItem {
+  id          String   @id @default(cuid())
+  accountId   String
+  name        String
+  label       String
+  type        String   @default("LINK")
+  url         String?
+  icon        String?
+  level       Int      @default(0)
+  order       Int      @default(0)
+  permissions String[] @default([])
+  roles       String[] @default([])
+  status      String   @default("ACTIVE")
+  isVisible   Boolean  @default(true)
+  isExternal  Boolean  @default(false)
+  parentId    String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  children MenuItem[] @relation("MenuItemParent")
+  parent   MenuItem?  @relation("MenuItemParent", fields: [parentId], references: [id])
+
+  @@map("menu_items")
+}
+
+model MenuStructure {
+  id        String @id @default(cuid())
+  accountId String
+  name      String
+  items     Json   @default("[]")
+  status    String @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("menu_structures")
+}
+
+model MenuTemplate {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  structure   Json    @default("{}")
+  isDefault   Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("menu_templates")
+}
+
+model MenuPermission {
+  id          String   @id @default(cuid())
+  menuItemId  String
+  role        String
+  permissions String[] @default([])
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([menuItemId, role])
+  @@map("menu_permissions")
+}
+
+// MLM Models
+model MlmStructure {
+  id        String @id @default(cuid())
+  accountId String
+  name      String
+  type      String @default("BINARY")
+  maxLevels Int    @default(10)
+  settings  Json   @default("{}")
+  status    String @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mlm_structures")
+}
+
+model MlmRelationship {
+  id          String @id @default(cuid())
+  structureId String
+  sponsorId   String
+  affiliateId String
+  position    String @default("LEFT")
+  level       Int    @default(1)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([structureId, affiliateId])
+  @@map("mlm_relationships")
+}
+
+// Offer Organization Models
+model OfferCategory {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  order       Int     @default(0)
+  status      String  @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offer_categories")
+}
+
+model OfferTag {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  color       String  @default("#007bff")
+  description String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offer_tags")
+}
+
+model OfferGroup {
+  id          String   @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  offers      String[] @default([])
+  status      String   @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offer_groups")
+}
+
+model OfferTemplate {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  template    Json    @default("{}")
+  isDefault   Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offer_templates")
+}
+
+model OfferOrganization {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  settings    Json    @default("{}")
+  status      String  @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offer_organizations")
+}
+
+// Payment Methods Models
+model PaymentMethodConfig {
+  id        String @id @default(cuid())
+  accountId String
+  name      String
+  type      String @default("PAYPAL")
+  settings  Json   @default("{}")
+  status    String @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payment_method_configs")
+}
+
+model PaymentMethodUsage {
+  id              String   @id @default(cuid())
+  paymentMethodId String
+  affiliateId     String
+  usage           Int      @default(0)
+  lastUsed        DateTime @default(now())
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([paymentMethodId, affiliateId])
+  @@map("payment_method_usage")
+}
+
+// Personal Token Models
+model PersonalToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  token       String    @unique
+  permissions String[]  @default([])
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  status      String    @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("personal_tokens")
+}
+
+model TokenUsage {
+  id        String  @id @default(cuid())
+  tokenId   String
+  endpoint  String
+  ipAddress String?
+  userAgent String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@map("token_usage")
+}
+
+// Postback Models
+model Postback {
+  id         String   @id @default(cuid())
+  accountId  String
+  name       String
+  url        String
+  method     String   @default("POST")
+  headers    Json     @default("{}")
+  parameters Json     @default("{}")
+  events     String[] @default([])
+  status     String   @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("postbacks")
+}
+
+model PostbackLog {
+  id         String @id @default(cuid())
+  postbackId String
+  event      String
+  data       Json   @default("{}")
+  response   Json   @default("{}")
+  status     String @default("PENDING")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@map("postback_logs")
+}
+
+// Profile Models
+model UserProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  firstName   String?
+  lastName    String?
+  avatar      String?
+  bio         String?
+  settings    Json    @default("{}")
+  preferences Json    @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+// Quality Control Models
+model QualityRule {
+  id          String  @id @default(cuid())
+  accountId   String
+  name        String
+  description String?
+  conditions  Json    @default("[]")
+  actions     Json    @default("[]")
+  status      String  @default("ACTIVE")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quality_rules")
+}
+
+model QualityCheck {
+  id          String @id @default(cuid())
+  ruleId      String
+  affiliateId String
+  result      String @default("PENDING")
+  data        Json   @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quality_checks")
+}
+
+// Tiers Models
+model Tier {
+  id             String     @id @default(cuid())
+  accountId      String
+  name           String
+  description    String
+  level          Int
+  minClicks      Int        @default(0)
+  minConversions Int        @default(0)
+  minRevenue     Float      @default(0)
+  commissionRate Float
+  benefits       Json       @default("[]")
+  requirements   Json       @default("{}")
+  status         TierStatus @default(ACTIVE)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  assignments TierAssignment[]
+  progress    TierProgress[]
+  nextTierFor TierProgress[]   @relation("NextTier")
+
+  @@map("tiers")
+}
+
+model TierAssignment {
+  id          String           @id @default(cuid())
+  tierId      String
+  affiliateId String
+  assignedBy  String
+  assignedAt  DateTime         @default(now())
+  reason      String?
+  status      AssignmentStatus @default(ACTIVE)
+  expiresAt   DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tier      Tier              @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  affiliate AffiliateProfile? @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@map("tier_assignments")
+}
+
+model TierProgress {
+  id                 String   @id @default(cuid())
+  affiliateId        String
+  tierId             String
+  currentClicks      Int      @default(0)
+  currentConversions Int      @default(0)
+  currentRevenue     Float    @default(0)
+  currentEarnings    Float    @default(0)
+  currentReferrals   Int      @default(0)
+  progress           Float    @default(0) // percentage
+  progressPercentage Float    @default(0)
+  lastUpdated        DateTime @default(now())
+  nextTierId         String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tier      Tier              @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  nextTier  Tier?             @relation("NextTier", fields: [nextTierId], references: [id])
+  affiliate AffiliateProfile? @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@unique([affiliateId, tierId])
+  @@map("tier_progress")
+}
+
+// Additional Enums
+enum RedirectType {
+  PERMANENT
+  TEMPORARY
+  SMART
+  CONDITIONAL
+}
+
+enum RedirectStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum FormStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WorkflowStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum SmartLinkType {
+  DYNAMIC
+  A_B_TEST
+  GEO_TARGETED
+  DEVICE_TARGETED
+  TIME_TARGETED
+  CUSTOM
+}
+
+enum LinkStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum TrackingType {
+  CLICK
+  CONVERSION
+  CUSTOM
+}
+
+model IntegrationKnowledge {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String
+  tags      String[]
+  isPublic  Boolean  @default(false)
+  accountId String
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_knowledge")
+}
+
+model IntegrationManual {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String
+  tags      String[]
+  isPublic  Boolean  @default(false)
+  accountId String
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_manual")
+}
+
+model ManualComment {
+  id         String   @id @default(cuid())
+  manualId   String
+  userId     String
+  content    String
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("manual_comment")
+}
+
+model ManualRating {
+  id        String   @id @default(cuid())
+  manualId  String
+  userId    String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("manual_rating")
+}
+
+model AffiliateManager {
+  id          String   @id @default(cuid())
+  affiliateId String
+  managerId   String
+  accountId   String
+  assignedAt  DateTime @default(now())
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("affiliate_manager")
+}
+
+model ManagerActivity {
+  id          String   @id @default(cuid())
+  managerId   String
+  affiliateId String
+  type        String
+  description String
+  data        Json     @default("{}")
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@map("manager_activity")
+}
+
+model ManagerPerformance {
+  id        String   @id @default(cuid())
+  managerId String
+  period    String
+  metrics   Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("manager_performance")
+}
+
+model AnuraConfig {
+  id        String   @id @default(cuid())
+  accountId String
+  apiKey    String
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("anura_config")
+}
+
+model AnuraCheck {
+  id          String   @id @default(cuid())
+  affiliateId String
+  clickId     String
+  result      Json     @default("{}")
+  score       Float
+  status      String
+  createdAt   DateTime @default(now())
+
+  @@map("anura_check")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  permissions Json     @default("{}")
+  accountId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("role")
+}
+
+model UserRoleAssignment {
+  id         String   @id @default(cuid())
+  userId     String
+  roleId     String
+  accountId  String
+  assignedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("user_role_assignment")
+}
+
+model AccessControl {
+  id          String   @id @default(cuid())
+  resource    String
+  action      String
+  roleId      String?
+  userId      String?
+  accountId   String
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("access_control")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String
+  resourceId String
+  details    Json     @default("{}")
+  ipAddress  String?
+  userAgent  String?
+  accountId  String
+  timestamp  DateTime @default(now())
+
+  @@map("audit_log")
+}
+
+model TwoFactorAuth {
+  id          String   @id @default(cuid())
+  userId      String
+  secret      String
+  backupCodes Json     @default("[]")
+  isEnabled   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("two_factor_auth")
+}
+
+enum TrackingStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum TierStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+// Attribution Models
+model AttributionModel {
+  id          String          @id @default(cuid())
+  accountId   String
+  name        String
+  description String
+  type        AttributionType
+  settings    Json            @default("{}")
+  rules       Json            @default("[]")
+  status      String          @default("ACTIVE")
+  isDefault   Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relations
+  reports AttributionReport[]
+
+  @@map("attribution_models")
+}
+
+model AttributionEvent {
+  id           String   @id @default(cuid())
+  conversionId String
+  clickId      String
+  affiliateId  String
+  offerId      String
+  credit       Float
+  weight       Float
+  position     Int
+  timestamp    DateTime @default(now())
+  data         Json     @default("{}")
+
+  @@map("attribution_events")
+}
+
+model AttributionReport {
+  id          String    @id @default(cuid())
+  accountId   String
+  name        String
+  description String
+  modelId     String
+  dateRange   Json      @default("{}")
+  filters     Json      @default("[]")
+  metrics     String[]  @default([])
+  dimensions  String[]  @default([])
+  status      String    @default("PENDING")
+  results     Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  model AttributionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@map("attribution_reports")
+}
+
+enum AttributionType {
+  FIRST_CLICK
+  LAST_CLICK
+  LINEAR
+  TIME_DECAY
+  POSITION_BASED
+  CUSTOM
+}
+
+// Fraud Prevention Models
+model FraudRule {
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  type        FraudType
+  conditions  Json          @default("[]")
+  actions     Json          @default("[]")
+  severity    FraudSeverity
+  status      String        @default("ACTIVE")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  events FraudEvent[]
+
+  @@map("fraud_rules")
+}
+
+model FraudEvent {
+  id           String    @id @default(cuid())
+  ruleId       String
+  type         String
+  severity     String
+  data         Json      @default("{}")
+  score        Float
+  status       String    @default("DETECTED")
+  action       String
+  ipAddress    String
+  userAgent    String
+  affiliateId  String?
+  clickId      String?
+  conversionId String?
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+  resolvedAt   DateTime?
+
+  // Relations
+  rule      FraudRule         @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  affiliate AffiliateProfile? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+
+  @@map("fraud_events")
+}
+
+enum FraudType {
+  CLICK_FRAUD
+  CONVERSION_FRAUD
+  TRAFFIC_QUALITY
+  GEO_BLOCKING
+  DEVICE_FINGERPRINTING
+}
+
+enum FraudSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}

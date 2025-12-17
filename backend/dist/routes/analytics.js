@@ -1,0 +1,34 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const AnalyticsController_1 = require("../controllers/AnalyticsController");
+const auth_1 = require("../middleware/auth");
+const router = express_1.default.Router();
+const analyticsController = new AnalyticsController_1.AnalyticsController();
+router.use(auth_1.authenticateToken);
+router.get('/realtime', analyticsController.getRealTimeAnalytics);
+router.get('/realtime/activity', analyticsController.getRealTimeActivity);
+router.get('/realtime/metrics', analyticsController.getRealTimeMetrics);
+router.get('/funnel', analyticsController.getFunnelAnalysis);
+router.get('/cohort', analyticsController.getCohortAnalysis);
+router.get('/attribution/:conversionId', analyticsController.getAttributionData);
+router.get('/attribution/models', analyticsController.getAttributionModels);
+router.get('/performance', analyticsController.getPerformanceAnalytics);
+router.get('/performance/trends', analyticsController.getPerformanceTrends);
+router.get('/performance/comparison', analyticsController.getPerformanceComparison);
+router.get('/geographic', analyticsController.getGeographicAnalytics);
+router.get('/geographic/countries', analyticsController.getCountryAnalytics);
+router.get('/geographic/cities', analyticsController.getCityAnalytics);
+router.get('/devices', analyticsController.getDeviceAnalytics);
+router.get('/devices/types', analyticsController.getDeviceTypeAnalytics);
+router.get('/devices/browsers', analyticsController.getBrowserAnalytics);
+router.get('/reports', analyticsController.getCustomReports);
+router.post('/reports', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), analyticsController.createCustomReport);
+router.put('/reports/:reportId', (0, auth_1.requireRole)(['ADMIN', 'MANAGER']), analyticsController.updateCustomReport);
+router.delete('/reports/:reportId', (0, auth_1.requireRole)(['ADMIN']), analyticsController.deleteCustomReport);
+router.post('/reports/:reportId/export', analyticsController.exportReport);
+exports.default = router;
+//# sourceMappingURL=analytics.js.map

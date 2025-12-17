@@ -1,0 +1,26 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const AlertsController_1 = require("../controllers/AlertsController");
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.use(auth_1.authenticateToken);
+router.post('/', AlertsController_1.AlertsController.createAlert);
+router.get('/', AlertsController_1.AlertsController.listAlerts);
+router.get('/dashboard', AlertsController_1.AlertsController.getAlertsDashboard);
+router.get('/stats', AlertsController_1.AlertsController.getAlertStats);
+router.post('/default', AlertsController_1.AlertsController.createDefaultAlerts);
+router.get('/:id', AlertsController_1.AlertsController.getAlert);
+router.put('/:id', AlertsController_1.AlertsController.updateAlert);
+router.delete('/:id', AlertsController_1.AlertsController.deleteAlert);
+router.post('/:alertId/rules', AlertsController_1.AlertsController.addRule);
+router.put('/:alertId/rules/:ruleId', AlertsController_1.AlertsController.updateRule);
+router.delete('/:alertId/rules/:ruleId', AlertsController_1.AlertsController.removeRule);
+router.post('/:alertId/actions', AlertsController_1.AlertsController.addAction);
+router.put('/:alertId/actions/:actionId', AlertsController_1.AlertsController.updateAction);
+router.delete('/:alertId/actions/:actionId', AlertsController_1.AlertsController.removeAction);
+router.post('/:alertId/trigger', AlertsController_1.AlertsController.triggerAlert);
+router.post('/:alertId/test', AlertsController_1.AlertsController.testAlert);
+router.get('/:alertId/history', AlertsController_1.AlertsController.getAlertHistory);
+exports.default = router;
+//# sourceMappingURL=alerts.js.map
