@@ -116,9 +116,25 @@ router.get("/", authenticateToken, async (req: any, res) => {
       where.status = status;
     }
 
-    // Affiliate ID filter
+    // Affiliate ID filter - also filter by discount codes
     if (affiliateId) {
-      where.affiliateId = affiliateId;
+      // Get affiliate's discount codes
+      const affiliateCoupons = await prisma.coupon.findMany({
+        where: {
+          affiliateId: affiliateId,
+          status: "ACTIVE",
+        },
+      });
+      const affiliateCodes = affiliateCoupons.map(c => c.code);
+      
+      if (affiliateCodes.length > 0) {
+        where.affiliateId = affiliateId;
+        where.referralCode = { in: affiliateCodes };
+      } else {
+        // No discount codes, return empty result
+        where.affiliateId = affiliateId;
+        where.referralCode = { in: [] };
+      }
     }
 
     // Affiliate search filter (by name or email)
@@ -160,7 +176,22 @@ router.get("/", authenticateToken, async (req: any, res) => {
 
         const affiliateIds = matchingAffiliates.map((a) => a.id);
         if (affiliateIds.length > 0) {
-          where.affiliateId = { in: affiliateIds };
+          // Get discount codes for all matching affiliates
+          const allCoupons = await prisma.coupon.findMany({
+            where: {
+              affiliateId: { in: affiliateIds },
+              status: "ACTIVE",
+            },
+          });
+          const allCodes = allCoupons.map(c => c.code);
+          
+          if (allCodes.length > 0) {
+            where.affiliateId = { in: affiliateIds };
+            where.referralCode = { in: allCodes };
+          } else {
+            where.affiliateId = { in: affiliateIds };
+            where.referralCode = { in: [] };
+          }
         } else {
           // No matching affiliates found, return empty result
           where.affiliateId = { in: [] };

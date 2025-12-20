@@ -194,7 +194,6 @@ router.get("/conversions", authenticateToken, async (req: any, res) => {
     const [
       totalConversions,
       totalRevenueAggregate,
-      totalCommissionAggregate,
       totalClicks,
     ] = await Promise.all([
       prisma.affiliateOrder.count({
@@ -202,14 +201,6 @@ router.get("/conversions", authenticateToken, async (req: any, res) => {
           affiliateId: affiliate.id,
           createdAt: { gte: startDate },
         },
-      }),
-
-      prisma.affiliateOrder.aggregate({
-        where: {
-          affiliateId: affiliate.id,
-          createdAt: { gte: startDate },
-        },
-        _sum: { orderValue: true },
       }),
 
       prisma.affiliateOrder.aggregate({
@@ -249,8 +240,8 @@ router.get("/conversions", authenticateToken, async (req: any, res) => {
       data: formattedConversions,
       summary: {
         totalConversions,
-        totalRevenue: totalRevenueAggregate._sum.orderValue || 0,
-        totalCommission: totalCommissionAggregate._sum.commissionAmount || 0,
+        totalRevenue: totalRevenueAggregate._sum.commissionAmount || 0,
+        totalCommission: totalRevenueAggregate._sum.commissionAmount || 0,
         conversionRate: Math.round(conversionRate * 100) / 100,
       },
       pagination: {
@@ -502,7 +493,6 @@ router.get("/performance", authenticateToken, async (req: any, res) => {
       totalClicks,
       totalConversions,
       revenueAggregate,
-      avgOrderAggregate,
     ] = await Promise.all([
       prisma.affiliateClick.count({
         where: {
@@ -523,19 +513,12 @@ router.get("/performance", authenticateToken, async (req: any, res) => {
           affiliateId: affiliate.id,
           createdAt: { gte: startDate },
         },
-        _sum: { orderValue: true, commissionAmount: true },
+        _sum: { commissionAmount: true },
       }),
 
-      prisma.affiliateOrder.aggregate({
-        where: {
-          affiliateId: affiliate.id,
-          createdAt: { gte: startDate },
-        },
-        _avg: { orderValue: true },
-      }),
     ]);
 
-    const totalRevenueValue = revenueAggregate._sum.orderValue || 0;
+    const totalRevenueValue = revenueAggregate._sum.commissionAmount || 0;
     const conversionRate =
       totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
     const revenuePerClick =
@@ -567,7 +550,7 @@ router.get("/performance", authenticateToken, async (req: any, res) => {
               referralCode: code.code,
               createdAt: { gte: startDate },
             },
-            _sum: { orderValue: true },
+            _sum: { commissionAmount: true },
           }),
         ]);
 
@@ -578,7 +561,7 @@ router.get("/performance", authenticateToken, async (req: any, res) => {
           referralCode: code.code,
           clicks,
           conversions,
-          revenue: revenue._sum.orderValue || 0,
+          revenue: revenue._sum.commissionAmount || 0,
           conversionRate: Math.round(codeConversionRate * 100) / 100,
           commissionRate: code.commissionRate,
         };
@@ -592,7 +575,7 @@ router.get("/performance", authenticateToken, async (req: any, res) => {
         totalConversions,
         conversionRate: Math.round(conversionRate * 100) / 100,
         totalRevenue: totalRevenueValue,
-        avgOrderValue: avgOrderAggregate._avg.orderValue || 0,
+        avgOrderValue: totalConversions > 0 ? totalRevenueValue / totalConversions : 0,
         revenuePerClick: Math.round(revenuePerClick * 100) / 100,
       },
       performanceByCode: performanceByCode.sort(

@@ -55,27 +55,55 @@ router.get(
       });
       const storeMap = new Map(stores.map((s) => [s.id, s.name]));
 
-      // Format orders for response
-      const formattedOrders = orders.map((order) => ({
-        id: order.id,
-        shopifyOrderId: order.shopifyOrderId,
-        orderNumber: order.shopifyOrderNumber || order.orderId,
-        customerEmail: order.customerEmail,
-        totalAmount: order.orderValue,
-        currency: order.currency,
-        status: order.status,
-        discountCode: order.referralCode,
-        affiliateId: order.affiliateId,
-        affiliateName: order.affiliate?.user
-          ? `${order.affiliate.user.firstName || ""} ${order.affiliate.user.lastName || ""}`.trim()
-          : "Unknown",
-        commissionAmount: order.commissionAmount,
-        commissionRate: order.commissionRate,
-        storeName: storeMap.get(order.storeId) || order.storeId || "Unknown Store",
-        storeId: order.storeId,
-        items: order.items,
-        createdAt: order.createdAt,
-      }));
+      // Build a map of discount codes to affiliate IDs for quick lookup
+      // This maps all active discount codes to their affiliate IDs
+      const allCoupons = await prisma.coupon.findMany({
+        where: { status: "ACTIVE" },
+        select: { code: true, affiliateId: true },
+      });
+      
+      // Create map: code (uppercase) -> affiliateId
+      const codeToAffiliateMap = new Map<string, string>();
+      for (const coupon of allCoupons) {
+        codeToAffiliateMap.set(coupon.code.toUpperCase(), coupon.affiliateId);
+      }
+
+      // Format orders for response - validate discount codes
+      const formattedOrders = orders.map((order) => {
+          // Check if discount code belongs to the affiliate
+          const discountCodeUpper = order.referralCode?.toUpperCase() || "";
+          const validAffiliateId = discountCodeUpper ? codeToAffiliateMap.get(discountCodeUpper) : null;
+          
+          // If discount code doesn't match the affiliate OR doesn't exist, it's a store order
+          const isValidAffiliateOrder = order.affiliateId && validAffiliateId === order.affiliateId;
+          
+          let affiliateName = "Store Order";
+          let affiliateId: string | null = null;
+          
+          if (isValidAffiliateOrder && order.affiliate?.user) {
+            affiliateName = `${order.affiliate.user.firstName || ""} ${order.affiliate.user.lastName || ""}`.trim() || "Unknown Affiliate";
+            affiliateId = order.affiliateId;
+          }
+
+          return {
+            id: order.id,
+            shopifyOrderId: order.shopifyOrderId,
+            orderNumber: order.shopifyOrderNumber || order.orderId,
+            customerEmail: order.customerEmail,
+            totalAmount: order.orderValue,
+            currency: order.currency,
+            status: order.status,
+            discountCode: order.referralCode,
+            affiliateId: affiliateId,
+            affiliateName: affiliateName,
+            commissionAmount: isValidAffiliateOrder ? order.commissionAmount : 0,
+            commissionRate: isValidAffiliateOrder ? order.commissionRate : 0,
+            storeName: storeMap.get(order.storeId) || order.storeId || "Unknown Store",
+            storeId: order.storeId,
+            items: order.items,
+            createdAt: order.createdAt,
+          };
+        });
 
       res.json({
         orders: formattedOrders,
@@ -255,7 +283,18 @@ router.get(
       });
       const storeMap = new Map(stores.map((s) => [s.id, s.name]));
 
-      // Generate CSV
+      // Build a map of discount codes to affiliate IDs for quick lookup
+      const allCoupons = await prisma.coupon.findMany({
+        where: { status: "ACTIVE" },
+        select: { code: true, affiliateId: true },
+      });
+      
+      const codeToAffiliateMap = new Map<string, string>();
+      for (const coupon of allCoupons) {
+        codeToAffiliateMap.set(coupon.code.toUpperCase(), coupon.affiliateId);
+      }
+
+      // Generate CSV with validated affiliate names
       const headers = [
         "Order ID",
         "Date",
@@ -269,20 +308,30 @@ router.get(
         "Status",
       ];
 
-      const rows = orders.map((order) => [
-        order.shopifyOrderNumber || order.orderId,
-        order.createdAt.toISOString(),
-        order.customerEmail || "",
-        order.affiliate?.user
-          ? `${order.affiliate.user.firstName || ""} ${order.affiliate.user.lastName || ""}`.trim()
-          : "",
-        order.referralCode,
-        storeMap.get(order.storeId) || order.storeId || "",
-        order.orderValue.toFixed(2),
-        order.currency,
-        order.commissionAmount.toFixed(2),
-        order.status,
-      ]);
+      const rows = orders.map((order) => {
+        // Check if discount code belongs to the affiliate
+        const discountCodeUpper = order.referralCode?.toUpperCase() || "";
+        const validAffiliateId = discountCodeUpper ? codeToAffiliateMap.get(discountCodeUpper) : null;
+        const isValidAffiliateOrder = order.affiliateId && validAffiliateId === order.affiliateId;
+        
+        let affiliateName = "Store Order";
+        if (isValidAffiliateOrder && order.affiliate?.user) {
+          affiliateName = `${order.affiliate.user.firstName || ""} ${order.affiliate.user.lastName || ""}`.trim() || "Unknown Affiliate";
+        }
+        
+        return [
+          order.shopifyOrderNumber || order.orderId,
+          order.createdAt.toISOString(),
+          order.customerEmail || "",
+          affiliateName,
+          order.referralCode,
+          storeMap.get(order.storeId) || order.storeId || "",
+          order.orderValue.toFixed(2),
+          order.currency,
+          isValidAffiliateOrder ? order.commissionAmount.toFixed(2) : "0.00",
+          order.status,
+        ];
+      });
 
       const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
 

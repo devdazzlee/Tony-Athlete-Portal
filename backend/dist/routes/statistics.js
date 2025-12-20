@@ -167,19 +167,12 @@ router.get("/conversions", auth_1.authenticateToken, async (req, res) => {
                 createdAt: { gte: startDate },
             },
         });
-        const [totalConversions, totalRevenueAggregate, totalCommissionAggregate, totalClicks,] = await Promise.all([
+        const [totalConversions, totalRevenueAggregate, totalClicks,] = await Promise.all([
             prisma.affiliateOrder.count({
                 where: {
                     affiliateId: affiliate.id,
                     createdAt: { gte: startDate },
                 },
-            }),
-            prisma.affiliateOrder.aggregate({
-                where: {
-                    affiliateId: affiliate.id,
-                    createdAt: { gte: startDate },
-                },
-                _sum: { orderValue: true },
             }),
             prisma.affiliateOrder.aggregate({
                 where: {
@@ -212,8 +205,8 @@ router.get("/conversions", auth_1.authenticateToken, async (req, res) => {
             data: formattedConversions,
             summary: {
                 totalConversions,
-                totalRevenue: totalRevenueAggregate._sum.orderValue || 0,
-                totalCommission: totalCommissionAggregate._sum.commissionAmount || 0,
+                totalRevenue: totalRevenueAggregate._sum.commissionAmount || 0,
+                totalCommission: totalRevenueAggregate._sum.commissionAmount || 0,
                 conversionRate: Math.round(conversionRate * 100) / 100,
             },
             pagination: {
@@ -424,7 +417,7 @@ router.get("/performance", auth_1.authenticateToken, async (req, res) => {
             default:
                 startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         }
-        const [totalClicks, totalConversions, revenueAggregate, avgOrderAggregate,] = await Promise.all([
+        const [totalClicks, totalConversions, revenueAggregate,] = await Promise.all([
             prisma.affiliateClick.count({
                 where: {
                     affiliateId: affiliate.id,
@@ -442,17 +435,10 @@ router.get("/performance", auth_1.authenticateToken, async (req, res) => {
                     affiliateId: affiliate.id,
                     createdAt: { gte: startDate },
                 },
-                _sum: { orderValue: true, commissionAmount: true },
-            }),
-            prisma.affiliateOrder.aggregate({
-                where: {
-                    affiliateId: affiliate.id,
-                    createdAt: { gte: startDate },
-                },
-                _avg: { orderValue: true },
+                _sum: { commissionAmount: true },
             }),
         ]);
-        const totalRevenueValue = revenueAggregate._sum.orderValue || 0;
+        const totalRevenueValue = revenueAggregate._sum.commissionAmount || 0;
         const conversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
         const revenuePerClick = totalClicks > 0 ? totalRevenueValue / totalClicks : 0;
         const performanceByCode = await Promise.all(referralCodes.map(async (code) => {
@@ -477,7 +463,7 @@ router.get("/performance", auth_1.authenticateToken, async (req, res) => {
                         referralCode: code.code,
                         createdAt: { gte: startDate },
                     },
-                    _sum: { orderValue: true },
+                    _sum: { commissionAmount: true },
                 }),
             ]);
             const codeConversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
@@ -485,7 +471,7 @@ router.get("/performance", auth_1.authenticateToken, async (req, res) => {
                 referralCode: code.code,
                 clicks,
                 conversions,
-                revenue: revenue._sum.orderValue || 0,
+                revenue: revenue._sum.commissionAmount || 0,
                 conversionRate: Math.round(codeConversionRate * 100) / 100,
                 commissionRate: code.commissionRate,
             };
@@ -497,7 +483,7 @@ router.get("/performance", auth_1.authenticateToken, async (req, res) => {
                 totalConversions,
                 conversionRate: Math.round(conversionRate * 100) / 100,
                 totalRevenue: totalRevenueValue,
-                avgOrderValue: avgOrderAggregate._avg.orderValue || 0,
+                avgOrderValue: totalConversions > 0 ? totalRevenueValue / totalConversions : 0,
                 revenuePerClick: Math.round(revenuePerClick * 100) / 100,
             },
             performanceByCode: performanceByCode.sort((a, b) => b.revenue - a.revenue),

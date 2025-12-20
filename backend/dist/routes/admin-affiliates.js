@@ -71,17 +71,29 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
         });
         const total = await prisma.affiliateProfile.count({ where });
         const affiliatesWithStats = await Promise.all(affiliates.map(async (affiliate) => {
+            const affiliateCoupons = await prisma.coupon.findMany({
+                where: {
+                    affiliateId: affiliate.id,
+                    status: "ACTIVE",
+                },
+            });
+            const affiliateCodes = affiliateCoupons.map(c => c.code);
+            const ordersWhere = affiliateCodes.length > 0
+                ? {
+                    affiliateId: affiliate.id,
+                    referralCode: { in: affiliateCodes },
+                }
+                : {
+                    affiliateId: affiliate.id,
+                    referralCode: { in: [] },
+                };
             const [earnings, conversions, clicks] = await Promise.all([
                 prisma.affiliateOrder.aggregate({
-                    where: {
-                        affiliateId: affiliate.id,
-                    },
+                    where: ordersWhere,
                     _sum: { commissionAmount: true },
                 }),
                 prisma.affiliateOrder.count({
-                    where: {
-                        affiliateId: affiliate.id,
-                    },
+                    where: ordersWhere,
                 }),
                 prisma.affiliateClick.count({
                     where: { affiliateId: affiliate.id },
@@ -159,17 +171,29 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate not found" });
         }
+        const affiliateCoupons = await prisma.coupon.findMany({
+            where: {
+                affiliateId: affiliate.id,
+                status: "ACTIVE",
+            },
+        });
+        const affiliateCodes = affiliateCoupons.map(c => c.code);
+        const ordersWhere = affiliateCodes.length > 0
+            ? {
+                affiliateId: affiliate.id,
+                referralCode: { in: affiliateCodes },
+            }
+            : {
+                affiliateId: affiliate.id,
+                referralCode: { in: [] },
+            };
         const [earnings, conversions, clicks] = await Promise.all([
             prisma.affiliateOrder.aggregate({
-                where: {
-                    affiliateId: affiliate.id,
-                },
+                where: ordersWhere,
                 _sum: { commissionAmount: true },
             }),
             prisma.affiliateOrder.count({
-                where: {
-                    affiliateId: affiliate.id,
-                },
+                where: ordersWhere,
             }),
             prisma.affiliateClick.count({
                 where: { affiliateId: affiliate.id },

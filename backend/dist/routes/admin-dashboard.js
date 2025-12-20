@@ -11,14 +11,59 @@ const prisma = new client_1.PrismaClient();
 router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
     try {
         const now = new Date();
-        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const dateRange = req.query.dateRange || "7d";
+        let dateFilter;
+        let daysForDailyPerformance = 7;
+        switch (dateRange) {
+            case "7d":
+                dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                daysForDailyPerformance = 7;
+                break;
+            case "30d":
+                dateFilter = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                daysForDailyPerformance = 30;
+                break;
+            case "90d":
+                dateFilter = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                daysForDailyPerformance = 90;
+                break;
+            case "all":
+                dateFilter = undefined;
+                daysForDailyPerformance = 365;
+                break;
+            default:
+                dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                daysForDailyPerformance = 7;
+        }
+        let previousPeriodStart;
+        let previousPeriodEnd;
+        let periodLabel = "";
+        if (dateFilter) {
+            const periodLength = now.getTime() - dateFilter.getTime();
+            previousPeriodEnd = new Date(dateFilter.getTime() - 1);
+            previousPeriodStart = new Date(previousPeriodEnd.getTime() - periodLength);
+            previousPeriodStart.setHours(0, 0, 0, 0);
+            previousPeriodEnd.setHours(23, 59, 59, 999);
+            if (dateRange === "7d") {
+                periodLabel = "previous 7 days";
+            }
+            else if (dateRange === "30d") {
+                periodLabel = "previous 30 days";
+            }
+            else if (dateRange === "90d") {
+                periodLabel = "previous 90 days";
+            }
+        }
+        const dateWhereClause = dateFilter ? { createdAt: { gte: dateFilter } } : {};
+        const previousPeriodWhereClause = previousPeriodStart && previousPeriodEnd
+            ? { createdAt: { gte: previousPeriodStart, lte: previousPeriodEnd } }
+            : null;
         const affiliates = await prisma.affiliateProfile.findMany({
             include: {
                 user: true,
             },
         });
-        const [totalAffiliates, activeAffiliates, pendingAffiliates, totalClicks, totalConversions, totalRevenue, totalCommissions,] = await Promise.all([
+        const [totalAffiliates, activeAffiliates, pendingAffiliates, totalClicks, totalConversions, totalRevenue, totalCommissions, previousClicks, previousConversions, previousRevenue, previousCommissions,] = await Promise.all([
             prisma.affiliateProfile.count(),
             prisma.affiliateProfile.count({
                 where: { status: "ACTIVE" },
@@ -27,25 +72,70 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
                 where: { status: "PENDING" },
             }),
             prisma.affiliateClick.count({
-                where: { createdAt: { gte: thirtyDaysAgo } },
+                where: dateWhereClause,
             }),
             prisma.affiliateOrder.count({
-                where: { createdAt: { gte: thirtyDaysAgo } },
+                where: dateWhereClause,
             }),
             prisma.affiliateOrder.aggregate({
-                where: { createdAt: { gte: thirtyDaysAgo } },
+                where: dateWhereClause,
                 _sum: { orderValue: true },
             }),
             prisma.affiliateOrder.aggregate({
-                where: { createdAt: { gte: thirtyDaysAgo } },
+                where: dateWhereClause,
                 _sum: { commissionAmount: true },
             }),
+            previousPeriodWhereClause
+                ? prisma.affiliateClick.count({
+                    where: previousPeriodWhereClause,
+                })
+                : Promise.resolve(0),
+            previousPeriodWhereClause
+                ? prisma.affiliateOrder.count({
+                    where: previousPeriodWhereClause,
+                })
+                : Promise.resolve(0),
+            previousPeriodWhereClause
+                ? prisma.affiliateOrder.aggregate({
+                    where: previousPeriodWhereClause,
+                    _sum: { orderValue: true },
+                })
+                : Promise.resolve({ _sum: { orderValue: 0 } }),
+            previousPeriodWhereClause
+                ? prisma.affiliateOrder.aggregate({
+                    where: previousPeriodWhereClause,
+                    _sum: { commissionAmount: true },
+                })
+                : Promise.resolve({ _sum: { commissionAmount: 0 } }),
         ]);
+        const calculateChange = (current, previous) => {
+            if (previous === 0) {
+                return current > 0 ? 100 : 0;
+            }
+            return ((current - previous) / previous) * 100;
+        };
+        const revenueChange = previousPeriodWhereClause
+            ? calculateChange(totalRevenue._sum.orderValue || 0, previousRevenue._sum.orderValue || 0)
+            : 0;
+        const commissionsChange = previousPeriodWhereClause
+            ? calculateChange(totalCommissions._sum.commissionAmount || 0, previousCommissions._sum.commissionAmount || 0)
+            : 0;
+        const conversionsChange = previousPeriodWhereClause
+            ? calculateChange(totalConversions, previousConversions)
+            : 0;
+        const currentConversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
+        const previousConversionRate = previousClicks > 0 ? (previousConversions / previousClicks) * 100 : 0;
+        const conversionRateChange = previousPeriodWhereClause
+            ? calculateChange(currentConversionRate, previousConversionRate)
+            : 0;
         const dailyPerformance = [];
-        for (let i = 6; i >= 0; i--) {
+        const daysToShow = Math.min(daysForDailyPerformance, 90);
+        for (let i = daysToShow - 1; i >= 0; i--) {
             const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-            const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-            const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+            const startOfDay = new Date(date);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(date);
+            endOfDay.setHours(23, 59, 59, 999);
             const [clicks, conversions, revenue] = await Promise.all([
                 prisma.affiliateClick.count({
                     where: {
@@ -72,24 +162,47 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
             });
         }
         const topAffiliates = await Promise.all(affiliates.slice(0, 10).map(async (affiliate) => {
+            const affiliateCoupons = await prisma.coupon.findMany({
+                where: {
+                    affiliateId: affiliate.id,
+                    status: "ACTIVE",
+                },
+                select: { code: true },
+            });
+            const affiliateReferralCodes = await prisma.referralCode.findMany({
+                where: {
+                    affiliateId: affiliate.id,
+                    isActive: true,
+                },
+                select: { code: true },
+            });
+            const affiliateCodes = [
+                ...affiliateCoupons.map(c => c.code.toUpperCase()),
+                ...affiliateReferralCodes.map(r => r.code.toUpperCase()),
+            ];
+            const ordersWhere = affiliateCodes.length > 0
+                ? {
+                    affiliateId: affiliate.id,
+                    referralCode: { in: affiliateCodes },
+                    ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
+                }
+                : {
+                    affiliateId: affiliate.id,
+                    referralCode: { in: [] },
+                    ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
+                };
             const [earnings, conversions, clicks, lastLoginActivity] = await Promise.all([
                 prisma.affiliateOrder.aggregate({
-                    where: {
-                        affiliateId: affiliate.id,
-                        createdAt: { gte: thirtyDaysAgo },
-                    },
+                    where: ordersWhere,
                     _sum: { commissionAmount: true },
                 }),
                 prisma.affiliateOrder.count({
-                    where: {
-                        affiliateId: affiliate.id,
-                        createdAt: { gte: thirtyDaysAgo },
-                    },
+                    where: ordersWhere,
                 }),
                 prisma.affiliateClick.count({
                     where: {
                         affiliateId: affiliate.id,
-                        createdAt: { gte: thirtyDaysAgo },
+                        ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
                     },
                 }),
                 prisma.activity.findFirst({
@@ -149,7 +262,31 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
                     : 0,
                 totalClicks,
                 totalConversions,
-                conversionRate: totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0,
+                conversionRate: currentConversionRate,
+                changes: previousPeriodWhereClause
+                    ? {
+                        revenue: {
+                            value: Math.abs(revenueChange),
+                            type: revenueChange >= 0 ? "increase" : "decrease",
+                            period: periodLabel || "previous period",
+                        },
+                        commissions: {
+                            value: Math.abs(commissionsChange),
+                            type: commissionsChange >= 0 ? "increase" : "decrease",
+                            period: periodLabel || "previous period",
+                        },
+                        conversions: {
+                            value: Math.abs(conversionsChange),
+                            type: conversionsChange >= 0 ? "increase" : "decrease",
+                            period: periodLabel || "previous period",
+                        },
+                        conversionRate: {
+                            value: Math.abs(conversionRateChange),
+                            type: conversionRateChange >= 0 ? "increase" : "decrease",
+                            period: periodLabel || "previous period",
+                        },
+                    }
+                    : null,
             },
             dailyPerformance,
             topAffiliates: sortedTopAffiliates,

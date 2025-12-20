@@ -41,9 +41,7 @@ interface OrderStats {
   storeId: string;
   storeName: string;
   totalOrders: number;
-  totalRevenue: number;
   totalCommission: number;
-  formattedRevenue: string;
   formattedCommission: string;
 }
 
@@ -134,7 +132,6 @@ export default function ShopPage() {
 
   // Calculate totals
   const totalOrders = orderStats.reduce((sum, s) => sum + s.totalOrders, 0);
-  const totalRevenue = orderStats.reduce((sum, s) => sum + s.totalRevenue, 0);
   const totalCommission = orderStats.reduce((sum, s) => sum + s.totalCommission, 0);
 
   return (
@@ -205,7 +202,7 @@ export default function ShopPage() {
       {/* Overall Stats */}
       <div>
         <h2 className="text-xl font-bold text-gray-900 mb-4">Overall Performance</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card className="bg-white border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center gap-3">
@@ -223,27 +220,11 @@ export default function ShopPage() {
           <Card className="bg-white border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${totalRevenue.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <TrendingUp className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Commission</p>
+                  <p className="text-sm text-gray-600">Total Earnings</p>
                   <p className="text-2xl font-bold text-green-600">
                     ${totalCommission.toFixed(2)}
                   </p>
@@ -267,17 +248,13 @@ export default function ShopPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">Orders</p>
                     <p className="text-xl font-bold text-gray-900">{stat.totalOrders}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Revenue</p>
-                    <p className="text-xl font-bold text-gray-900">{stat.formattedRevenue}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Commission</p>
+                    <p className="text-sm text-gray-600">Earnings</p>
                     <p className="text-xl font-bold text-green-600">{stat.formattedCommission}</p>
                   </div>
                 </div>

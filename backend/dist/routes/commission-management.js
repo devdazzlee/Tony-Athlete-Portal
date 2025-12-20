@@ -97,7 +97,21 @@ router.get("/", auth_1.authenticateToken, async (req, res) => {
             where.status = status;
         }
         if (affiliateId) {
-            where.affiliateId = affiliateId;
+            const affiliateCoupons = await prisma_1.prisma.coupon.findMany({
+                where: {
+                    affiliateId: affiliateId,
+                    status: "ACTIVE",
+                },
+            });
+            const affiliateCodes = affiliateCoupons.map(c => c.code);
+            if (affiliateCodes.length > 0) {
+                where.affiliateId = affiliateId;
+                where.referralCode = { in: affiliateCodes };
+            }
+            else {
+                where.affiliateId = affiliateId;
+                where.referralCode = { in: [] };
+            }
         }
         if (affiliateSearch) {
             const searchTerm = affiliateSearch.trim();
@@ -135,7 +149,21 @@ router.get("/", auth_1.authenticateToken, async (req, res) => {
                 });
                 const affiliateIds = matchingAffiliates.map((a) => a.id);
                 if (affiliateIds.length > 0) {
-                    where.affiliateId = { in: affiliateIds };
+                    const allCoupons = await prisma_1.prisma.coupon.findMany({
+                        where: {
+                            affiliateId: { in: affiliateIds },
+                            status: "ACTIVE",
+                        },
+                    });
+                    const allCodes = allCoupons.map(c => c.code);
+                    if (allCodes.length > 0) {
+                        where.affiliateId = { in: affiliateIds };
+                        where.referralCode = { in: allCodes };
+                    }
+                    else {
+                        where.affiliateId = { in: affiliateIds };
+                        where.referralCode = { in: [] };
+                    }
                 }
                 else {
                     where.affiliateId = { in: [] };

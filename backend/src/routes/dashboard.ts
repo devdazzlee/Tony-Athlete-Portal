@@ -18,12 +18,29 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
       where: { userId },
       include: {
         user: true,
+        coupons: {
+          where: { status: "ACTIVE" },
+        },
       },
     });
 
     if (!affiliate) {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
+
+    // Get affiliate's discount codes
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    
+    // Build where clause for orders - must match affiliateId AND referralCode must be in affiliate's codes
+    const ordersWhere = affiliateCodes.length > 0 
+      ? {
+          affiliateId: affiliate.id,
+          referralCode: { in: affiliateCodes },
+        }
+      : {
+          affiliateId: affiliate.id,
+          referralCode: { in: [] }, // Empty array will return no results
+        };
 
     // Get affiliate clicks and orders (conversions) from the correct tables
     const [totalClicks, totalConversions, totalCommissions, recentActivity] =
@@ -39,7 +56,7 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
         // Total conversions (orders) in last 30 days
         prisma.affiliateOrder.count({
           where: {
-            affiliateId: affiliate.id,
+            ...ordersWhere,
             createdAt: { gte: thirtyDaysAgo },
           },
         }),
@@ -47,7 +64,7 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
         // Total commissions in last 30 days
         prisma.affiliateOrder.aggregate({
           where: {
-            affiliateId: affiliate.id,
+            ...ordersWhere,
             createdAt: { gte: thirtyDaysAgo },
           },
           _sum: { commissionAmount: true },
@@ -55,9 +72,7 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
 
         // Recent activity (last 10 orders)
         prisma.affiliateOrder.findMany({
-          where: {
-            affiliateId: affiliate.id,
-          },
+          where: ordersWhere,
           orderBy: { createdAt: "desc" },
           take: 10,
         }),
@@ -66,7 +81,7 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
     // Get pending commissions
     const pendingCommissions = await prisma.affiliateOrder.aggregate({
       where: {
-        affiliateId: affiliate.id,
+        ...ordersWhere,
         status: "PENDING",
         commissionAmount: { gt: 0 },
       },
@@ -90,6 +105,11 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
             referralCode: code.code,
           },
         });
+
+        // Only include this referral code if it's in the affiliate's active codes
+        if (!affiliateCodes.includes(code.code)) {
+          return null;
+        }
 
         const conversions = await prisma.affiliateOrder.count({
           where: {
@@ -118,6 +138,7 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
     );
 
     const sortedTopLinks = topLinks
+      .filter(link => link !== null)
       .sort((a, b) => b.earnings - a.earnings)
       .slice(0, 5);
 
@@ -137,14 +158,14 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
 
       const dayConversions = await prisma.affiliateOrder.count({
         where: {
-          affiliateId: affiliate.id,
+          ...ordersWhere,
           createdAt: { gte: startOfDay, lte: endOfDay },
         },
       });
 
       const dayCommissions = await prisma.affiliateOrder.aggregate({
         where: {
-          affiliateId: affiliate.id,
+          ...ordersWhere,
           createdAt: { gte: startOfDay, lte: endOfDay },
         },
         _sum: { commissionAmount: true },
@@ -196,11 +217,28 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
 
     const affiliate = await prisma.affiliateProfile.findFirst({
       where: { userId },
+      include: {
+        coupons: {
+          where: { status: "ACTIVE" },
+        },
+      },
     });
 
     if (!affiliate) {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
+
+    // Get affiliate's discount codes
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    const ordersWhere = affiliateCodes.length > 0 
+      ? {
+          affiliateId: affiliate.id,
+          referralCode: { in: affiliateCodes },
+        }
+      : {
+          affiliateId: affiliate.id,
+          referralCode: { in: [] },
+        };
 
     // Get real-time metrics
     const [activeUsers, liveClicks, liveConversions, liveRevenue] =
@@ -227,7 +265,7 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
         // Live conversions (orders) in last hour
         prisma.affiliateOrder.count({
           where: {
-            affiliateId: affiliate.id,
+            ...ordersWhere,
             createdAt: { gte: oneHourAgo },
           },
         }),
@@ -235,7 +273,7 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
         // Live revenue in last hour
         prisma.affiliateOrder.aggregate({
           where: {
-            affiliateId: affiliate.id,
+            ...ordersWhere,
             createdAt: { gte: oneHourAgo },
           },
           _sum: { commissionAmount: true },

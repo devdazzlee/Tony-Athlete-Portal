@@ -46,20 +46,36 @@ router.get(
       // Get performance data for each affiliate using correct tables
       const affiliatesWithStats = await Promise.all(
         affiliates.map(async (affiliate) => {
-          const [earnings, conversions, clicks] = await Promise.all([
-            // Get earnings from AffiliateOrder table
-            prisma.affiliateOrder.aggregate({
-              where: {
+          // Get affiliate's discount codes
+          const affiliateCoupons = await prisma.coupon.findMany({
+            where: {
+              affiliateId: affiliate.id,
+              status: "ACTIVE",
+            },
+          });
+          const affiliateCodes = affiliateCoupons.map(c => c.code);
+          
+          // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+          const ordersWhere = affiliateCodes.length > 0 
+            ? {
                 affiliateId: affiliate.id,
-              },
+                referralCode: { in: affiliateCodes },
+              }
+            : {
+                affiliateId: affiliate.id,
+                referralCode: { in: [] }, // Empty array returns no results
+              };
+
+          const [earnings, conversions, clicks] = await Promise.all([
+            // Get earnings from AffiliateOrder table - only orders with matching discount codes
+            prisma.affiliateOrder.aggregate({
+              where: ordersWhere,
               _sum: { commissionAmount: true },
             }),
 
-            // Get conversions from AffiliateOrder table
+            // Get conversions from AffiliateOrder table - only orders with matching discount codes
             prisma.affiliateOrder.count({
-              where: {
-                affiliateId: affiliate.id,
-              },
+              where: ordersWhere,
             }),
 
             // Get clicks from AffiliateClick table
@@ -155,20 +171,36 @@ router.get(
         return res.status(404).json({ error: "Affiliate not found" });
       }
 
-      const [earnings, conversions, clicks] = await Promise.all([
-        // Get earnings from AffiliateOrder table
-        prisma.affiliateOrder.aggregate({
-          where: {
+      // Get affiliate's discount codes
+      const affiliateCoupons = await prisma.coupon.findMany({
+        where: {
+          affiliateId: affiliate.id,
+          status: "ACTIVE",
+        },
+      });
+      const affiliateCodes = affiliateCoupons.map(c => c.code);
+      
+      // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+      const ordersWhere = affiliateCodes.length > 0 
+        ? {
             affiliateId: affiliate.id,
-          },
+            referralCode: { in: affiliateCodes },
+          }
+        : {
+            affiliateId: affiliate.id,
+            referralCode: { in: [] },
+          };
+
+      const [earnings, conversions, clicks] = await Promise.all([
+        // Get earnings from AffiliateOrder table - only orders with matching discount codes
+        prisma.affiliateOrder.aggregate({
+          where: ordersWhere,
           _sum: { commissionAmount: true },
         }),
 
-        // Get conversions from AffiliateOrder table
+        // Get conversions from AffiliateOrder table - only orders with matching discount codes
         prisma.affiliateOrder.count({
-          where: {
-            affiliateId: affiliate.id,
-          },
+          where: ordersWhere,
         }),
 
         // Get clicks from AffiliateClick table

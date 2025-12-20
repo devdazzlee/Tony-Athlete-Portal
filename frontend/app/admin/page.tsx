@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AuthRequired, AdminLoading } from "@/components/ui/loading";
 import {
   Users,
@@ -300,6 +307,28 @@ interface AdminDashboardData {
     totalClicks: number;
     totalConversions: number;
     conversionRate: number;
+    changes?: {
+      revenue: {
+        value: number;
+        type: "increase" | "decrease";
+        period: string;
+      };
+      commissions: {
+        value: number;
+        type: "increase" | "decrease";
+        period: string;
+      };
+      conversions: {
+        value: number;
+        type: "increase" | "decrease";
+        period: string;
+      };
+      conversionRate: {
+        value: number;
+        type: "increase" | "decrease";
+        period: string;
+      };
+    } | null;
   };
   dailyPerformance: Array<{
     date: string;
@@ -328,16 +357,38 @@ export default function AdminDashboardPage() {
   );
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dateRange, setDateRange] = useState("7d");
+  const [isDateRangeLoading, setIsDateRangeLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchDashboardData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const handleDateRangeChange = async (newDateRange: string) => {
+    setDateRange(newDateRange);
+    setIsDateRangeLoading(true);
+    try {
+      const response = await apiClient.get("/admin/dashboard/overview", {
+        params: { dateRange: newDateRange },
+      });
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error("Error fetching admin dashboard data:", error);
+      // Error toast already handled by interceptor
+    } finally {
+      setIsDateRangeLoading(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
-      const response = await apiClient.get("/admin/dashboard/overview");
+      setIsDataLoading(true);
+      const response = await apiClient.get("/admin/dashboard/overview", {
+        params: { dateRange },
+      });
       setDashboardData(response.data);
     } catch (error) {
       console.error("Error fetching admin dashboard data:", error);
@@ -354,7 +405,7 @@ export default function AdminDashboardPage() {
     toast.success("Dashboard data refreshed");
   };
 
-  if (isLoading || isDataLoading) {
+  if (isLoading || isDataLoading || isDateRangeLoading) {
     return <AdminLoading message="Loading admin dashboard..." />;
   }
 
@@ -410,24 +461,39 @@ export default function AdminDashboardPage() {
               />
               {isRefreshing ? "Refreshing..." : "Refresh"}
             </Button>
-            <Button 
-              variant="secondary" 
-              size="sm"
-              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+            <Select 
+              value={dateRange} 
+              onValueChange={handleDateRangeChange}
+              disabled={isDateRangeLoading}
             >
-              <Calendar className="h-4 w-4 mr-2" />
-              Last 7 Days
-            </Button>
+              <SelectTrigger className="w-auto min-w-[160px] bg-white/20 hover:bg-white/30 text-white border-white/30 focus:ring-white/50 [&_svg]:!text-white [&_svg]:!opacity-100 disabled:opacity-70">
+                <Calendar className="h-4 w-4 mr-2 text-white" />
+                <SelectValue className="text-white" />
+              </SelectTrigger>
+                <SelectContent className="bg-white">
+                  <SelectItem value="7d" className="text-gray-900">
+                    Last 7 Days
+                  </SelectItem>
+                  <SelectItem value="30d" className="text-gray-900">
+                    Last 30 Days
+                  </SelectItem>
+                  <SelectItem value="90d" className="text-gray-900">
+                    Last 90 Days
+                  </SelectItem>
+                  <SelectItem value="all" className="text-gray-900">
+                    All Time
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
-      </div>
 
       {/* KPI Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPITile
           title="Total Affiliates"
           value={dashboardData.statistics.totalAffiliates}
-          change={{ value: 8.5, type: "increase", period: "last month" }}
           icon={Users}
           iconColor="text-blue-600"
           description={`${dashboardData.statistics.activeAffiliates} active, ${dashboardData.statistics.pendingAffiliates} pending`}
@@ -436,7 +502,7 @@ export default function AdminDashboardPage() {
         <KPITile
           title="Total Revenue"
           value={Math.round(dashboardData.statistics.totalRevenue)}
-          change={{ value: 15.3, type: "increase", period: "last month" }}
+          change={dashboardData.statistics.changes?.revenue}
           icon={DollarSign}
           iconColor="text-green-600"
           description="Revenue generated by affiliates"
@@ -444,7 +510,7 @@ export default function AdminDashboardPage() {
         <KPITile
           title="Total Commissions"
           value={Math.round(dashboardData.statistics.totalCommissions)}
-          change={{ value: 15.3, type: "increase", period: "last month" }}
+          change={dashboardData.statistics.changes?.commissions}
           icon={TrendingUp}
           iconColor="text-emerald-600"
           description="Commissions paid to affiliates"
@@ -454,7 +520,7 @@ export default function AdminDashboardPage() {
           value={`${(
             Math.round(dashboardData.statistics.conversionRate * 10) / 10
           ).toFixed(1)}%`}
-          change={{ value: 0.8, type: "increase", period: "last month" }}
+          change={dashboardData.statistics.changes?.conversionRate}
           icon={Target}
           iconColor="text-purple-600"
           description="Overall program conversion rate"

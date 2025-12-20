@@ -101,6 +101,22 @@ router.get("/performance", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
+    // Get affiliate's discount codes
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    if (affiliateCodes.length === 0) {
+      return res.json({
+        conversions: 0,
+        commissionEarned: "$0.00",
+        conversionChange: 0,
+        commissionChange: 0,
+        currentDateRange: "",
+        previousPeriod: "",
+        conversionChartData: [],
+        commissionChartData: [],
+        discountCodeUsage: 0,
+      });
+    }
+
     // Calculate date ranges
     const now = new Date();
     let startDate: Date;
@@ -160,22 +176,29 @@ router.get("/performance", async (req: any, res) => {
     // Get commission rate
     const commissionRate = (affiliate.commissionRate || 10) / 100;
 
+    // Build where clauses - must match affiliateId AND referralCode must be in affiliate's codes
+    const currentOrdersWhere = {
+      affiliateId: affiliate.id,
+      referralCode: { in: affiliateCodes },
+      orderCreatedAt: { gte: startDate, lte: endDate },
+      status: { not: "CANCELLED" },
+    };
+
+    const previousOrdersWhere = {
+      affiliateId: affiliate.id,
+      referralCode: { in: affiliateCodes },
+      orderCreatedAt: { gte: previousStartDate, lte: previousEndDate },
+      status: { not: "CANCELLED" },
+    };
+
     // Fetch orders from database (synced from Shopify)
     const [currentOrders, previousOrders] = await Promise.all([
       prisma.affiliateOrder.findMany({
-        where: {
-          affiliateId: affiliate.id,
-          orderCreatedAt: { gte: startDate, lte: endDate },
-          status: { not: "CANCELLED" },
-        },
+        where: currentOrdersWhere,
         orderBy: { orderCreatedAt: "asc" },
       }),
       prisma.affiliateOrder.findMany({
-        where: {
-          affiliateId: affiliate.id,
-          orderCreatedAt: { gte: previousStartDate, lte: previousEndDate },
-          status: { not: "CANCELLED" },
-        },
+        where: previousOrdersWhere,
       }),
     ]);
 
@@ -440,14 +463,28 @@ router.get("/orders", async (req: any, res) => {
 
     const affiliate = await prisma.affiliateProfile.findFirst({
       where: { userId },
+      include: {
+        coupons: {
+          where: { status: "ACTIVE" },
+        },
+      },
     });
 
     if (!affiliate) {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Build where clause with optional store filter
-    const whereClause: any = { affiliateId: affiliate.id };
+    // Get affiliate's discount codes (case-insensitive matching)
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    if (affiliateCodes.length === 0) {
+      return res.json([]);
+    }
+
+    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+    const whereClause: any = { 
+      affiliateId: affiliate.id,
+      referralCode: { in: affiliateCodes },
+    };
     if (storeId && storeId !== "all") {
       whereClause.storeId = storeId;
     }
@@ -519,9 +556,22 @@ router.get("/orders/:orderId", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
+    // Get affiliate's discount codes
+    const affiliateCodes = (await prisma.coupon.findMany({
+      where: {
+        affiliateId: affiliate.id,
+        status: "ACTIVE",
+      },
+    })).map(c => c.code);
+
+    if (affiliateCodes.length === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
     const order = await prisma.affiliateOrder.findFirst({
       where: {
         affiliateId: affiliate.id,
+        referralCode: { in: affiliateCodes },
         orderId,
       },
     });
@@ -850,10 +900,8 @@ router.get("/commission-summary", async (req: any, res) => {
     const affiliate = await prisma.affiliateProfile.findFirst({
       where: { userId },
       include: {
-        referralCodes: {
-          where: { isActive: true },
-          take: 1,
-          orderBy: { createdAt: "desc" },
+        coupons: {
+          where: { status: "ACTIVE" },
         },
       },
     });
@@ -862,23 +910,39 @@ router.get("/commission-summary", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
+    // Get affiliate's discount codes
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    if (affiliateCodes.length === 0) {
+      return res.json({
+        currentMonth: {
+          month: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
+          status: "Pending",
+          totalOrders: 0,
+          totalUnits: 0,
+          commission: "£0.00",
+        },
+        previousMonths: [],
+      });
+    }
+
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
+    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+    const currentMonthWhere = {
+      affiliateId: affiliate.id,
+      referralCode: { in: affiliateCodes },
+      createdAt: { gte: currentMonthStart, lte: currentMonthEnd },
+    };
+
     // Get current month data
     const [currentOrders, currentCommission] = await Promise.all([
       prisma.affiliateOrder.findMany({
-        where: {
-          affiliateId: affiliate.id,
-          createdAt: { gte: currentMonthStart, lte: currentMonthEnd },
-        },
+        where: currentMonthWhere,
       }),
       prisma.affiliateOrder.aggregate({
-        where: {
-          affiliateId: affiliate.id,
-          createdAt: { gte: currentMonthStart, lte: currentMonthEnd },
-        },
+        where: currentMonthWhere,
         _sum: { commissionAmount: true },
       }),
     ]);
@@ -905,18 +969,18 @@ router.get("/commission-summary", async (req: any, res) => {
       const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
       const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999);
 
+      const monthWhere = {
+        affiliateId: affiliate.id,
+        referralCode: { in: affiliateCodes },
+        createdAt: { gte: monthStart, lte: monthEnd },
+      };
+
       const [orders, commissionSum] = await Promise.all([
         prisma.affiliateOrder.findMany({
-          where: {
-            affiliateId: affiliate.id,
-            createdAt: { gte: monthStart, lte: monthEnd },
-          },
+          where: monthWhere,
         }),
         prisma.affiliateOrder.aggregate({
-          where: {
-            affiliateId: affiliate.id,
-            createdAt: { gte: monthStart, lte: monthEnd },
-          },
+          where: monthWhere,
           _sum: { commissionAmount: true },
         }),
       ]);
@@ -1007,6 +1071,17 @@ router.get("/shop", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
+    // Get affiliate's discount codes
+    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    if (affiliateCodes.length === 0) {
+      return res.json({
+        stores: [],
+        orderStats: [],
+        recentOrders: [],
+        discountCodes: [],
+      });
+    }
+
     // Get stores
     const stores = shopifyService.getAllStores();
     const storesInfo = await Promise.all(
@@ -1035,9 +1110,15 @@ router.get("/shop", async (req: any, res) => {
       })
     );
 
+    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+    const ordersWhere = {
+      affiliateId: affiliate.id,
+      referralCode: { in: affiliateCodes },
+    };
+
     // Get recent orders (last 10)
     const recentOrders = await prisma.affiliateOrder.findMany({
-      where: { affiliateId: affiliate.id },
+      where: ordersWhere,
       orderBy: { orderCreatedAt: "desc" },
       take: 10,
     });
@@ -1045,13 +1126,17 @@ router.get("/shop", async (req: any, res) => {
     // Get order stats by store
     const orderStats = await Promise.all(
       stores.map(async (store) => {
+        const storeOrdersWhere = {
+          ...ordersWhere,
+          storeId: store.id,
+        };
         const [count, sum] = await Promise.all([
           prisma.affiliateOrder.count({
-            where: { affiliateId: affiliate.id, storeId: store.id },
+            where: storeOrdersWhere,
           }),
           prisma.affiliateOrder.aggregate({
-            where: { affiliateId: affiliate.id, storeId: store.id },
-            _sum: { orderValue: true, commissionAmount: true },
+            where: storeOrdersWhere,
+            _sum: { commissionAmount: true },
           }),
         ]);
 
@@ -1061,9 +1146,7 @@ router.get("/shop", async (req: any, res) => {
           storeId: store.id,
           storeName: store.name,
           totalOrders: count,
-          totalRevenue: sum._sum.orderValue || 0,
           totalCommission: sum._sum.commissionAmount || 0,
-          formattedRevenue: `${currencySymbol}${(sum._sum.orderValue || 0).toFixed(2)}`,
           formattedCommission: `${currencySymbol}${(sum._sum.commissionAmount || 0).toFixed(2)}`,
         };
       })
@@ -1144,6 +1227,11 @@ router.post("/sync-orders", async (req: any, res) => {
     let synced = 0;
     let skipped = 0;
 
+    // Create a case-insensitive map of discount codes for fast lookup
+    const affiliateCodesMap = new Map(
+      affiliate.coupons.map(c => [c.code.toUpperCase(), c.code])
+    );
+
     for (const order of orders) {
       const existingOrder = await prisma.affiliateOrder.findUnique({
         where: { orderId: order.id.toString() },
@@ -1154,6 +1242,17 @@ router.post("/sync-orders", async (req: any, res) => {
         continue;
       }
 
+      // Verify that the matched code belongs to this affiliate
+      // Match case-insensitively
+      const matchedCodeUpper = order.matchedCode?.toUpperCase();
+      if (!matchedCodeUpper || !affiliateCodesMap.has(matchedCodeUpper)) {
+        skipped++;
+        continue; // Skip orders that don't match this affiliate's codes
+      }
+
+      // Get the actual code (preserving case)
+      const actualCode = affiliateCodesMap.get(matchedCodeUpper)!;
+
       const orderValue = parseFloat(order.total_price);
       const commissionRate = (affiliate.commissionRate || 10) / 100;
       const commissionAmount = orderValue * commissionRate;
@@ -1161,7 +1260,7 @@ router.post("/sync-orders", async (req: any, res) => {
       await prisma.affiliateOrder.create({
         data: {
           affiliateId: affiliate.id,
-          referralCode: order.matchedCode,
+          referralCode: actualCode,
           storeId: order.storeId,
           orderId: order.id.toString(),
           shopifyOrderId: order.id.toString(),
