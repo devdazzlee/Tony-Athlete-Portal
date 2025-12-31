@@ -985,6 +985,51 @@ router.get("/shop", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch shop data" });
     }
 });
+router.get("/shop/products/:storeId", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { storeId } = req.params;
+        const { limit = 50 } = req.query;
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        const stores = ShopifyService_1.default.getAllStores();
+        const store = stores.find(s => s.id === storeId);
+        if (!store) {
+            return res.status(404).json({ error: "Store not found" });
+        }
+        const allProducts = await ShopifyService_1.default.getProducts(store.id, {
+            limit: parseInt(limit),
+        });
+        const products = allProducts.filter((product) => product.status === "active" && product.published_at !== null);
+        const coupons = await prisma.coupon.findMany({
+            where: {
+                affiliateId: affiliate.id,
+                status: "ACTIVE",
+            },
+            select: {
+                code: true,
+                discount: true,
+            },
+        });
+        res.json({
+            products,
+            discountCodes: coupons,
+            store: {
+                id: store.id,
+                name: store.name,
+                domain: store.domain,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch products" });
+    }
+});
 router.post("/sync-orders", async (req, res) => {
     try {
         const userId = req.user.id;
