@@ -6,7 +6,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,16 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  Search,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { DashboardLoading } from "@/components/ui/loading";
@@ -62,6 +70,35 @@ interface DiscountCode {
   status: string;
 }
 
+interface Product {
+  id: number;
+  title: string;
+  handle: string;
+  body_html: string;
+  vendor: string;
+  product_type: string;
+  status: string;
+  tags: string;
+  variants: {
+    id: number;
+    title: string;
+    price: string;
+    compare_at_price: string | null;
+    sku: string;
+    inventory_quantity: number;
+  }[];
+  images: {
+    id: number;
+    src: string;
+    alt: string | null;
+  }[];
+  image?: {
+    id: number;
+    src: string;
+    alt: string | null;
+  };
+}
+
 export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -71,24 +108,57 @@ export default function ShopPage() {
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const ordersPerPage = 5;
+  
+  // Products state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [selectedStoreForProducts, setSelectedStoreForProducts] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchShopData();
   }, []);
 
+  useEffect(() => {
+    if (selectedStoreForProducts) {
+      fetchProducts();
+    }
+  }, [selectedStoreForProducts]);
+
   const fetchShopData = async () => {
     try {
       setLoading(true);
       const response = await apiClient.get("/athlete/shop");
-      setStores(response.data.stores || []);
+      const storesData = response.data.stores || [];
+      setStores(storesData);
       setOrderStats(response.data.orderStats || []);
       setRecentOrders(response.data.recentOrders || []);
       setDiscountCodes(response.data.discountCodes || []);
+      
+      // Auto-select first connected store for products
+      const connectedStore = storesData.find((s: ShopifyStore) => s.connected);
+      if (connectedStore && !selectedStoreForProducts) {
+        setSelectedStoreForProducts(connectedStore.id);
+      }
     } catch (error) {
       console.error("Error fetching shop data:", error);
       toast.error("Failed to load shop data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchProducts = async () => {
+    if (!selectedStoreForProducts) return;
+    setProductsLoading(true);
+    try {
+      const response = await apiClient.get(`/athlete/shop/products/${selectedStoreForProducts}?limit=50`);
+      setProducts(response.data.products || []);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      toast.error("Failed to load products");
+    } finally {
+      setProductsLoading(false);
     }
   };
 
@@ -125,6 +195,31 @@ export default function ShopPage() {
   const startIndex = (currentPage - 1) * ordersPerPage;
   const endIndex = startIndex + ordersPerPage;
   const paginatedOrders = recentOrders.slice(startIndex, endIndex);
+
+  // Filter products by search query
+  const filteredProducts = products.filter((product) =>
+    product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    product.product_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    product.vendor?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Get store domain for product links
+  const getStoreDomain = (storeId: string) => {
+    const store = stores.find((s) => s.id === storeId);
+    return store?.domain?.replace(".myshopify.com", "") || "";
+  };
+
+  // Get product link with discount code
+  const getProductLink = (productHandle: string, storeId: string) => {
+    const domain = getStoreDomain(storeId);
+    const baseUrl = `https://${domain}.myshopify.com/products/${productHandle}`;
+    
+    // Add first available discount code as query parameter
+    if (discountCodes.length > 0) {
+      return `${baseUrl}?discount=${discountCodes[0].code}`;
+    }
+    return baseUrl;
+  };
 
   if (loading) {
     return <DashboardLoading message="Loading shop data..." />;
@@ -288,6 +383,142 @@ export default function ShopPage() {
           </Card>
         </div>
       )}
+
+      {/* Products Section */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Browse & Order Products</h2>
+          <div className="flex items-center gap-3">
+            <Select 
+              value={selectedStoreForProducts} 
+              onValueChange={setSelectedStoreForProducts}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.filter(s => s.connected).map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={fetchProducts}
+              disabled={productsLoading || !selectedStoreForProducts}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${productsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {selectedStoreForProducts && (
+          <>
+            {/* Search */}
+            <div className="relative max-w-md mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Products Grid */}
+            {productsLoading ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <RefreshCw className="h-8 w-8 mx-auto animate-spin text-orange-500 mb-4" />
+                  <p className="text-gray-600">Loading products...</p>
+                </CardContent>
+              </Card>
+            ) : filteredProducts.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Package className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
+                  <p className="text-gray-500">
+                    {searchQuery
+                      ? "Try a different search term"
+                      : "No products available in this store"}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {filteredProducts.map((product) => (
+                  <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow bg-white border-gray-200">
+                    <div className="aspect-square relative bg-gray-100 overflow-hidden">
+                      <img
+                        src={product.images?.[0]?.src || product.image?.src}
+                        alt={product.images?.[0]?.alt || product.image?.alt || product.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                      />
+                      {product.status === "active" && (
+                        <Badge className="absolute top-2 right-2 bg-green-500">Active</Badge>
+                      )}
+                    </div>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
+                        {product.title}
+                      </h3>
+                      {product.product_type && (
+                        <p className="text-sm text-gray-500 mb-2">{product.product_type}</p>
+                      )}
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-lg font-bold text-orange-600">
+                            ${parseFloat(product.variants?.[0]?.price || "0").toFixed(2)}
+                          </p>
+                          {product.variants?.[0]?.compare_at_price && (
+                            <p className="text-sm text-gray-400 line-through">
+                              ${parseFloat(product.variants[0].compare_at_price).toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full bg-orange-600 hover:bg-orange-700"
+                        onClick={() => {
+                          const link = getProductLink(product.handle, selectedStoreForProducts);
+                          window.open(link, "_blank");
+                        }}
+                      >
+                        <ShoppingCart className="h-4 w-4 mr-2" />
+                        Order Now
+                      </Button>
+                      {discountCodes.length > 0 && (
+                        <p className="mt-2 text-xs text-center text-gray-500">
+                          Your discount code will be applied automatically
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {!selectedStoreForProducts && (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Store className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Store</h3>
+              <p className="text-gray-500">
+                Please select a store above to browse and order products
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Recent Orders */}
       <div>

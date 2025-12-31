@@ -1186,6 +1186,67 @@ router.get("/shop", async (req: any, res) => {
   }
 });
 
+// Get products from a store for affiliate to order
+router.get("/shop/products/:storeId", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const { storeId } = req.params;
+    const { limit = 50 } = req.query;
+
+    // Verify affiliate exists
+    const affiliate = await prisma.affiliateProfile.findFirst({
+      where: { userId },
+    });
+
+    if (!affiliate) {
+      return res.status(404).json({ error: "Affiliate profile not found" });
+    }
+
+    // Get all stores to find the one matching storeId
+    const stores = shopifyService.getAllStores();
+    const store = stores.find(s => s.id === storeId);
+
+    if (!store) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    // Fetch products from Shopify
+    const allProducts = await shopifyService.getProducts(store.id, {
+      limit: parseInt(limit as string),
+    });
+
+    // Filter to only show active/published products (exclude drafts and archived)
+    const products = allProducts.filter(
+      (product: any) => product.status === "active" && product.published_at !== null
+    );
+
+    // Get affiliate's discount codes for linking
+    const coupons = await prisma.coupon.findMany({
+      where: {
+        affiliateId: affiliate.id,
+        status: "ACTIVE",
+      },
+      select: {
+        code: true,
+        discount: true,
+      },
+    });
+
+    res.json({
+      products,
+      discountCodes: coupons,
+      store: {
+        id: store.id,
+        name: store.name,
+        domain: store.domain,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch products" });
+  }
+});
+
 // Sync orders from Shopify
 router.post("/sync-orders", async (req: any, res) => {
   try {

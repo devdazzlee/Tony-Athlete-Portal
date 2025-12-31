@@ -23,7 +23,6 @@ import {
 import { config } from "@/config/config";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 import { useAuth } from "@/contexts/AuthContext";
-import Image from "next/image";
 
 interface Product {
   id: number;
@@ -45,8 +44,13 @@ interface Product {
   images: {
     id: number;
     src: string;
-    alt: string;
+    alt: string | null;
   }[];
+  image?: {
+    id: number;
+    src: string;
+    alt: string | null;
+  };
 }
 
 interface Store {
@@ -244,20 +248,15 @@ export default function AffiliateProductsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="aspect-square relative bg-gray-100">
-                {product.images?.[0]?.src ? (
-                  <Image
-                    src={product.images[0].src}
-                    alt={product.title}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Package className="h-16 w-16 text-gray-300" />
-                  </div>
-                )}
+              <div className="aspect-square relative bg-gray-100 overflow-hidden">
+                <img
+                  src={product.images?.[0]?.src || product.image?.src}
+                  alt={product.images?.[0]?.alt || product.image?.alt || product.title}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  fetchPriority="low"
+                />
                 {product.status === "active" && (
                   <Badge className="absolute top-2 right-2 bg-green-500">Active</Badge>
                 )}
