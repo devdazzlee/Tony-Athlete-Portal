@@ -10,7 +10,7 @@ const stripe_1 = __importDefault(require("stripe"));
 const crypto_1 = __importDefault(require("crypto"));
 const prisma = new client_1.PrismaClient();
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2024-06-20',
+    apiVersion: '2025-12-15.clover',
 });
 class EmailService {
     constructor() {

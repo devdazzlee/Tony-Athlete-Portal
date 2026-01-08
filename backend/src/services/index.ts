@@ -1,12 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
-import Stripe from 'stripe';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
-});
 
 // Email service
 export class EmailService {
@@ -84,34 +80,10 @@ export class PaymentService {
       });
 
       // Process payment based on method
-      if (method === 'STRIPE') {
-        const affiliate = await prisma.affiliateProfile.findUnique({
-          where: { id: affiliateId },
-          include: { user: true }
-        });
-
-        if (affiliate?.paymentEmail) {
-          // Create Stripe transfer
-          const transfer = await stripe.transfers.create({
-            amount: Math.round(amount * 100), // Convert to cents
-            currency: 'usd',
-            destination: affiliate.paymentEmail,
-            metadata: {
-              payoutId: payout.id,
-              affiliateId: affiliateId
-            }
-          });
-
-          // Update payout with Stripe reference
-          await prisma.payout.update({
-            where: { id: payout.id },
-            data: {
-              referenceId: transfer.id,
-              status: 'PROCESSING'
-            }
-          });
-        }
-      }
+      // TODO: Implement PayPal payout processing if needed
+      // if (method === 'PAYPAL') {
+      //   // PayPal payout logic here
+      // }
 
       return payout;
     } catch (error) {
@@ -122,30 +94,8 @@ export class PaymentService {
 
   async processWebhook(payload: any, signature: string) {
     try {
-      const event = stripe.webhooks.constructEvent(
-        payload,
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET!
-      );
-
-      switch (event.type) {
-        case 'transfer.created':
-          const transfer = event.data.object;
-          await prisma.payout.updateMany({
-            where: { referenceId: transfer.id },
-            data: { status: 'COMPLETED', processedAt: new Date() }
-          });
-          break;
-
-        case 'transfer.failed' as any:
-          const failedTransfer = (event as any).data.object;
-          await prisma.payout.updateMany({
-            where: { referenceId: failedTransfer.id },
-            data: { status: 'FAILED' }
-          });
-          break;
-      }
-
+      // TODO: Implement PayPal webhook processing if needed
+      // PayPal webhook verification and processing logic here
       return { success: true };
     } catch (error) {
       console.error('Webhook processing error:', error);

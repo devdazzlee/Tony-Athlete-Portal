@@ -851,6 +851,44 @@ class ShopifyService {
       chartData,
     };
   }
+
+  /**
+   * Create an order in Shopify
+   */
+  async createOrder(storeId: string, orderData: any): Promise<ShopifyOrder | null> {
+    const store = this.stores.get(storeId);
+    if (!store) {
+      throw new Error(`Store not found: ${storeId}`);
+    }
+
+    const myshopifyDomain = this.getMyshopifyDomain(store.domain);
+
+    try {
+      const response = await fetch(
+        `https://${myshopifyDomain}/admin/api/${this.apiVersion}/orders.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': store.accessToken,
+          },
+          body: JSON.stringify({ order: orderData }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Shopify API error (${response.status}):`, errorText);
+        throw new Error(`Failed to create order: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json() as { order: ShopifyOrder };
+      return data.order;
+    } catch (error) {
+      console.error('Error creating order in Shopify:', error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

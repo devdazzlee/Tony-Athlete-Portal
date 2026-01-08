@@ -90,7 +90,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
-        <Toaster position="top-right" richColors closeButton expand={false} />
+        <Toaster position="bottom-right" richColors closeButton expand={false} />
       </body>
     </html>
   );

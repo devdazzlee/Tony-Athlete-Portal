@@ -104,6 +104,7 @@ export default function AffiliatesManagementPage() {
   const PAGE_SIZE = 10;
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedAffiliate, setSelectedAffiliate] = useState<Affiliate | null>(
     null
   );
@@ -114,6 +115,7 @@ export default function AffiliatesManagementPage() {
   }>({ isOpen: false, affiliateId: null, affiliateName: null });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
     tier: "",
@@ -122,6 +124,18 @@ export default function AffiliatesManagementPage() {
     discountCode: "",
     discountValue: "",
     discountExpiresAt: "",
+    instagram: "",
+    tiktok: "",
+  });
+  const [createForm, setCreateForm] = useState({
+    email: "",
+    password: "",
+    firstName: "",
+    lastName: "",
+    commissionRate: 10,
+    tier: "BRONZE",
+    discountCode: "",
+    discountValue: "10",
     instagram: "",
     tiktok: "",
   });
@@ -188,6 +202,63 @@ export default function AffiliatesManagementPage() {
     await fetchAffiliates();
     setIsRefreshing(false);
     toast.success("Affiliates data refreshed");
+  };
+
+  const handleCreateAffiliate = async () => {
+    if (!createForm.email || !createForm.password || !createForm.firstName || !createForm.lastName) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/admin/affiliates/create`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: createForm.email,
+          password: createForm.password,
+          firstName: createForm.firstName,
+          lastName: createForm.lastName,
+          commissionRate: createForm.commissionRate,
+          tier: createForm.tier,
+          discountCode: createForm.discountCode || undefined,
+          discountValue: createForm.discountValue ? parseFloat(createForm.discountValue) : undefined,
+          instagram: createForm.instagram || undefined,
+          tiktok: createForm.tiktok || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success("Affiliate created successfully");
+        setCreateDialogOpen(false);
+        setCreateForm({
+          email: "",
+          password: "",
+          firstName: "",
+          lastName: "",
+          commissionRate: 10,
+          tier: "BRONZE",
+          discountCode: "",
+          discountValue: "10",
+          instagram: "",
+          tiktok: "",
+        });
+        fetchAffiliates();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to create affiliate");
+      }
+    } catch (error) {
+      console.error("Error creating affiliate:", error);
+      toast.error("Failed to create affiliate");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleEditAffiliate = async (affiliate: Affiliate) => {
@@ -526,17 +597,25 @@ export default function AffiliatesManagementPage() {
             View and manage all affiliate accounts
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="w-full sm:w-auto"
-        >
-          <RefreshCw
-            className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
-          />
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            className="bg-orange-600 hover:bg-orange-700"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Create Affiliate
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -1219,6 +1298,205 @@ export default function AffiliatesManagementPage() {
             <Button onClick={handleSaveChanges} disabled={isSaving}>
               {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Affiliate Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Affiliate</DialogTitle>
+            <DialogDescription>
+              Create a new affiliate account. They will receive login credentials via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Account Details */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-sm">Account Details</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-firstName">First Name *</Label>
+                  <Input
+                    id="create-firstName"
+                    placeholder="John"
+                    value={createForm.firstName}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, firstName: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-lastName">Last Name *</Label>
+                  <Input
+                    id="create-lastName"
+                    placeholder="Doe"
+                    value={createForm.lastName}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, lastName: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-email">Email *</Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={createForm.email}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-password">Password *</Label>
+                <Input
+                  id="create-password"
+                  type="password"
+                  placeholder="Min 8 characters"
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, password: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Affiliate Settings */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="font-semibold text-sm">Affiliate Settings</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-tier">Tier</Label>
+                  <Select
+                    value={createForm.tier}
+                    onValueChange={(value) =>
+                      setCreateForm({ ...createForm, tier: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select tier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BRONZE">Bronze</SelectItem>
+                      <SelectItem value="SILVER">Silver</SelectItem>
+                      <SelectItem value="GOLD">Gold</SelectItem>
+                      <SelectItem value="PLATINUM">Platinum</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-commissionRate">Commission Rate (%)</Label>
+                  <Input
+                    id="create-commissionRate"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={createForm.commissionRate}
+                    onChange={(e) =>
+                      setCreateForm({
+                        ...createForm,
+                        commissionRate: parseInt(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Discount Code */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="font-semibold text-sm">Discount Code (Optional)</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-discountCode">Code</Label>
+                  <Input
+                    id="create-discountCode"
+                    placeholder="e.g., JOHN10"
+                    value={createForm.discountCode}
+                    onChange={(e) =>
+                      setCreateForm({
+                        ...createForm,
+                        discountCode: e.target.value.toUpperCase(),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-discountValue">Discount (%)</Label>
+                  <Input
+                    id="create-discountValue"
+                    type="number"
+                    placeholder="10"
+                    value={createForm.discountValue}
+                    onChange={(e) =>
+                      setCreateForm({
+                        ...createForm,
+                        discountValue: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Social Media */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="font-semibold text-sm">Social Media (Optional)</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="create-instagram">Instagram</Label>
+                  <Input
+                    id="create-instagram"
+                    placeholder="@username"
+                    value={createForm.instagram}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, instagram: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-tiktok">TikTok</Label>
+                  <Input
+                    id="create-tiktok"
+                    placeholder="@username"
+                    value={createForm.tiktok}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, tiktok: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={isCreating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateAffiliate}
+              disabled={isCreating}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create Affiliate
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

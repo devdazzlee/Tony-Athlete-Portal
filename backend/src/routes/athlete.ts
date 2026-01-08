@@ -82,6 +82,46 @@ router.get("/profile", async (req: any, res) => {
   }
 });
 
+// Get athlete's discount codes/coupons
+router.get("/coupons", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+
+    const affiliate = await prisma.affiliateProfile.findFirst({
+      where: { userId },
+    });
+
+    if (!affiliate) {
+      return res.status(404).json({ error: "Affiliate profile not found" });
+    }
+
+    // Get ALL active coupons (discount codes) assigned to this affiliate
+    const coupons = await prisma.coupon.findMany({
+      where: {
+        affiliateId: affiliate.id,
+        status: "ACTIVE",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.json({
+      coupons: coupons.map((coupon) => ({
+        id: coupon.id,
+        code: coupon.code,
+        discount: coupon.discount,
+        description: coupon.description,
+        freeShipping: coupon.freeShipping,
+        status: coupon.status,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching coupons:", error);
+    res.status(500).json({ error: "Failed to fetch coupons" });
+  }
+});
+
 // Get athlete performance data
 router.get("/performance", async (req: any, res) => {
   try {
@@ -1359,6 +1399,135 @@ router.post("/sync-orders", async (req: any, res) => {
   } catch (error) {
     console.error("Error syncing orders:", error);
     res.status(500).json({ error: "Failed to sync orders" });
+  }
+});
+
+// Create order in Shopify for affiliate
+router.post("/orders/create", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const schema = z.object({
+      storeId: z.string(),
+      email: z.string().email(),
+      lineItems: z.array(z.object({
+        variant_id: z.number(),
+        quantity: z.number().positive(),
+      })),
+      shippingAddress: z.object({
+        first_name: z.string(),
+        last_name: z.string(),
+        address1: z.string(),
+        address2: z.string().optional(),
+        city: z.string(),
+        province: z.string(),
+        zip: z.string(),
+        country: z.string(),
+        phone: z.string(),
+      }),
+      note: z.string().optional(),
+      discountCode: z.string().optional(),
+    });
+
+    const data = schema.parse(req.body);
+
+    // Get affiliate profile
+    const affiliate = await prisma.affiliateProfile.findFirst({
+      where: { userId },
+    });
+
+    if (!affiliate) {
+      return res.status(404).json({ error: "Affiliate profile not found" });
+    }
+
+    // Get store config from ShopifyService (not database)
+    const store = shopifyService.getStore(data.storeId);
+
+    if (!store) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    // Prepare order data for Shopify
+    const orderData: any = {
+      email: data.email,
+      line_items: data.lineItems,
+      shipping_address: data.shippingAddress,
+      billing_address: data.shippingAddress, // Use same address
+      financial_status: "pending",
+      send_receipt: true,
+      send_fulfillment_receipt: true,
+      note: data.note || `Order placed by affiliate: ${affiliate.id}`,
+      tags: `affiliate,${affiliate.id}`,
+    };
+
+    // Add discount code if provided
+    if (data.discountCode) {
+      orderData.discount_codes = [{ code: data.discountCode, amount: "0.00", type: "percentage" }];
+    }
+
+    // Create order via Shopify API
+    const shopifyOrder = await shopifyService.createOrder(data.storeId, orderData);
+
+    if (!shopifyOrder || !shopifyOrder.id) {
+      throw new Error("Failed to create order in Shopify");
+    }
+
+    // Calculate commission
+    const orderTotal = parseFloat(shopifyOrder.total_price || "0");
+    const commissionRate = affiliate.commissionRate || 10;
+    const commissionAmount = (orderTotal * commissionRate) / 100;
+
+    // Create order record in database
+    const affiliateOrder = await prisma.affiliateOrder.create({
+      data: {
+        affiliateId: affiliate.id,
+        referralCode: data.discountCode || "DIRECT_ORDER",
+        storeId: data.storeId,
+        orderId: `shopify-${shopifyOrder.id}`,
+        shopifyOrderId: shopifyOrder.id.toString(),
+        shopifyOrderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
+        orderValue: orderTotal,
+        subtotalPrice: parseFloat(shopifyOrder.subtotal_price || "0"),
+        totalTax: parseFloat(shopifyOrder.total_tax || "0"),
+        currency: store.currency || "USD",
+        customerEmail: data.email,
+        customerName: `${data.shippingAddress.first_name} ${data.shippingAddress.last_name}`,
+        commissionAmount,
+        commissionRate,
+        status: "PENDING",
+        financialStatus: shopifyOrder.financial_status || "pending",
+        fulfillmentStatus: shopifyOrder.fulfillment_status,
+        items: shopifyOrder.line_items || [],
+        shippingAddress: data.shippingAddress,
+        discountCodes: shopifyOrder.discount_codes || [],
+        note: data.note,
+        orderCreatedAt: shopifyOrder.created_at ? new Date(shopifyOrder.created_at) : new Date(),
+      },
+    });
+
+    // Update affiliate stats
+    await prisma.affiliateProfile.update({
+      where: { id: affiliate.id },
+      data: {
+        totalConversions: { increment: 1 },
+        totalEarnings: { increment: commissionAmount },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Order created successfully",
+      orderId: affiliateOrder.id,
+      orderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
+      shopifyOrderId: shopifyOrder.id,
+      commissionAmount,
+    });
+  } catch (error: any) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ 
+      error: "Failed to create order",
+      details: error.message 
+    });
   }
 });
 

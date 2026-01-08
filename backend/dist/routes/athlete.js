@@ -71,6 +71,40 @@ router.get("/profile", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch profile" });
     }
 });
+router.get("/coupons", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        const coupons = await prisma.coupon.findMany({
+            where: {
+                affiliateId: affiliate.id,
+                status: "ACTIVE",
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        res.json({
+            coupons: coupons.map((coupon) => ({
+                id: coupon.id,
+                code: coupon.code,
+                discount: coupon.discount,
+                description: coupon.description,
+                freeShipping: coupon.freeShipping,
+                status: coupon.status,
+            })),
+        });
+    }
+    catch (error) {
+        console.error("Error fetching coupons:", error);
+        res.status(500).json({ error: "Failed to fetch coupons" });
+    }
+});
 router.get("/performance", async (req, res) => {
     try {
         const userId = req.user.id;
@@ -1116,6 +1150,112 @@ router.post("/sync-orders", async (req, res) => {
     catch (error) {
         console.error("Error syncing orders:", error);
         res.status(500).json({ error: "Failed to sync orders" });
+    }
+});
+router.post("/orders/create", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const schema = zod_1.z.object({
+            storeId: zod_1.z.string(),
+            email: zod_1.z.string().email(),
+            lineItems: zod_1.z.array(zod_1.z.object({
+                variant_id: zod_1.z.number(),
+                quantity: zod_1.z.number().positive(),
+            })),
+            shippingAddress: zod_1.z.object({
+                first_name: zod_1.z.string(),
+                last_name: zod_1.z.string(),
+                address1: zod_1.z.string(),
+                address2: zod_1.z.string().optional(),
+                city: zod_1.z.string(),
+                province: zod_1.z.string(),
+                zip: zod_1.z.string(),
+                country: zod_1.z.string(),
+                phone: zod_1.z.string(),
+            }),
+            note: zod_1.z.string().optional(),
+            discountCode: zod_1.z.string().optional(),
+        });
+        const data = schema.parse(req.body);
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        const store = ShopifyService_1.default.getStore(data.storeId);
+        if (!store) {
+            return res.status(404).json({ error: "Store not found" });
+        }
+        const orderData = {
+            email: data.email,
+            line_items: data.lineItems,
+            shipping_address: data.shippingAddress,
+            billing_address: data.shippingAddress,
+            financial_status: "pending",
+            send_receipt: true,
+            send_fulfillment_receipt: true,
+            note: data.note || `Order placed by affiliate: ${affiliate.id}`,
+            tags: `affiliate,${affiliate.id}`,
+        };
+        if (data.discountCode) {
+            orderData.discount_codes = [{ code: data.discountCode, amount: "0.00", type: "percentage" }];
+        }
+        const shopifyOrder = await ShopifyService_1.default.createOrder(data.storeId, orderData);
+        if (!shopifyOrder || !shopifyOrder.id) {
+            throw new Error("Failed to create order in Shopify");
+        }
+        const orderTotal = parseFloat(shopifyOrder.total_price || "0");
+        const commissionRate = affiliate.commissionRate || 10;
+        const commissionAmount = (orderTotal * commissionRate) / 100;
+        const affiliateOrder = await prisma.affiliateOrder.create({
+            data: {
+                affiliateId: affiliate.id,
+                referralCode: data.discountCode || "DIRECT_ORDER",
+                storeId: data.storeId,
+                orderId: `shopify-${shopifyOrder.id}`,
+                shopifyOrderId: shopifyOrder.id.toString(),
+                shopifyOrderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
+                orderValue: orderTotal,
+                subtotalPrice: parseFloat(shopifyOrder.subtotal_price || "0"),
+                totalTax: parseFloat(shopifyOrder.total_tax || "0"),
+                currency: store.currency || "USD",
+                customerEmail: data.email,
+                customerName: `${data.shippingAddress.first_name} ${data.shippingAddress.last_name}`,
+                commissionAmount,
+                commissionRate,
+                status: "PENDING",
+                financialStatus: shopifyOrder.financial_status || "pending",
+                fulfillmentStatus: shopifyOrder.fulfillment_status,
+                items: shopifyOrder.line_items || [],
+                shippingAddress: data.shippingAddress,
+                discountCodes: shopifyOrder.discount_codes || [],
+                note: data.note,
+                orderCreatedAt: shopifyOrder.created_at ? new Date(shopifyOrder.created_at) : new Date(),
+            },
+        });
+        await prisma.affiliateProfile.update({
+            where: { id: affiliate.id },
+            data: {
+                totalConversions: { increment: 1 },
+                totalEarnings: { increment: commissionAmount },
+            },
+        });
+        res.json({
+            success: true,
+            message: "Order created successfully",
+            orderId: affiliateOrder.id,
+            orderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
+            shopifyOrderId: shopifyOrder.id,
+            commissionAmount,
+        });
+    }
+    catch (error) {
+        console.error("Error creating order:", error);
+        res.status(500).json({
+            error: "Failed to create order",
+            details: error.message
+        });
     }
 });
 function formatDate(date) {

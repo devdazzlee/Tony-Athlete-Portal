@@ -34,6 +34,7 @@ import {
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { DashboardLoading } from "@/components/ui/loading";
+import { useCart } from "@/contexts/CartContext";
 
 interface ShopifyStore {
   id: string;
@@ -100,6 +101,7 @@ interface Product {
 }
 
 export default function ShopPage() {
+  const { addItem } = useCart();
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [stores, setStores] = useState<ShopifyStore[]>([]);
@@ -135,10 +137,13 @@ export default function ShopPage() {
       setRecentOrders(response.data.recentOrders || []);
       setDiscountCodes(response.data.discountCodes || []);
       
-      // Auto-select first connected store for products
-      const connectedStore = storesData.find((s: ShopifyStore) => s.connected);
-      if (connectedStore && !selectedStoreForProducts) {
-        setSelectedStoreForProducts(connectedStore.id);
+      // Auto-select TC Nutrition Canada as default, fallback to first connected store
+      if (!selectedStoreForProducts) {
+        const canadaStore = storesData.find((s: ShopifyStore) => s.connected && s.name.toLowerCase().includes('canada'));
+        const connectedStore = canadaStore || storesData.find((s: ShopifyStore) => s.connected);
+        if (connectedStore) {
+          setSelectedStoreForProducts(connectedStore.id);
+        }
       }
     } catch (error) {
       console.error("Error fetching shop data:", error);
@@ -236,7 +241,7 @@ export default function ShopPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Shop</h1>
           <p className="text-gray-600">
-            Connected Shopify stores and your performance
+            Browse and order products with your discount
           </p>
         </div>
         <Button
@@ -247,116 +252,6 @@ export default function ShopPage() {
           <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Syncing..." : "Sync Orders"}
         </Button>
-      </div>
-
-      {/* Connected Stores */}
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Connected Stores</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {stores.map((store) => (
-            <Card key={store.id} className="bg-white border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Store className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{store.name}</h3>
-                      <p className="text-sm text-gray-600">{store.domain}</p>
-                    </div>
-                  </div>
-                  {store.connected ? (
-                    <Badge className="bg-green-500/20 text-green-600 border-green-500">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Connected
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-red-500/20 text-red-600 border-red-500">
-                      <XCircle className="h-3 w-3 mr-1" />
-                      Disconnected
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-4 flex items-center gap-4 text-sm">
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-500">Currency:</span>
-                    <span className="font-medium text-gray-900">{store.currency}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-500">Country:</span>
-                    <span className="font-medium text-gray-900">{store.country}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Overall Stats */}
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Overall Performance</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="bg-white border-gray-200">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <ShoppingCart className="h-6 w-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Orders</p>
-                  <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Earnings</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    ${totalCommission.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Stats by Store */}
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Performance by Store</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {orderStats.map((stat) => (
-            <Card key={stat.storeId} className="bg-white border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-gray-900 flex items-center gap-2">
-                  <Store className="h-5 w-5 text-blue-600" />
-                  {stat.storeName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Orders</p>
-                    <p className="text-xl font-bold text-gray-900">{stat.totalOrders}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Earnings</p>
-                    <p className="text-xl font-bold text-green-600">{stat.formattedCommission}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </div>
 
       {/* Your Discount Codes */}
@@ -487,16 +382,31 @@ export default function ShopPage() {
                       <Button
                         className="w-full bg-orange-600 hover:bg-orange-700"
                         onClick={() => {
-                          const link = getProductLink(product.handle, selectedStoreForProducts);
-                          window.open(link, "_blank");
+                          const store = stores.find((s) => s.id === selectedStoreForProducts);
+                          if (!store) return;
+                          
+                          addItem({
+                            productId: product.id,
+                            variantId: product.variants[0].id,
+                            title: product.title,
+                            variantTitle: product.variants[0].title,
+                            price: parseFloat(product.variants[0].price),
+                            image: product.images?.[0]?.src || product.image?.src,
+                            storeId: selectedStoreForProducts,
+                            storeName: store.name,
+                            currency: store.currency,
+                            handle: product.handle,
+                            sku: product.variants[0].sku,
+                            inventoryQuantity: product.variants[0].inventory_quantity,
+                          });
                         }}
                       >
                         <ShoppingCart className="h-4 w-4 mr-2" />
-                        Order Now
+                        Add to Cart
                       </Button>
                       {discountCodes.length > 0 && (
                         <p className="mt-2 text-xs text-center text-gray-500">
-                          Your discount code will be applied automatically
+                          Your discount code will be applied at checkout
                         </p>
                       )}
                     </CardContent>

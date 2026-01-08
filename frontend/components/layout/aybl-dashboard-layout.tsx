@@ -48,6 +48,7 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getFullName, getInitials } from "@/lib/auth-client";
 import { config } from "@/config/config";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import { CartDrawer } from "@/components/cart/CartDrawer";
 
 interface TCNutritionDashboardLayoutProps {
   children: React.ReactNode;
@@ -376,6 +377,9 @@ export default function TCNutritionDashboardLayout({
                   Welcome, {user ? `${user.firstName} ${user.lastName}` : "User"}
                 </span>
               </div>
+
+              {/* Shopping Cart */}
+              <CartDrawer />
 
               {/* Notifications */}
               <DropdownMenu>

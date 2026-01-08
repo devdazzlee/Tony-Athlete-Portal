@@ -40,6 +40,7 @@ const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
@@ -617,6 +618,87 @@ router.get("/:id/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)([
     catch (error) {
         console.error("Error fetching affiliate analytics:", error);
         res.status(500).json({ error: "Failed to fetch affiliate analytics" });
+    }
+});
+router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
+    try {
+        const schema = zod_1.z.object({
+            email: zod_1.z.string().email(),
+            password: zod_1.z.string().min(8),
+            firstName: zod_1.z.string().min(1),
+            lastName: zod_1.z.string().min(1),
+            commissionRate: zod_1.z.number().min(0).max(100).optional().default(10),
+            tier: zod_1.z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional().default("BRONZE"),
+            discountCode: zod_1.z.string().optional(),
+            discountValue: zod_1.z.number().min(0).max(100).optional(),
+            instagram: zod_1.z.string().optional(),
+            tiktok: zod_1.z.string().optional(),
+        });
+        const data = schema.parse(req.body);
+        const existingUser = await prisma.user.findUnique({
+            where: { email: data.email },
+        });
+        if (existingUser) {
+            return res.status(400).json({ error: "Email already exists" });
+        }
+        const hashedPassword = await bcryptjs_1.default.hash(data.password, 10);
+        const result = await prisma.$transaction(async (tx) => {
+            const user = await tx.user.create({
+                data: {
+                    email: data.email,
+                    password: hashedPassword,
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    role: "AFFILIATE",
+                    status: "ACTIVE",
+                },
+            });
+            const affiliate = await tx.affiliateProfile.create({
+                data: {
+                    userId: user.id,
+                    status: "ACTIVE",
+                    tier: data.tier,
+                    commissionRate: data.commissionRate,
+                    socialMedia: {
+                        instagram: data.instagram || null,
+                        tiktok: data.tiktok || null,
+                    },
+                },
+            });
+            if (data.discountCode && data.discountValue !== undefined) {
+                await tx.coupon.create({
+                    data: {
+                        code: data.discountCode.toUpperCase(),
+                        discount: data.discountValue.toString(),
+                        affiliateId: affiliate.id,
+                        status: "ACTIVE",
+                        isAffiliate: true,
+                        freeShipping: false,
+                        description: `Affiliate discount code for ${data.firstName} ${data.lastName}`,
+                    },
+                });
+            }
+            return { user, affiliate };
+        });
+        res.json({
+            success: true,
+            message: "Affiliate created successfully",
+            affiliate: {
+                id: result.affiliate.id,
+                email: result.user.email,
+                name: `${result.user.firstName} ${result.user.lastName}`,
+                status: result.affiliate.status,
+                tier: result.affiliate.tier,
+                commissionRate: result.affiliate.commissionRate,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Error creating affiliate:", error);
+        if (error.name === "ZodError") {
+            return res.status(400).json({ error: "Invalid input data", details: error.errors });
+        }
+        res.status(500).json({ error: "Failed to create affiliate" });
     }
 });
 exports.default = router;

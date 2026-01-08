@@ -59,6 +59,7 @@ import athleteRoutes from "./routes/athlete"; // Athlete-specific routes
 import shopifyRoutes from "./routes/shopify"; // Shopify integration routes
 import managerShopifyRoutes from "./routes/manager-shopify"; // Manager Shopify routes
 import adminShopifyRoutes from "./routes/admin-shopify"; // Admin Shopify routes
+import paymentRoutes from "./routes/payment"; // Payment routes (Stripe)
 import shopifySyncScheduler from "./services/ShopifySyncScheduler"; // Shopify auto-sync scheduler
 
 // Load environment variables
@@ -236,6 +237,7 @@ app.use("/api/athlete", athleteRoutes); // Athlete-specific routes
 app.use("/api/shopify", shopifyRoutes); // Shopify integration routes
 app.use("/api/manager/shopify", managerShopifyRoutes); // Manager Shopify routes
 app.use("/api/admin/shopify", adminShopifyRoutes); // Admin Shopify routes
+app.use("/api/payment", paymentRoutes); // Payment routes (Stripe)
 
 // WebSocket connection handling
 io.on("connection", (socket) => {
