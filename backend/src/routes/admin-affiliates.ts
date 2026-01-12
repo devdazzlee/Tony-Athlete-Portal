@@ -828,6 +828,7 @@ router.post(
             status: "ACTIVE",
             tier: data.tier,
             commissionRate: data.commissionRate,
+            paymentMethod: "PAYPAL", // Default payment method
             socialMedia: {
               instagram: data.instagram || null,
               tiktok: data.tiktok || null,
@@ -837,6 +838,10 @@ router.post(
 
         // Create discount code if provided
         if (data.discountCode && data.discountValue !== undefined) {
+          // Set expiration date to 1 year from now
+          const validUntil = new Date();
+          validUntil.setFullYear(validUntil.getFullYear() + 1);
+          
           await tx.coupon.create({
             data: {
               code: data.discountCode.toUpperCase(),
@@ -846,6 +851,7 @@ router.post(
               isAffiliate: true,
               freeShipping: false,
               description: `Affiliate discount code for ${data.firstName} ${data.lastName}`,
+              validUntil: validUntil,
             },
           });
         }
@@ -866,11 +872,14 @@ router.post(
         },
       });
     } catch (error: any) {
-      console.error("Error creating affiliate:", error);
-      if (error.name === "ZodError") {
+      console.error("Error creating affiliate:", error?.message || error?.toString() || "Unknown error");
+      if (error?.name === "ZodError") {
         return res.status(400).json({ error: "Invalid input data", details: error.errors });
       }
-      res.status(500).json({ error: "Failed to create affiliate" });
+      res.status(500).json({ 
+        error: "Failed to create affiliate",
+        message: error?.message || "Unknown error occurred"
+      });
     }
   }
 );

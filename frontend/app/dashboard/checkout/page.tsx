@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/contexts/CartContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,7 +110,7 @@ function PayPalButtonWrapper({
   );
 }
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { items, getCartTotal, getCartCount, currency, storeName, storeId, clearCart } = useCart();
@@ -682,5 +682,13 @@ export default function CheckoutPage() {
         </div>
       </div>
     </PayPalScriptProvider>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<DashboardLoading message="Loading checkout..." />}>
+      <CheckoutContent />
+    </Suspense>
   );
 }

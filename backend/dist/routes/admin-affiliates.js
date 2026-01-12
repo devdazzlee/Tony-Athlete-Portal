@@ -659,6 +659,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     status: "ACTIVE",
                     tier: data.tier,
                     commissionRate: data.commissionRate,
+                    paymentMethod: "PAYPAL",
                     socialMedia: {
                         instagram: data.instagram || null,
                         tiktok: data.tiktok || null,
@@ -666,6 +667,8 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                 },
             });
             if (data.discountCode && data.discountValue !== undefined) {
+                const validUntil = new Date();
+                validUntil.setFullYear(validUntil.getFullYear() + 1);
                 await tx.coupon.create({
                     data: {
                         code: data.discountCode.toUpperCase(),
@@ -675,6 +678,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                         isAffiliate: true,
                         freeShipping: false,
                         description: `Affiliate discount code for ${data.firstName} ${data.lastName}`,
+                        validUntil: validUntil,
                     },
                 });
             }
@@ -694,11 +698,14 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
         });
     }
     catch (error) {
-        console.error("Error creating affiliate:", error);
-        if (error.name === "ZodError") {
+        console.error("Error creating affiliate:", error?.message || error?.toString() || "Unknown error");
+        if (error?.name === "ZodError") {
             return res.status(400).json({ error: "Invalid input data", details: error.errors });
         }
-        res.status(500).json({ error: "Failed to create affiliate" });
+        res.status(500).json({
+            error: "Failed to create affiliate",
+            message: error?.message || "Unknown error occurred"
+        });
     }
 });
 exports.default = router;

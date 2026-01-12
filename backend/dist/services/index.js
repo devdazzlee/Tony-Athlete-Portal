@@ -6,12 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.integrationService = exports.automationService = exports.securityService = exports.analyticsService = exports.paymentService = exports.emailService = exports.IntegrationService = exports.AutomationService = exports.SecurityService = exports.AnalyticsService = exports.PaymentService = exports.EmailService = void 0;
 const client_1 = require("@prisma/client");
 const nodemailer_1 = __importDefault(require("nodemailer"));
-const stripe_1 = __importDefault(require("stripe"));
 const crypto_1 = __importDefault(require("crypto"));
 const prisma = new client_1.PrismaClient();
-const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-12-15.clover',
-});
 class EmailService {
     constructor() {
         this.transporter = nodemailer_1.default.createTransport({
@@ -79,30 +75,6 @@ class PaymentService {
                     status: 'PENDING'
                 }
             });
-            if (method === 'STRIPE') {
-                const affiliate = await prisma.affiliateProfile.findUnique({
-                    where: { id: affiliateId },
-                    include: { user: true }
-                });
-                if (affiliate?.paymentEmail) {
-                    const transfer = await stripe.transfers.create({
-                        amount: Math.round(amount * 100),
-                        currency: 'usd',
-                        destination: affiliate.paymentEmail,
-                        metadata: {
-                            payoutId: payout.id,
-                            affiliateId: affiliateId
-                        }
-                    });
-                    await prisma.payout.update({
-                        where: { id: payout.id },
-                        data: {
-                            referenceId: transfer.id,
-                            status: 'PROCESSING'
-                        }
-                    });
-                }
-            }
             return payout;
         }
         catch (error) {
@@ -112,23 +84,6 @@ class PaymentService {
     }
     async processWebhook(payload, signature) {
         try {
-            const event = stripe.webhooks.constructEvent(payload, signature, process.env.STRIPE_WEBHOOK_SECRET);
-            switch (event.type) {
-                case 'transfer.created':
-                    const transfer = event.data.object;
-                    await prisma.payout.updateMany({
-                        where: { referenceId: transfer.id },
-                        data: { status: 'COMPLETED', processedAt: new Date() }
-                    });
-                    break;
-                case 'transfer.failed':
-                    const failedTransfer = event.data.object;
-                    await prisma.payout.updateMany({
-                        where: { referenceId: failedTransfer.id },
-                        data: { status: 'FAILED' }
-                    });
-                    break;
-            }
             return { success: true };
         }
         catch (error) {

@@ -549,3 +549,4 @@ The affiliate flow is **correct and working** after the recent fixes. The system
 
 The flow follows industry best practices for affiliate marketing systems.
 
+

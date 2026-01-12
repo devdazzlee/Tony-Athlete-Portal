@@ -14,6 +14,30 @@ const PAYPAL_BASE_URL = process.env.PAYPAL_MODE === "live"
   ? "https://api-m.paypal.com"
   : "https://api-m.sandbox.paypal.com";
 
+// PayPal API Response Types
+interface PayPalTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+interface PayPalOrderResponse {
+  id: string;
+  status: string;
+  purchase_units: Array<{
+    payments?: {
+      captures: Array<{
+        id: string;
+        status: string;
+        amount: {
+          value: string;
+          currency_code: string;
+        };
+      }>;
+    };
+  }>;
+}
+
 // Get PayPal access token
 async function getPayPalAccessToken(): Promise<string> {
   const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString("base64");
@@ -31,7 +55,7 @@ async function getPayPalAccessToken(): Promise<string> {
     throw new Error("Failed to get PayPal access token");
   }
 
-  const data = await response.json();
+  const data = await response.json() as PayPalTokenResponse;
   return data.access_token;
 }
 
@@ -203,7 +227,7 @@ router.post("/create-paypal-order", async (req: any, res) => {
       throw new Error(`Failed to create PayPal order: ${response.status}`);
     }
 
-    const orderData = await response.json();
+    const orderData = await response.json() as PayPalOrderResponse;
 
     // Store order details temporarily (you might want to use Redis or DB for this)
     // For now, we'll include affiliate info in metadata
@@ -290,7 +314,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
       throw new Error(`Failed to capture PayPal payment: ${captureResponse.status}`);
     }
 
-    const captureData = await captureResponse.json();
+    const captureData = await captureResponse.json() as PayPalOrderResponse;
 
     // Verify payment status
     if (captureData.status !== "COMPLETED") {
@@ -301,9 +325,13 @@ router.post("/capture-paypal-order", async (req: any, res) => {
     }
 
     // Get payment amount from capture data
-    const paymentAmount = parseFloat(
-      captureData.purchase_units[0].payments.captures[0].amount.value
-    );
+    const capture = captureData.purchase_units[0]?.payments?.captures?.[0];
+    if (!capture?.amount?.value) {
+      throw new Error("Invalid PayPal capture response structure");
+    }
+    
+    const paymentAmount = parseFloat(capture.amount.value);
+    const paypalTransactionId = capture.id;
 
     // Get store config
     const store = shopifyService.getStore(data.storeId);
@@ -322,7 +350,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
       send_fulfillment_receipt: true,
       note:
         data.note ||
-        `Order placed by affiliate: ${affiliate.id}. PayPal Transaction: ${captureData.purchase_units[0].payments.captures[0].id}`,
+        `Order placed by affiliate: ${affiliate.id}. PayPal Transaction: ${paypalTransactionId}`,
       tags: `affiliate,${affiliate.id},paypal-payment`,
       transactions: [
         {
@@ -347,7 +375,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
     if (!shopifyOrder || !shopifyOrder.id) {
       // Refund the payment if order creation fails
       const refundResponse = await fetch(
-        `${PAYPAL_BASE_URL}/v2/payments/captures/${captureData.purchase_units[0].payments.captures[0].id}/refund`,
+        `${PAYPAL_BASE_URL}/v2/payments/captures/${paypalTransactionId}/refund`,
         {
           method: "POST",
           headers: {
@@ -395,7 +423,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
         items: shopifyOrder.line_items || [],
         shippingAddress: data.shippingAddress,
         discountCodes: shopifyOrder.discount_codes || [],
-        note: `PayPal Transaction: ${captureData.purchase_units[0].payments.captures[0].id}`,
+        note: `PayPal Transaction: ${paypalTransactionId}`,
         orderCreatedAt: shopifyOrder.created_at
           ? new Date(shopifyOrder.created_at)
           : new Date(),
@@ -419,8 +447,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
       shopifyOrderId: shopifyOrder.id,
       commissionAmount,
       paymentStatus: "paid",
-      paypalTransactionId:
-        captureData.purchase_units[0].payments.captures[0].id,
+      paypalTransactionId,
     });
   } catch (error: any) {
     console.error("Error capturing PayPal order:", error);

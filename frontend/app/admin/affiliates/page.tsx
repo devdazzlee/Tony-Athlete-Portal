@@ -52,6 +52,8 @@ import {
   Edit,
   Trash2,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Tooltip,
@@ -116,6 +118,7 @@ export default function AffiliatesManagementPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
     tier: "",
@@ -166,13 +169,16 @@ export default function AffiliatesManagementPage() {
     setCurrentPage(1);
   };
 
-  const fetchAffiliates = async () => {
+  const fetchAffiliates = async (overrideStatus?: string, overrideTier?: string) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
-      if (statusFilter !== "all")
-        params.append("status", statusFilter.toUpperCase());
-      if (tierFilter !== "all") params.append("tier", tierFilter.toUpperCase());
+      const status = overrideStatus !== undefined ? overrideStatus : statusFilter;
+      const tier = overrideTier !== undefined ? overrideTier : tierFilter;
+      
+      if (status !== "all")
+        params.append("status", status.toUpperCase());
+      if (tier !== "all") params.append("tier", tier.toUpperCase());
       params.append("limit", "500");
 
       const response = await fetch(
@@ -184,7 +190,8 @@ export default function AffiliatesManagementPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setAffiliates(data.data || []);
+        const affiliatesList = data.data || [];
+        setAffiliates(affiliatesList);
       } else {
         console.error("Failed to fetch affiliates:", response.status);
         toast.error("Failed to load affiliates");
@@ -235,7 +242,8 @@ export default function AffiliatesManagementPage() {
       if (response.ok) {
         const data = await response.json();
         toast.success("Affiliate created successfully");
-        setCreateDialogOpen(false);
+        
+        // Reset form first
         setCreateForm({
           email: "",
           password: "",
@@ -248,10 +256,53 @@ export default function AffiliatesManagementPage() {
           instagram: "",
           tiktok: "",
         });
-        fetchAffiliates();
+        
+        // Reset password visibility
+        setShowPassword(false);
+        
+        // Close dialog
+        setCreateDialogOpen(false);
+        
+        // Reset filters and pagination to show the new affiliate
+        setSearchQuery("");
+        setFromDate(undefined);
+        setToDate(undefined);
+        setCurrentPage(1);
+        setStatusFilter("all");
+        setTierFilter("all");
+        
+        // Fetch with explicit "all" filters to ensure we get the new affiliate
+        // Small delay to ensure dialog closes and state updates
+        setTimeout(() => {
+          fetchAffiliates("all", "all");
+        }, 150);
       } else {
         const error = await response.json();
-        toast.error(error.error || "Failed to create affiliate");
+        
+        // Handle validation errors with better messages
+        if (error.details && Array.isArray(error.details) && error.details.length > 0) {
+          // Extract the first error message from details
+          const firstError = error.details[0];
+          let errorMessage = firstError.message || "Invalid input data";
+          
+          // Make error messages more user-friendly
+          if (firstError.path && firstError.path.length > 0) {
+            const fieldName = firstError.path[0];
+            const fieldLabel = fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/([A-Z])/g, " $1");
+            
+            if (firstError.code === "too_small" && fieldName === "password") {
+              errorMessage = `Password must be at least ${firstError.minimum} characters long`;
+            } else if (firstError.code === "invalid_string" && fieldName === "email") {
+              errorMessage = "Please enter a valid email address";
+            } else if (!firstError.message) {
+              errorMessage = `${fieldLabel}: ${errorMessage}`;
+            }
+          }
+          
+          toast.error(errorMessage);
+        } else {
+          toast.error(error.error || "Failed to create affiliate");
+        }
       }
     } catch (error) {
       console.error("Error creating affiliate:", error);
@@ -1304,7 +1355,28 @@ export default function AffiliatesManagementPage() {
       </Dialog>
 
       {/* Create Affiliate Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog 
+        open={createDialogOpen} 
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) {
+            // Reset form when dialog closes
+            setCreateForm({
+              email: "",
+              password: "",
+              firstName: "",
+              lastName: "",
+              commissionRate: 10,
+              tier: "BRONZE",
+              discountCode: "",
+              discountValue: "10",
+              instagram: "",
+              tiktok: "",
+            });
+            setShowPassword(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Affiliate</DialogTitle>
@@ -1354,15 +1426,31 @@ export default function AffiliatesManagementPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-password">Password *</Label>
-                <Input
-                  id="create-password"
-                  type="password"
-                  placeholder="Min 8 characters"
-                  value={createForm.password}
-                  onChange={(e) =>
-                    setCreateForm({ ...createForm, password: e.target.value })
-                  }
-                />
+                <div className="relative">
+                  <Input
+                    id="create-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Min 8 characters"
+                    value={createForm.password}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, password: e.target.value })
+                    }
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-600"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
 
