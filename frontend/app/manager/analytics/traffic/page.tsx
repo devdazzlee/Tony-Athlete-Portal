@@ -18,6 +18,7 @@ import { config } from "@/config/config";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTiers } from "@/hooks/useTiers";
 
 interface TrafficData {
   totalClicks: number;
@@ -42,6 +43,7 @@ interface TrafficData {
 
 export default function TrafficAnalysisPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [trafficData, setTrafficData] = useState<TrafficData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -117,15 +119,14 @@ export default function TrafficAnalysisPage() {
     }
   };
 
-  const getTierBadge = (tier: string) => {
-    const colors: Record<string, string> = {
-      BRONZE: "bg-orange-100 text-orange-800",
-      SILVER: "bg-gray-200 text-gray-800",
-      GOLD: "bg-yellow-100 text-yellow-800",
-      PLATINUM: "bg-purple-100 text-purple-800",
-      DIAMOND: "bg-blue-100 text-blue-800",
-    };
-    return <Badge className={colors[tier] || "bg-gray-100 text-gray-800"}>{tier}</Badge>;
+  const getTierBadge = (tierEnum: string) => {
+    // Try to find tier by enum value or name
+    const tier = getTierByName(tierEnum) || tiers.find(t => 
+      t.name.toUpperCase() === tierEnum.toUpperCase()
+    );
+    const tierName = tier ? tier.name : tierEnum;
+    const badgeColor = getTierBadgeColor(tierName);
+    return <Badge className={badgeColor}>{tierName}</Badge>;
   };
 
   if (authLoading || isLoading) {

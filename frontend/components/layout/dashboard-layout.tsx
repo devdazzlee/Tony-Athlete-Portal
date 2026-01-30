@@ -39,6 +39,7 @@ import {
   Tag,
   MessageSquare,
   ShoppingBag,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -221,6 +222,11 @@ const adminNavItems = [
     title: "Affiliate Codes",
     href: "/admin/affiliate-codes",
     icon: Tag,
+  },
+  {
+    title: "Manage Tiers",
+    href: "/admin/tiers",
+    icon: Award,
   },
   {
     title: "Shopify",

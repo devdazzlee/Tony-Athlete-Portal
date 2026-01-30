@@ -18,6 +18,7 @@ import { config } from "@/config/config";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTiers } from "@/hooks/useTiers";
 
 interface TeamPerformance {
   totalAffiliates: number;
@@ -44,6 +45,7 @@ interface TeamPerformance {
 
 export default function TeamPerformancePage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [performance, setPerformance] = useState<TeamPerformance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -141,15 +143,11 @@ export default function TeamPerformancePage() {
     }
   };
 
-  const getTierBadge = (tier: string) => {
-    const colors: Record<string, string> = {
-      BRONZE: "bg-orange-100 text-orange-800",
-      SILVER: "bg-gray-200 text-gray-800",
-      GOLD: "bg-yellow-100 text-yellow-800",
-      PLATINUM: "bg-purple-100 text-purple-800",
-      DIAMOND: "bg-blue-100 text-blue-800",
-    };
-    return <Badge className={colors[tier] || "bg-gray-100 text-gray-800"}>{tier}</Badge>;
+  const getTierBadge = (tierEnum: string) => {
+    const tier = getTierByName(tierEnum);
+    const tierName = tier ? tier.name : tierEnum;
+    const badgeColor = getTierBadgeColor(tierName);
+    return <Badge className={badgeColor}>{tierName}</Badge>;
   };
 
   const getStatusBadge = (status: string) => {
@@ -276,19 +274,24 @@ export default function TeamPerformancePage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {["DIAMOND", "PLATINUM", "GOLD", "SILVER", "BRONZE"].map((tier) => {
-                const data = performance.tierBreakdown.find((t) => t.tier === tier);
-                return (
-                  <div key={tier} className="p-4 border rounded-lg text-center">
-                    {getTierBadge(tier)}
-                    <p className="text-2xl font-bold mt-2">{data?.count || 0}</p>
-                    <p className="text-xs text-gray-500">affiliates</p>
-                    <p className="text-sm font-medium text-green-600 mt-1">
-                      ${(data?.revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                );
-              })}
+              {tiers
+                .filter(tier => tier.status === "ACTIVE")
+                .sort((a, b) => b.level - a.level)
+                .map((tier) => {
+                  const data = performance.tierBreakdown.find((t) => 
+                    t.tier === tier.name || t.tier.toUpperCase() === tier.name.toUpperCase()
+                  );
+                  return (
+                    <div key={tier.id} className="p-4 border rounded-lg text-center">
+                      {getTierBadge(tier.name)}
+                      <p className="text-2xl font-bold mt-2">{data?.count || 0}</p>
+                      <p className="text-xs text-gray-500">affiliates</p>
+                      <p className="text-sm font-medium text-green-600 mt-1">
+                        ${(data?.revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  );
+                })}
             </div>
           </CardContent>
         </Card>

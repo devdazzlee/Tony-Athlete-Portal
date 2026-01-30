@@ -42,6 +42,7 @@ import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
+import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
@@ -58,6 +59,7 @@ interface Affiliate {
 
 export default function AllAffiliatesPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { tiers } = useTiers();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -218,10 +220,14 @@ export default function AllAffiliatesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="bronze">Bronze</SelectItem>
-                  <SelectItem value="silver">Silver</SelectItem>
-                  <SelectItem value="gold">Gold</SelectItem>
-                  <SelectItem value="platinum">Platinum</SelectItem>
+                  {tiers
+                    .filter(tier => tier.status === "ACTIVE")
+                    .sort((a, b) => a.level - b.level)
+                    .map((tier) => (
+                      <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
+                        {tier.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

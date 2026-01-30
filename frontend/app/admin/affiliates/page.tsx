@@ -73,6 +73,7 @@ import { formatLastActivity, formatRelativeTime } from "@/lib/date-utils";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 import { AdminLoading } from "@/components/ui/loading";
+import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
@@ -110,6 +111,7 @@ export default function AffiliatesManagementPage() {
   const [selectedAffiliate, setSelectedAffiliate] = useState<Affiliate | null>(
     null
   );
+  const [selectedAffiliateDetails, setSelectedAffiliateDetails] = useState<any>(null);
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     affiliateId: string | null;
@@ -121,7 +123,8 @@ export default function AffiliatesManagementPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
-    tier: "",
+    tier: "", // Store enum value for backend compatibility
+    tierId: "", // Store tier ID for UI selection
     commissionRate: 5,
     deliverablesNote: "",
     discountCode: "",
@@ -129,6 +132,7 @@ export default function AffiliatesManagementPage() {
     discountExpiresAt: "",
     instagram: "",
     tiktok: "",
+    spendingLimit: "",
   });
   const [createForm, setCreateForm] = useState({
     email: "",
@@ -136,14 +140,117 @@ export default function AffiliatesManagementPage() {
     firstName: "",
     lastName: "",
     commissionRate: 10,
-    tier: "BRONZE",
+    tier: "",
     discountCode: "",
     discountValue: "10",
     instagram: "",
     tiktok: "",
+    spendingLimit: "",
   });
   const [existingDiscountCodes, setExistingDiscountCodes] = useState<any[]>([]);
   const [existingReferralCodes, setExistingReferralCodes] = useState<any[]>([]);
+  
+  // Fetch tiers from API
+  const { tiers, isLoading: tiersLoading, getTierBadgeColor } = useTiers();
+
+  // Helper function to map tier name to enum value (for backend compatibility)
+  const getTierEnumValue = (tierNameOrEnum: string): string => {
+    if (!tierNameOrEnum) return "BRONZE"; // Default fallback
+    
+    // If it's already a valid enum value, return it
+    const upperValue = tierNameOrEnum.toUpperCase();
+    if (["BRONZE", "SILVER", "GOLD", "PLATINUM"].includes(upperValue)) {
+      return upperValue;
+    }
+    
+    // Try to find matching tier by name
+    const tier = tiers.find(t => 
+      t.name.toLowerCase() === tierNameOrEnum.toLowerCase() ||
+      t.name.toUpperCase() === upperValue
+    );
+    
+    if (tier) {
+      // First try direct name mapping
+      const nameToEnum: Record<string, string> = {
+        "bronze": "BRONZE",
+        "silver": "SILVER",
+        "gold": "GOLD",
+        "platinum": "PLATINUM",
+      };
+      const lowerName = tier.name.toLowerCase();
+      if (nameToEnum[lowerName]) {
+        return nameToEnum[lowerName];
+      }
+      
+      // If name doesn't match, map by level
+      // Level 1 -> BRONZE, Level 2 -> SILVER, Level 3 -> GOLD, Level 4+ -> PLATINUM
+      const levelToEnum: Record<number, string> = {
+        1: "BRONZE",
+        2: "SILVER",
+        3: "GOLD",
+        4: "PLATINUM",
+      };
+      return levelToEnum[tier.level] || (tier.level >= 4 ? "PLATINUM" : "BRONZE");
+    }
+    
+    // Fallback: try direct mapping
+    const nameToEnum: Record<string, string> = {
+      "bronze": "BRONZE",
+      "silver": "SILVER",
+      "gold": "GOLD",
+      "platinum": "PLATINUM",
+    };
+    const lowerName = tierNameOrEnum.toLowerCase();
+    return nameToEnum[lowerName] || "BRONZE"; // Safe default
+  };
+
+  // Helper function to get tier name from enum value
+  const getTierNameFromEnum = (enumValue: string): string => {
+    if (!enumValue) return "Select tier";
+    
+    // First, try to find by exact enum match
+    const tierByEnum = tiers.find(t => 
+      getTierEnumValue(t.name) === enumValue.toUpperCase()
+    );
+    if (tierByEnum) return tierByEnum.name;
+    
+    // Then try to find by name match
+    const tierByName = tiers.find(t => 
+      t.name.toUpperCase() === enumValue.toUpperCase()
+    );
+    if (tierByName) return tierByName.name;
+    
+    // Fallback: return the enum value itself
+    return enumValue;
+  };
+
+  // Helper to get tier ID from enum value (for Select component)
+  const getTierIdFromEnum = (enumValue: string): string => {
+    if (!enumValue) return "";
+    const tier = tiers.find(t => 
+      getTierEnumValue(t.name) === enumValue.toUpperCase() ||
+      t.name.toUpperCase() === enumValue.toUpperCase()
+    );
+    return tier ? tier.id : "";
+  };
+
+  // Helper to get enum value from tier ID
+  const getEnumValueFromTierId = (tierId: string): string => {
+    if (!tierId) return "";
+    const tier = tiers.find(t => t.id === tierId);
+    return tier ? getTierEnumValue(tier.name) : "";
+  };
+
+  // Set default tier when tiers are loaded
+  useEffect(() => {
+    if (tiers.length > 0 && !createForm.tier) {
+      const lowestTier = tiers.sort((a, b) => a.level - b.level)[0];
+      if (lowestTier) {
+        setCreateForm(prev => ({ ...prev, tier: getTierEnumValue(lowestTier.name) }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiers]);
 
   useEffect(() => {
     fetchAffiliates();
@@ -178,7 +285,11 @@ export default function AffiliatesManagementPage() {
       
       if (status !== "all")
         params.append("status", status.toUpperCase());
-      if (tier !== "all") params.append("tier", tier.toUpperCase());
+      if (tier !== "all") {
+        // Convert tier name to enum value for backend
+        const tierEnumValue = getTierEnumValue(tier);
+        params.append("tier", tierEnumValue);
+      }
       params.append("limit", "500");
 
       const response = await fetch(
@@ -236,6 +347,7 @@ export default function AffiliatesManagementPage() {
           discountValue: createForm.discountValue ? parseFloat(createForm.discountValue) : undefined,
           instagram: createForm.instagram || undefined,
           tiktok: createForm.tiktok || undefined,
+          spendingLimit: createForm.spendingLimit ? parseFloat(createForm.spendingLimit) : undefined,
         }),
       });
 
@@ -244,17 +356,21 @@ export default function AffiliatesManagementPage() {
         toast.success("Affiliate created successfully");
         
         // Reset form first
+        const lowestTier = tiers.length > 0 
+          ? tiers.sort((a, b) => a.level - b.level)[0]
+          : null;
         setCreateForm({
           email: "",
           password: "",
           firstName: "",
           lastName: "",
           commissionRate: 10,
-          tier: "BRONZE",
+          tier: lowestTier ? getTierEnumValue(lowestTier.name) : "",
           discountCode: "",
           discountValue: "10",
           instagram: "",
           tiktok: "",
+          spendingLimit: "",
         });
         
         // Reset password visibility
@@ -314,9 +430,19 @@ export default function AffiliatesManagementPage() {
 
   const handleEditAffiliate = async (affiliate: Affiliate) => {
     setSelectedAffiliate(affiliate);
+    // Convert tier to enum value - handle both tier names and enum values
+    const tierEnumValue = getTierEnumValue(affiliate.tier);
+    // Find the tier ID that matches this enum value (prefer exact match)
+    const matchingTier = tiers.find(t => 
+      getTierEnumValue(t.name) === tierEnumValue &&
+      (t.name.toUpperCase() === affiliate.tier.toUpperCase() || 
+       affiliate.tier.toUpperCase() === tierEnumValue)
+    ) || tiers.find(t => getTierEnumValue(t.name) === tierEnumValue);
+    
     setEditForm({
       status: affiliate.status.toUpperCase(),
-      tier: affiliate.tier.toUpperCase(),
+      tier: tierEnumValue,
+      tierId: matchingTier?.id || "",
       commissionRate: affiliate.commissionRate || 5,
       deliverablesNote: "",
       discountCode: "",
@@ -324,6 +450,7 @@ export default function AffiliatesManagementPage() {
       discountExpiresAt: "",
       instagram: "",
       tiktok: "",
+      spendingLimit: "",
     });
     
     // Fetch affiliate details to get deliverables note
@@ -337,11 +464,13 @@ export default function AffiliatesManagementPage() {
       if (response.ok) {
         const data = await response.json();
         const socialMedia = data.affiliate?.socialMedia || {};
+        setSelectedAffiliateDetails(data.affiliate);
         setEditForm((prev) => ({
           ...prev,
           deliverablesNote: data.affiliate?.deliverablesNote || "",
           instagram: socialMedia.instagram || "",
           tiktok: socialMedia.tiktok || "",
+          spendingLimit: data.affiliate?.spendingLimit ? data.affiliate.spendingLimit.toString() : "",
         }));
         setExistingDiscountCodes(data.affiliate?.discountCodes || []);
         setExistingReferralCodes(data.affiliate?.referralCodes || []);
@@ -379,13 +508,19 @@ export default function AffiliatesManagementPage() {
         editForm.tier !== selectedAffiliate.tier.toUpperCase() ||
         editForm.commissionRate !== (selectedAffiliate.commissionRate || 5)
       ) {
+        // Ensure tier is a valid enum value
+        const tierEnumValue = getTierEnumValue(editForm.tier);
+        
         const tierResponse = await fetch(
           `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/tier`,
           {
             method: "PATCH",
-            headers: getAuthHeaders(),
+            headers: {
+              ...getAuthHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify({
-              tier: editForm.tier,
+              tier: tierEnumValue,
               commissionRate: editForm.commissionRate,
             }),
           }
@@ -499,6 +634,27 @@ export default function AffiliatesManagementPage() {
         throw new Error("Failed to update social media links");
       }
 
+      // Update spending limit (monthly allowance)
+      const spendingLimitValue = editForm.spendingLimit ? parseFloat(editForm.spendingLimit) : null;
+      const currentSpendingLimit = selectedAffiliateDetails?.spendingLimit || null;
+      
+      if (spendingLimitValue !== currentSpendingLimit) {
+        const spendingLimitResponse = await fetch(
+          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/spending-limit`,
+          {
+            method: "PATCH",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              spendingLimit: spendingLimitValue,
+            }),
+          }
+        );
+
+        if (!spendingLimitResponse.ok) {
+          throw new Error("Failed to update spending limit");
+        }
+      }
+
       toast.success("Affiliate updated successfully");
       setEditDialogOpen(false);
       fetchAffiliates();
@@ -584,6 +740,16 @@ export default function AffiliatesManagementPage() {
       );
     }
 
+    // Filter by tier - compare tier names (handle both enum values and tier names)
+    if (tierFilter !== "all") {
+      result = result.filter((aff) => {
+        const affiliateTierName = getTierNameFromEnum(aff.tier);
+        // Compare with tier filter (which is a tier name from dropdown)
+        return affiliateTierName.toLowerCase() === tierFilter.toLowerCase() ||
+               getTierEnumValue(affiliateTierName) === getTierEnumValue(tierFilter);
+      });
+    }
+
     if (fromDate) {
       const start = new Date(fromDate);
       start.setHours(0, 0, 0, 0);
@@ -619,7 +785,7 @@ export default function AffiliatesManagementPage() {
     }
 
     return result;
-  }, [affiliates, searchQuery, fromDate, toDate, sortBy, sortOrder]);
+  }, [affiliates, searchQuery, tierFilter, fromDate, toDate, sortBy, sortOrder, tiers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAffiliates.length / PAGE_SIZE));
 
@@ -790,10 +956,14 @@ export default function AffiliatesManagementPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="bronze">Bronze</SelectItem>
-                  <SelectItem value="silver">Silver</SelectItem>
-                  <SelectItem value="gold">Gold</SelectItem>
-                  <SelectItem value="platinum">Platinum</SelectItem>
+                  {tiers
+                    .filter(tier => tier.status === "ACTIVE")
+                    .sort((a, b) => a.level - b.level)
+                    .map((tier) => (
+                      <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
+                        {tier.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -943,7 +1113,11 @@ export default function AffiliatesManagementPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground">Tier:</span>
-                            <div className="mt-1"><Badge variant="outline">{affiliate.tier}</Badge></div>
+                            <div className="mt-1">
+                              <Badge variant="outline" className={getTierBadgeColor(getTierNameFromEnum(affiliate.tier))}>
+                                {getTierNameFromEnum(affiliate.tier)}
+                              </Badge>
+                            </div>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Earnings:</span>
@@ -991,7 +1165,9 @@ export default function AffiliatesManagementPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(affiliate.status)}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{affiliate.tier}</Badge>
+                          <Badge variant="outline" className={getTierBadgeColor(getTierNameFromEnum(affiliate.tier))}>
+                            {getTierNameFromEnum(affiliate.tier)}
+                          </Badge>
                         </TableCell>
                         <TableCell className="font-medium">
                           ${affiliate.totalEarnings.toFixed(2)}
@@ -1112,23 +1288,38 @@ export default function AffiliatesManagementPage() {
               <div className="space-y-2">
                 <Label htmlFor="tier">Tier</Label>
                 <Select
-                  value={editForm.tier}
-                  onValueChange={(value) =>
-                    setEditForm({ ...editForm, tier: value })
-                  }
+                  value={editForm.tierId}
+                  onValueChange={(tierId) => {
+                    const tier = tiers.find(t => t.id === tierId);
+                    if (tier) {
+                      setEditForm({ 
+                        ...editForm, 
+                        tier: getTierEnumValue(tier.name),
+                        tierId: tier.id
+                      });
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue>
-                      {editForm.tier &&
-                        editForm.tier.charAt(0) +
-                          editForm.tier.slice(1).toLowerCase()}
+                      {editForm.tierId 
+                        ? tiers.find(t => t.id === editForm.tierId)?.name || "Select tier"
+                        : "Select tier"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="BRONZE">Bronze</SelectItem>
-                    <SelectItem value="SILVER">Silver</SelectItem>
-                    <SelectItem value="GOLD">Gold</SelectItem>
-                    <SelectItem value="PLATINUM">Platinum</SelectItem>
+                    {tiersLoading ? (
+                      <SelectItem value="" disabled>Loading tiers...</SelectItem>
+                    ) : (
+                      tiers
+                        .filter(tier => tier.status === "ACTIVE")
+                        .sort((a, b) => a.level - b.level)
+                        .map((tier) => (
+                          <SelectItem key={tier.id} value={tier.id}>
+                            {tier.name}
+                          </SelectItem>
+                        ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1151,6 +1342,28 @@ export default function AffiliatesManagementPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Leave at tier default or set custom rate
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="spendingLimit">
+                  Monthly Allowance ($)
+                </Label>
+                <Input
+                  id="spendingLimit"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g., 150.00"
+                  value={editForm.spendingLimit}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      spendingLimit: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Monthly product allowance amount for this affiliate. Leave empty to remove allowance.
                 </p>
               </div>
               <div className="space-y-2">
@@ -1361,17 +1574,21 @@ export default function AffiliatesManagementPage() {
           setCreateDialogOpen(open);
           if (!open) {
             // Reset form when dialog closes
+            const lowestTier = tiers.length > 0 
+              ? tiers.sort((a, b) => a.level - b.level)[0]
+              : null;
             setCreateForm({
               email: "",
               password: "",
               firstName: "",
               lastName: "",
               commissionRate: 10,
-              tier: "BRONZE",
+              tier: lowestTier ? getTierEnumValue(lowestTier.name) : "",
               discountCode: "",
               discountValue: "10",
               instagram: "",
               tiktok: "",
+              spendingLimit: "",
             });
             setShowPassword(false);
           }
@@ -1461,19 +1678,34 @@ export default function AffiliatesManagementPage() {
                 <div className="space-y-2">
                   <Label htmlFor="create-tier">Tier</Label>
                   <Select
-                    value={createForm.tier}
-                    onValueChange={(value) =>
-                      setCreateForm({ ...createForm, tier: value })
-                    }
+                    value={(() => {
+                      if (!createForm.tier) return "";
+                      const tier = tiers.find(t => getTierEnumValue(t.name) === createForm.tier);
+                      return tier ? tier.id : "";
+                    })()}
+                    onValueChange={(tierId) => {
+                      const tier = tiers.find(t => t.id === tierId);
+                      if (tier) {
+                        setCreateForm({ ...createForm, tier: getTierEnumValue(tier.name) });
+                      }
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select tier" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="BRONZE">Bronze</SelectItem>
-                      <SelectItem value="SILVER">Silver</SelectItem>
-                      <SelectItem value="GOLD">Gold</SelectItem>
-                      <SelectItem value="PLATINUM">Platinum</SelectItem>
+                      {tiersLoading ? (
+                        <SelectItem value="" disabled>Loading tiers...</SelectItem>
+                      ) : (
+                        tiers
+                          .filter(tier => tier.status === "ACTIVE")
+                          .sort((a, b) => a.level - b.level)
+                          .map((tier) => (
+                            <SelectItem key={tier.id} value={tier.id}>
+                              {tier.name}
+                            </SelectItem>
+                          ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1493,6 +1725,26 @@ export default function AffiliatesManagementPage() {
                     }
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-spendingLimit">Monthly Allowance ($)</Label>
+                <Input
+                  id="create-spendingLimit"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g., 150.00"
+                  value={createForm.spendingLimit}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      spendingLimit: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Monthly product allowance amount for this affiliate. Leave empty to set no allowance.
+                </p>
               </div>
             </div>
 

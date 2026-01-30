@@ -52,6 +52,7 @@ import adminSettingsRoutes from "./routes/admin-settings"; // Admin settings rou
 import adminAffiliateCodesRoutes from "./routes/admin-affiliate-codes"; // Admin affiliate codes management routes
 import adminDeliverablesRoutes from "./routes/admin-deliverables"; // Admin deliverables management routes
 import adminFeedbackRoutes from "./routes/admin-feedback"; // Admin feedback management routes
+import adminTiersRoutes from "./routes/admin-tiers"; // Admin tier management routes
 import systemSettingsRoutes from "./routes/system-settings"; // System settings routes
 import uploadRoutes from "./routes/upload"; // File upload routes
 import websitesRoutes from "./routes/websites"; // Website management routes
@@ -230,6 +231,7 @@ app.use("/api/admin/settings", adminSettingsRoutes); // Admin settings routes
 app.use("/api/admin/affiliate-codes", adminAffiliateCodesRoutes); // Admin affiliate codes management
 app.use("/api/admin/deliverables", adminDeliverablesRoutes); // Admin deliverables management
 app.use("/api/admin/feedback", adminFeedbackRoutes); // Admin feedback management
+app.use("/api/admin/tiers", adminTiersRoutes); // Admin tier management
 app.use("/api/system/settings", systemSettingsRoutes); // System settings routes
 app.use("/api/upload", uploadRoutes); // File upload routes
 app.use("/api/websites", websitesRoutes); // Website management routes

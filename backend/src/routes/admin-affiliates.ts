@@ -791,6 +791,7 @@ router.post(
         discountValue: z.number().min(0).max(100).optional(),
         instagram: z.string().optional(),
         tiktok: z.string().optional(),
+        spendingLimit: z.number().min(0).nullable().optional(),
       });
 
       const data = schema.parse(req.body);
@@ -829,6 +830,7 @@ router.post(
             tier: data.tier,
             commissionRate: data.commissionRate,
             paymentMethod: "PAYPAL", // Default payment method
+            spendingLimit: data.spendingLimit || null,
             socialMedia: {
               instagram: data.instagram || null,
               tiktok: data.tiktok || null,

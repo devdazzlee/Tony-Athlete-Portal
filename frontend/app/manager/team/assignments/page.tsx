@@ -26,6 +26,7 @@ import { config } from "@/config/config";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
@@ -47,6 +48,7 @@ interface AssignmentStats {
 
 export default function TeamAssignmentsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [stats, setStats] = useState<AssignmentStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,15 +135,17 @@ export default function TeamAssignmentsPage() {
     }
   };
 
-  const getTierBadge = (tier: string) => {
-    const colors: Record<string, string> = {
-      BRONZE: "bg-orange-100 text-orange-800",
-      SILVER: "bg-gray-200 text-gray-800",
-      GOLD: "bg-yellow-100 text-yellow-800",
-      PLATINUM: "bg-purple-100 text-purple-800",
-      DIAMOND: "bg-blue-100 text-blue-800",
-    };
-    return <Badge className={colors[tier] || "bg-gray-100 text-gray-800"}>{tier}</Badge>;
+  const getTierBadge = (tierEnum: string) => {
+    // Try to find tier by enum value or name
+    const tier = tiers.find(t => 
+      t.name.toUpperCase() === tierEnum.toUpperCase() ||
+      getTierByName(tierEnum)
+    ) || getTierByName(tierEnum);
+    
+    const tierName = tier ? tier.name : tierEnum;
+    const badgeColor = getTierBadgeColor(tierName);
+    
+    return <Badge className={badgeColor}>{tierName}</Badge>;
   };
 
   const getStatusBadge = (status: string) => {
@@ -161,7 +165,9 @@ export default function TeamAssignmentsPage() {
       aff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       aff.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || aff.status === statusFilter;
-    const matchesTier = tierFilter === "all" || aff.tier === tierFilter;
+    const matchesTier = tierFilter === "all" || 
+      aff.tier === tierFilter || 
+      tiers.find(t => t.name === tierFilter && (t.name.toUpperCase() === aff.tier.toUpperCase() || aff.tier === t.name));
     return matchesSearch && matchesStatus && matchesTier;
   });
 
@@ -273,11 +279,14 @@ export default function TeamAssignmentsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Tiers</SelectItem>
-                <SelectItem value="DIAMOND">Diamond</SelectItem>
-                <SelectItem value="PLATINUM">Platinum</SelectItem>
-                <SelectItem value="GOLD">Gold</SelectItem>
-                <SelectItem value="SILVER">Silver</SelectItem>
-                <SelectItem value="BRONZE">Bronze</SelectItem>
+                {tiers
+                  .filter(tier => tier.status === "ACTIVE")
+                  .sort((a, b) => b.level - a.level)
+                  .map((tier) => (
+                    <SelectItem key={tier.id} value={tier.name}>
+                      {tier.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>
