@@ -81,7 +81,8 @@ interface Affiliate {
   email: string;
   joinDate: string;
   status: string;
-  tier: string;
+  tier: string; // Now contains the actual tier name from assignment, not just enum
+  tierId?: string | null; // Tier ID from assignment
   commissionRate?: number;
   totalEarnings: number;
   totalClicks: number;
@@ -123,8 +124,7 @@ export default function AffiliatesManagementPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
-    tier: "", // Store enum value for backend compatibility
-    tierId: "", // Store tier ID for UI selection
+    tierId: "", // Store tier ID only - this is the source of truth
     commissionRate: 5,
     deliverablesNote: "",
     discountCode: "",
@@ -140,7 +140,7 @@ export default function AffiliatesManagementPage() {
     firstName: "",
     lastName: "",
     commissionRate: 10,
-    tier: "",
+    tierId: "", // Store tier ID only - this is the source of truth
     discountCode: "",
     discountValue: "10",
     instagram: "",
@@ -205,23 +205,24 @@ export default function AffiliatesManagementPage() {
   };
 
   // Helper function to get tier name from enum value
-  const getTierNameFromEnum = (enumValue: string): string => {
-    if (!enumValue) return "Select tier";
+  const getTierNameFromEnum = (tierNameOrEnum: string): string => {
+    if (!tierNameOrEnum) return "Select tier";
     
-    // First, try to find by exact enum match
+    // If it's already a tier name (from backend assignment), return it directly
+    // Check if it matches any tier name exactly
+    const exactMatch = tiers.find(t => 
+      t.name.toUpperCase() === tierNameOrEnum.toUpperCase()
+    );
+    if (exactMatch) return exactMatch.name;
+    
+    // If it's an enum value, try to find matching tier
     const tierByEnum = tiers.find(t => 
-      getTierEnumValue(t.name) === enumValue.toUpperCase()
+      getTierEnumValue(t.name) === tierNameOrEnum.toUpperCase()
     );
     if (tierByEnum) return tierByEnum.name;
     
-    // Then try to find by name match
-    const tierByName = tiers.find(t => 
-      t.name.toUpperCase() === enumValue.toUpperCase()
-    );
-    if (tierByName) return tierByName.name;
-    
-    // Fallback: return the enum value itself
-    return enumValue;
+    // Fallback: return the value itself (might be a custom tier name)
+    return tierNameOrEnum;
   };
 
   // Helper to get tier ID from enum value (for Select component)
@@ -243,10 +244,10 @@ export default function AffiliatesManagementPage() {
 
   // Set default tier when tiers are loaded
   useEffect(() => {
-    if (tiers.length > 0 && !createForm.tier) {
+    if (tiers.length > 0 && !createForm.tierId) {
       const lowestTier = tiers.sort((a, b) => a.level - b.level)[0];
       if (lowestTier) {
-        setCreateForm(prev => ({ ...prev, tier: getTierEnumValue(lowestTier.name) }));
+        setCreateForm(prev => ({ ...prev, tierId: lowestTier.id }));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,7 +343,11 @@ export default function AffiliatesManagementPage() {
           firstName: createForm.firstName,
           lastName: createForm.lastName,
           commissionRate: createForm.commissionRate,
-          tier: createForm.tier,
+          tier: (() => {
+            const selectedTier = tiers.find(t => t.id === createForm.tierId);
+            return selectedTier ? getTierEnumValue(selectedTier.name) : "BRONZE";
+          })(),
+          tierId: createForm.tierId || undefined,
           discountCode: createForm.discountCode || undefined,
           discountValue: createForm.discountValue ? parseFloat(createForm.discountValue) : undefined,
           instagram: createForm.instagram || undefined,
@@ -365,7 +370,7 @@ export default function AffiliatesManagementPage() {
           firstName: "",
           lastName: "",
           commissionRate: 10,
-          tier: lowestTier ? getTierEnumValue(lowestTier.name) : "",
+          tierId: lowestTier ? lowestTier.id : "",
           discountCode: "",
           discountValue: "10",
           instagram: "",
@@ -430,18 +435,27 @@ export default function AffiliatesManagementPage() {
 
   const handleEditAffiliate = async (affiliate: Affiliate) => {
     setSelectedAffiliate(affiliate);
-    // Convert tier to enum value - handle both tier names and enum values
-    const tierEnumValue = getTierEnumValue(affiliate.tier);
-    // Find the tier ID that matches this enum value (prefer exact match)
-    const matchingTier = tiers.find(t => 
-      getTierEnumValue(t.name) === tierEnumValue &&
-      (t.name.toUpperCase() === affiliate.tier.toUpperCase() || 
-       affiliate.tier.toUpperCase() === tierEnumValue)
-    ) || tiers.find(t => getTierEnumValue(t.name) === tierEnumValue);
+    
+    // First, try to find tier by exact name match (for custom tiers)
+    let matchingTier = tiers.find(t => 
+      t.name.toUpperCase() === affiliate.tier.toUpperCase()
+    );
+    
+    // If not found by name, convert to enum and find by enum value
+    if (!matchingTier) {
+      const tierEnumValue = getTierEnumValue(affiliate.tier);
+      // Find all tiers that map to this enum value
+      const matchingTiers = tiers.filter(t => 
+        getTierEnumValue(t.name) === tierEnumValue
+      );
+      // If multiple tiers match, prefer the one with matching name, otherwise take first
+      matchingTier = matchingTiers.find(t => 
+        t.name.toUpperCase() === affiliate.tier.toUpperCase()
+      ) || matchingTiers[0];
+    }
     
     setEditForm({
       status: affiliate.status.toUpperCase(),
-      tier: tierEnumValue,
       tierId: matchingTier?.id || "",
       commissionRate: affiliate.commissionRate || 5,
       deliverablesNote: "",
@@ -465,8 +479,13 @@ export default function AffiliatesManagementPage() {
         const data = await response.json();
         const socialMedia = data.affiliate?.socialMedia || {};
         setSelectedAffiliateDetails(data.affiliate);
+        
+        // Use assignedTierId from backend if available, otherwise use the matching tier we found
+        const tierIdToUse = data.affiliate?.assignedTierId || matchingTier?.id || "";
+        
         setEditForm((prev) => ({
           ...prev,
+          tierId: tierIdToUse,
           deliverablesNote: data.affiliate?.deliverablesNote || "",
           instagram: socialMedia.instagram || "",
           tiktok: socialMedia.tiktok || "",
@@ -504,13 +523,16 @@ export default function AffiliatesManagementPage() {
       }
 
       // Update tier and commission rate
+      // Get the selected tier to compute enum value
+      const selectedTier = tiers.find(t => t.id === editForm.tierId);
+      const currentTierEnum = getTierEnumValue(selectedAffiliate.tier);
+      const newTierEnum = selectedTier ? getTierEnumValue(selectedTier.name) : currentTierEnum;
+      
       if (
-        editForm.tier !== selectedAffiliate.tier.toUpperCase() ||
-        editForm.commissionRate !== (selectedAffiliate.commissionRate || 5)
+        newTierEnum !== currentTierEnum ||
+        editForm.commissionRate !== (selectedAffiliate.commissionRate || 5) ||
+        editForm.tierId // Also update if tierId changed (for custom tiers)
       ) {
-        // Ensure tier is a valid enum value
-        const tierEnumValue = getTierEnumValue(editForm.tier);
-        
         const tierResponse = await fetch(
           `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/tier`,
           {
@@ -520,7 +542,8 @@ export default function AffiliatesManagementPage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              tier: tierEnumValue,
+              tier: newTierEnum,
+              tierId: editForm.tierId || undefined, // Send tierId if available
               commissionRate: editForm.commissionRate,
             }),
           }
@@ -1290,14 +1313,10 @@ export default function AffiliatesManagementPage() {
                 <Select
                   value={editForm.tierId}
                   onValueChange={(tierId) => {
-                    const tier = tiers.find(t => t.id === tierId);
-                    if (tier) {
-                      setEditForm({ 
-                        ...editForm, 
-                        tier: getTierEnumValue(tier.name),
-                        tierId: tier.id
-                      });
-                    }
+                    setEditForm({ 
+                      ...editForm, 
+                      tierId: tierId
+                    });
                   }}
                 >
                   <SelectTrigger>
@@ -1583,7 +1602,7 @@ export default function AffiliatesManagementPage() {
               firstName: "",
               lastName: "",
               commissionRate: 10,
-              tier: lowestTier ? getTierEnumValue(lowestTier.name) : "",
+              tierId: lowestTier ? lowestTier.id : "",
               discountCode: "",
               discountValue: "10",
               instagram: "",
@@ -1678,16 +1697,9 @@ export default function AffiliatesManagementPage() {
                 <div className="space-y-2">
                   <Label htmlFor="create-tier">Tier</Label>
                   <Select
-                    value={(() => {
-                      if (!createForm.tier) return "";
-                      const tier = tiers.find(t => getTierEnumValue(t.name) === createForm.tier);
-                      return tier ? tier.id : "";
-                    })()}
+                    value={createForm.tierId}
                     onValueChange={(tierId) => {
-                      const tier = tiers.find(t => t.id === tierId);
-                      if (tier) {
-                        setCreateForm({ ...createForm, tier: getTierEnumValue(tier.name) });
-                      }
+                      setCreateForm({ ...createForm, tierId: tierId });
                     }}
                   >
                     <SelectTrigger>

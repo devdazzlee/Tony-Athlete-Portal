@@ -36,6 +36,18 @@ router.get(
               createdAt: true,
             },
           },
+          tierAssignments: {
+            where: {
+              status: "ACTIVE",
+            },
+            include: {
+              tier: true,
+            },
+            orderBy: {
+              assignedAt: "desc",
+            },
+            take: 1,
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -101,6 +113,10 @@ router.get(
             },
           });
 
+          // Get the assigned tier name if available, otherwise use the enum value
+          const activeTierAssignment = affiliate.tierAssignments?.[0];
+          const tierName = activeTierAssignment?.tier?.name || affiliate.tier;
+
           return {
             id: affiliate.id,
             name:
@@ -109,7 +125,8 @@ router.get(
             email: affiliate.user?.email || "No email",
             joinDate: affiliate.createdAt.toISOString().split("T")[0],
             status: affiliate.status,
-            tier: affiliate.tier,
+            tier: tierName, // Use the actual tier name from assignment, or fall back to enum
+            tierId: activeTierAssignment?.tierId || null, // Include tierId for reference
             commissionRate: affiliate.commissionRate || null,
             totalEarnings: earnings._sum.commissionAmount || 0,
             totalClicks: clicks,
@@ -164,6 +181,18 @@ router.get(
               phone: true,
               createdAt: true,
             },
+          },
+          tierAssignments: {
+            where: {
+              status: "ACTIVE",
+            },
+            include: {
+              tier: true,
+            },
+            orderBy: {
+              assignedAt: "desc",
+            },
+            take: 1,
           },
         },
       });
@@ -248,11 +277,16 @@ router.get(
 
       // Get social media from affiliate profile
       const socialMedia = (affiliate.socialMedia as any) || {};
+      
+      // Get the active tier assignment
+      const activeTierAssignment = affiliate.tierAssignments?.[0];
+      const assignedTierId = activeTierAssignment?.tierId || null;
 
       res.json({
         affiliate: {
           ...affiliate,
           user: affiliate.user,
+          assignedTierId, // Include the tier ID from tier assignment
           stats: {
             totalEarnings: earnings._sum.commissionAmount || 0,
             totalConversions: conversions,
@@ -321,11 +355,12 @@ router.patch(
   async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { tier, commissionRate } = req.body;
+      const { tier, tierId, commissionRate } = req.body;
 
       // Validate input
       const schema = z.object({
         tier: z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional(),
+        tierId: z.string().optional(),
         commissionRate: z
           .number()
           .min(0, "Commission rate must be at least 0%")
@@ -336,7 +371,7 @@ router.patch(
           .optional(),
       });
 
-      const validatedData = schema.parse({ tier, commissionRate });
+      const validatedData = schema.parse({ tier, tierId, commissionRate });
 
       const updatedAffiliate = await prisma.affiliateProfile.update({
         where: { id },
@@ -345,12 +380,32 @@ router.patch(
           ...(validatedData.commissionRate && {
             commissionRate: validatedData.commissionRate,
           }),
-          // ...(validatedData.commissionRate !== undefined &&
-          //   {
-          //     // Update commission rate in referral codes
-          //   }),
         },
       });
+
+      // If tierId is provided, create or update tier assignment
+      if (validatedData.tierId) {
+        // Deactivate existing tier assignments
+        await prisma.tierAssignment.updateMany({
+          where: {
+            affiliateId: id,
+            status: "ACTIVE",
+          },
+          data: {
+            status: "INACTIVE",
+          },
+        });
+
+        // Create new tier assignment
+        await prisma.tierAssignment.create({
+          data: {
+            tierId: validatedData.tierId,
+            affiliateId: id,
+            assignedBy: req.user.id,
+            status: "ACTIVE",
+          },
+        });
+      }
 
       // If commission rate is provided, update all affiliate's referral codes
       if (validatedData.commissionRate !== undefined) {
@@ -787,6 +842,7 @@ router.post(
         lastName: z.string().min(1),
         commissionRate: z.number().min(0).max(100).optional().default(10),
         tier: z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional().default("BRONZE"),
+        tierId: z.string().optional(),
         discountCode: z.string().optional(),
         discountValue: z.number().min(0).max(100).optional(),
         instagram: z.string().optional(),
@@ -837,6 +893,18 @@ router.post(
             },
           },
         });
+
+        // Create tier assignment if tierId is provided
+        if (data.tierId) {
+          await tx.tierAssignment.create({
+            data: {
+              tierId: data.tierId,
+              affiliateId: affiliate.id,
+              assignedBy: req.user.id,
+              status: "ACTIVE",
+            },
+          });
+        }
 
         // Create discount code if provided
         if (data.discountCode && data.discountValue !== undefined) {
