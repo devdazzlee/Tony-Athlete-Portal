@@ -65,6 +65,18 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                         createdAt: true,
                     },
                 },
+                tierAssignments: {
+                    where: {
+                        status: "ACTIVE",
+                    },
+                    include: {
+                        tier: true,
+                    },
+                    orderBy: {
+                        assignedAt: "desc",
+                    },
+                    take: 1,
+                },
             },
             orderBy: { createdAt: "desc" },
             skip,
@@ -113,6 +125,8 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                     createdAt: true,
                 },
             });
+            const activeTierAssignment = affiliate.tierAssignments?.[0];
+            const tierName = activeTierAssignment?.tier?.name || affiliate.tier;
             return {
                 id: affiliate.id,
                 name: `${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() ||
@@ -120,7 +134,8 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                 email: affiliate.user?.email || "No email",
                 joinDate: affiliate.createdAt.toISOString().split("T")[0],
                 status: affiliate.status,
-                tier: affiliate.tier,
+                tier: tierName,
+                tierId: activeTierAssignment?.tierId || null,
                 commissionRate: affiliate.commissionRate || null,
                 totalEarnings: earnings._sum.commissionAmount || 0,
                 totalClicks: clicks,
@@ -166,6 +181,18 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
                         phone: true,
                         createdAt: true,
                     },
+                },
+                tierAssignments: {
+                    where: {
+                        status: "ACTIVE",
+                    },
+                    include: {
+                        tier: true,
+                    },
+                    orderBy: {
+                        assignedAt: "desc",
+                    },
+                    take: 1,
                 },
             },
         });
@@ -231,10 +258,13 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
             },
         });
         const socialMedia = affiliate.socialMedia || {};
+        const activeTierAssignment = affiliate.tierAssignments?.[0];
+        const assignedTierId = activeTierAssignment?.tierId || null;
         res.json({
             affiliate: {
                 ...affiliate,
                 user: affiliate.user,
+                assignedTierId,
                 stats: {
                     totalEarnings: earnings._sum.commissionAmount || 0,
                     totalConversions: conversions,
@@ -287,16 +317,17 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
 router.patch("/:id/tier", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
-        const { tier, commissionRate } = req.body;
+        const { tier, tierId, commissionRate } = req.body;
         const schema = zod_1.z.object({
             tier: zod_1.z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional(),
+            tierId: zod_1.z.string().optional(),
             commissionRate: zod_1.z
                 .number()
                 .min(0, "Commission rate must be at least 0%")
                 .max(100, "Commission rate cannot exceed 100%. Please enter a value between 0 and 100%.")
                 .optional(),
         });
-        const validatedData = schema.parse({ tier, commissionRate });
+        const validatedData = schema.parse({ tier, tierId, commissionRate });
         const updatedAffiliate = await prisma.affiliateProfile.update({
             where: { id },
             data: {
@@ -306,6 +337,25 @@ router.patch("/:id/tier", auth_1.authenticateToken, (0, auth_1.requireRole)(["AD
                 }),
             },
         });
+        if (validatedData.tierId) {
+            await prisma.tierAssignment.updateMany({
+                where: {
+                    affiliateId: id,
+                    status: "ACTIVE",
+                },
+                data: {
+                    status: "INACTIVE",
+                },
+            });
+            await prisma.tierAssignment.create({
+                data: {
+                    tierId: validatedData.tierId,
+                    affiliateId: id,
+                    assignedBy: req.user.id,
+                    status: "ACTIVE",
+                },
+            });
+        }
         if (validatedData.commissionRate !== undefined) {
             await prisma.referralCode.updateMany({
                 where: { affiliateId: id },
@@ -629,6 +679,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
             lastName: zod_1.z.string().min(1),
             commissionRate: zod_1.z.number().min(0).max(100).optional().default(10),
             tier: zod_1.z.enum(["BRONZE", "SILVER", "GOLD", "PLATINUM"]).optional().default("BRONZE"),
+            tierId: zod_1.z.string().optional(),
             discountCode: zod_1.z.string().optional(),
             discountValue: zod_1.z.number().min(0).max(100).optional(),
             instagram: zod_1.z.string().optional(),
@@ -668,6 +719,16 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     },
                 },
             });
+            if (data.tierId) {
+                await tx.tierAssignment.create({
+                    data: {
+                        tierId: data.tierId,
+                        affiliateId: affiliate.id,
+                        assignedBy: req.user.id,
+                        status: "ACTIVE",
+                    },
+                });
+            }
             if (data.discountCode && data.discountValue !== undefined) {
                 const validUntil = new Date();
                 validUntil.setFullYear(validUntil.getFullYear() + 1);

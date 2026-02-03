@@ -30,6 +30,18 @@ router.get("/profile", async (req, res) => {
                     take: 1,
                     orderBy: { createdAt: "desc" },
                 },
+                tierAssignments: {
+                    where: {
+                        status: "ACTIVE",
+                    },
+                    include: {
+                        tier: true,
+                    },
+                    orderBy: {
+                        assignedAt: "desc",
+                    },
+                    take: 1,
+                },
             },
         });
         if (!affiliate) {
@@ -58,12 +70,34 @@ router.get("/profile", async (req, res) => {
                 freeShipping: coupon.freeShipping,
             };
         });
+        const activeTierAssignment = affiliate.tierAssignments?.[0];
+        const assignedTier = activeTierAssignment?.tier;
+        let tierBenefits = [];
+        if (assignedTier?.benefits) {
+            try {
+                tierBenefits = typeof assignedTier.benefits === 'string'
+                    ? JSON.parse(assignedTier.benefits)
+                    : assignedTier.benefits;
+            }
+            catch (e) {
+                tierBenefits = [];
+            }
+        }
         res.json({
             instagram: socialMedia.instagram || null,
             tiktok: socialMedia.tiktok || null,
             discountCodes,
             spendingLimit: affiliate.spendingLimit ? `$${affiliate.spendingLimit.toFixed(2)}` : "Not Set",
             deliverablesNote: affiliate.deliverablesNote || null,
+            tier: assignedTier ? {
+                name: assignedTier.name,
+                description: assignedTier.description,
+                level: assignedTier.level,
+                commissionRate: assignedTier.commissionRate,
+                benefits: tierBenefits,
+            } : null,
+            tierName: assignedTier?.name || affiliate.tier,
+            commissionRate: affiliate.commissionRate || (assignedTier?.commissionRate || 0),
         });
     }
     catch (error) {

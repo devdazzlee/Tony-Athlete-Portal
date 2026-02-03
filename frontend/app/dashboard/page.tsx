@@ -42,6 +42,15 @@ export default function DashboardPage() {
       freeShipping?: boolean;
     }>,
     spendingLimit: "Not Set",
+    tier: null as {
+      name: string;
+      description: string;
+      level: number;
+      commissionRate: number;
+      benefits: any[];
+    } | null,
+    tierName: "Not Set" as string,
+    commissionRate: 0 as number,
   });
   const [performanceData, setPerformanceData] = useState({
     conversions: 0,
@@ -141,12 +150,50 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">Your Profile</h1>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Tier Information Card */}
+          <Card className="bg-white border-gray-200">
+            <CardHeader>
+              <CardTitle className="text-gray-900">Tier Information</CardTitle>
+              <CardDescription className="text-gray-600">
+                Your current affiliate tier and benefits
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <span className="text-gray-600">Tier: </span>
+                <span className="text-gray-900 font-semibold">{profileData.tierName}</span>
+              </div>
+              {profileData.tier?.description && (
+                <div>
+                  <span className="text-gray-600">Description: </span>
+                  <span className="text-gray-900">{profileData.tier.description}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-gray-600">Commission Rate: </span>
+                <span className="text-gray-900 font-semibold">{profileData.commissionRate}%</span>
+              </div>
+              {profileData.tier?.benefits && profileData.tier.benefits.length > 0 && (
+                <div>
+                  <span className="text-gray-600">Benefits: </span>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    {profileData.tier.benefits.map((benefit: any, index: number) => (
+                      <li key={index} className="text-gray-900 text-sm">
+                        {typeof benefit === 'string' ? benefit : JSON.stringify(benefit)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Social Media Card */}
           <Card className="bg-white border-gray-200">
             <CardHeader>
-              <CardTitle className="text-gray-900">Social Media</CardTitle>
+              <CardTitle className="text-gray-900">Social Media & Allowance</CardTitle>
               <CardDescription className="text-gray-600">
-                Your social media profiles
+                Your social media profiles and monthly allowance
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -159,8 +206,8 @@ export default function DashboardPage() {
                 <span className="text-gray-900">{profileData.tiktok || "Not set"}</span>
               </div>
               <div>
-                <span className="text-gray-600">Product Allowance: </span>
-                <span className="text-gray-900">{profileData.spendingLimit}</span>
+                <span className="text-gray-600">Monthly Allowance: </span>
+                <span className="text-gray-900 font-semibold">{profileData.spendingLimit}</span>
               </div>
             </CardContent>
           </Card>

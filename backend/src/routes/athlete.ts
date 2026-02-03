@@ -33,6 +33,18 @@ router.get("/profile", async (req: any, res) => {
           take: 1,
           orderBy: { createdAt: "desc" },
         },
+        tierAssignments: {
+          where: {
+            status: "ACTIVE",
+          },
+          include: {
+            tier: true,
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+        },
       },
     });
 
@@ -69,12 +81,38 @@ router.get("/profile", async (req: any, res) => {
       };
     });
 
+    // Get tier information from assignment
+    const activeTierAssignment = affiliate.tierAssignments?.[0];
+    const assignedTier = activeTierAssignment?.tier;
+    
+    // Parse tier benefits if available
+    let tierBenefits = [];
+    if (assignedTier?.benefits) {
+      try {
+        tierBenefits = typeof assignedTier.benefits === 'string' 
+          ? JSON.parse(assignedTier.benefits) 
+          : assignedTier.benefits;
+      } catch (e) {
+        tierBenefits = [];
+      }
+    }
+
     res.json({
       instagram: socialMedia.instagram || null,
       tiktok: socialMedia.tiktok || null,
       discountCodes,
       spendingLimit: affiliate.spendingLimit ? `$${affiliate.spendingLimit.toFixed(2)}` : "Not Set",
       deliverablesNote: affiliate.deliverablesNote || null,
+      tier: assignedTier ? {
+        name: assignedTier.name,
+        description: assignedTier.description,
+        level: assignedTier.level,
+        commissionRate: assignedTier.commissionRate,
+        benefits: tierBenefits,
+      } : null,
+      // Fallback to enum tier if no assignment
+      tierName: assignedTier?.name || affiliate.tier,
+      commissionRate: affiliate.commissionRate || (assignedTier?.commissionRate || 0),
     });
   } catch (error) {
     console.error("Error fetching athlete profile:", error);
