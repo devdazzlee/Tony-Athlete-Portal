@@ -46,6 +46,8 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/lib/api-client";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+
 interface ReferralCode {
   id: string;
   code: string;
@@ -93,6 +95,28 @@ export default function ReferralsPage() {
   const [affiliateCommissionRate, setAffiliateCommissionRate] =
     useState<number>(15);
 
+  // Performance metrics state (moved from dashboard)
+  const [dateRange, setDateRange] = useState("Yesterday");
+  const [performanceData, setPerformanceData] = useState({
+    conversions: 0,
+    commissionEarned: "$0.00",
+    conversionChange: 0,
+    commissionChange: 0,
+    currentDateRange: "",
+    previousPeriod: "",
+    conversionChartData: [] as any[],
+    commissionChartData: [] as any[],
+    discountCodeUsage: 0,
+  });
+  const [refreshingPerformance, setRefreshingPerformance] = useState(false);
+
+  const dateRangeMap: Record<string, string> = {
+    Yesterday: "yesterday",
+    "Last 7 days": "last_7_days",
+    "Last 30 days": "last_30_days",
+    "Last 6 months": "last_6_months",
+  };
+
   // Form state for creating referral code
   type NewReferralCode = {
     commissionRate: number;
@@ -132,6 +156,11 @@ export default function ReferralsPage() {
     fetchReferralData();
   }, []);
 
+  // Fetch performance data when dateRange changes
+  useEffect(() => {
+    fetchPerformanceData();
+  }, [dateRange]);
+
   // Refresh commission rate from system settings when create dialog opens
   useEffect(() => {
     if (showCreateDialog) {
@@ -152,6 +181,17 @@ export default function ReferralsPage() {
       fetchSystemSettings();
     }
   }, [showCreateDialog]);
+
+  const fetchPerformanceData = async () => {
+    try {
+      const performanceRes = await apiClient.get(
+        `/athlete/performance?dateRange=${dateRangeMap[dateRange] || "yesterday"}`
+      );
+      setPerformanceData(performanceRes.data);
+    } catch (error) {
+      console.error("Error fetching performance data:", error);
+    }
+  };
 
   const fetchReferralData = async () => {
     try {
@@ -320,286 +360,349 @@ export default function ReferralsPage() {
     return <Badge variant="default">Active</Badge>;
   };
 
+  const handleRefreshAll = async () => {
+    setRefreshingPerformance(true);
+    await Promise.all([fetchPerformanceData(), fetchReferralData()]);
+    setRefreshingPerformance(false);
+    toast.success("Data refreshed");
+  };
+
   if (isLoading) {
-    return <DashboardLoading message="Loading referrals..." />;
+    return <DashboardLoading message="Loading tracking data..." />;
   }
+
+  // Generate bar chart data for performance cards
+  const conversionBarData = performanceData.conversionChartData.length > 0 
+    ? performanceData.conversionChartData 
+    : Array.from({ length: 6 }, (_, i) => ({ name: `M${i + 1}`, value: Math.floor(Math.random() * 30) }));
+  
+  const commissionBarData = performanceData.commissionChartData.length > 0 
+    ? performanceData.commissionChartData 
+    : Array.from({ length: 6 }, (_, i) => ({ name: `M${i + 1}`, value: Math.floor(Math.random() * 100) }));
+
+  // Format commission earned
+  const commissionMatch = performanceData.commissionEarned.match(/\$([\d.]+)(?:\s*\(Pending\))?/);
+  const commissionAmount = commissionMatch ? commissionMatch[1] : "0.00";
+  const isPending = performanceData.commissionEarned.includes("Pending");
 
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Referral System</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Performance & Tracking</h1>
           <p className="text-muted-foreground mt-1">
-            Create and manage your referral codes to earn commissions
+            Track your performance metrics, conversions, and manage referral codes
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          {/* Create Code button removed - only admins can create codes */}
-          {/* <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Code
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Referral Code</DialogTitle>
-                <DialogDescription>
-                  Create a new referral code to track your referrals and earn
-                  commissions.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="commissionRate">Commission Rate (%)</Label>
-                  <Input
-                    id="commissionRate"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={newCode.commissionRate}
-                    disabled
-                    className="bg-muted"
-                    readOnly
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Using system default commission rate: {newCode.commissionRate}% (Updated from System Settings)
-                  </p>
-                </div>
-                <div>
-                  <Label>Expires At</Label>
-                  <DatePicker
-                    value={newCode.expiresAt}
-                    onChange={(date) => {
-                      if (date) {
-                        setNewCode({ ...newCode, expiresAt: date });
-                      }
-                    }}
-                    placeholder="Select expiration date"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={createReferralCode} disabled={isCreatingCode}>
-                  {isCreatingCode ? "Creating..." : "Create Code"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog> */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshAll}
+            disabled={refreshingPerformance}
+            className="w-full sm:w-auto"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshingPerformance ? "animate-spin" : ""}`} />
+            {refreshingPerformance ? "Refreshing..." : "Refresh All"}
+          </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Total Referrals
-              </CardTitle>
-              <Users className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.totalReferrals}
+      {/* ===== PERFORMANCE METRICS SECTION (moved from dashboard) ===== */}
+      <div>
+        <div className="flex flex-col gap-4 mb-4 sm:mb-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Performance Metrics</h2>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-full sm:w-[180px] bg-white border-gray-300 text-gray-900">
+                <SelectValue placeholder="Select date range" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="Yesterday" className="text-gray-900">
+                  Yesterday
+                </SelectItem>
+                <SelectItem value="Last 7 days" className="text-gray-900">
+                  Last 7 days
+                </SelectItem>
+                <SelectItem value="Last 30 days" className="text-gray-900">
+                  Last 30 days
+                </SelectItem>
+                <SelectItem value="Last 6 months" className="text-gray-900">
+                  Last 6 months
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mb-4 text-xs sm:text-sm text-gray-600 space-y-1">
+          <div className="break-words">Current Date Range: {performanceData.currentDateRange}</div>
+          <div className="break-words">Previous Period: {performanceData.previousPeriod}</div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Conversions Card */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <CardTitle className="text-gray-900">Conversions</CardTitle>
+                <Users className="h-5 w-5 text-gray-600" />
               </div>
-              <p className="text-xs text-muted-foreground">
-                {stats.conversionRate.toFixed(1)}% conversion rate
-              </p>
+              <div className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+                {performanceData.conversions}
+              </div>
+              <div className="flex items-center text-green-600 mb-4">
+                <TrendingUp className="h-4 w-4 mr-1 flex-shrink-0" />
+                <span className="text-sm sm:text-base">
+                  {performanceData.conversionChange >= 0 ? "+" : ""}
+                  {performanceData.conversionChange}% from previous period
+                </span>
+              </div>
+              {/* Bar Chart */}
+              <div className="h-32 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={conversionBarData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
+                    <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} />
+                    <YAxis stroke="#9ca3af" fontSize={10} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "1px solid #374151",
+                        borderRadius: "6px",
+                        color: "#fff",
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Total Earnings
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                ${stats.totalCommissions.toFixed(2)}
+
+          {/* Commission Earned Card */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <CardTitle className="text-gray-900">Commission Earned</CardTitle>
+                <DollarSign className="h-5 w-5 text-gray-600" />
               </div>
-              <p className="text-xs text-muted-foreground">
-                ${stats.pendingCommissions.toFixed(2)} pending
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Conversion Rate
-              </CardTitle>
-              <Target className="h-4 w-4 text-purple-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.conversionRate.toFixed(1)}%
+              <div className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+                ${commissionAmount}
+                {isPending && (
+                  <span className="text-base sm:text-lg font-normal text-gray-500 ml-2">
+                    (Pending)
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">Last 30 days</p>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Active Codes
-              </CardTitle>
-              <TrendingUp className="h-4 w-4 text-orange-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {
-                  referralCodes.filter(
-                    (c) =>
-                      c.isActive &&
-                      (!c.expiresAt || new Date(c.expiresAt) > new Date())
-                  ).length
-                }
+              <div className="flex items-center text-green-600 mb-4">
+                <TrendingUp className="h-4 w-4 mr-1 flex-shrink-0" />
+                <span className="text-sm sm:text-base">
+                  {performanceData.commissionChange >= 0 ? "+" : ""}
+                  {performanceData.commissionChange}% from previous period
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {referralCodes.length} total codes
+              {/* Bar Chart */}
+              <div className="h-32 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={commissionBarData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
+                    <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} />
+                    <YAxis stroke="#9ca3af" fontSize={10} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "1px solid #374151",
+                        borderRadius: "6px",
+                        color: "#fff",
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-gray-500 mt-4">
+                Pending commission can be subject to change due to returns and adjustments.
               </p>
             </CardContent>
           </Card>
         </div>
-      )}
+      </div>
 
-      {/* Main Content - Referral Codes List */}
-      <div className="space-y-6">
-        <div className="grid gap-6">
-          {referralCodes.length === 0 ? (
-            <Card className="shadow-sm">
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">
-                  No referral codes yet. Create your first referral code to get
-                  started!
+      {/* ===== REFERRAL STATS SECTION ===== */}
+      <div>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Referral Overview</h2>
+
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Total Referrals
+                </CardTitle>
+                <Users className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.totalReferrals}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.conversionRate.toFixed(1)}% conversion rate
                 </p>
               </CardContent>
             </Card>
-          ) : (
-            referralCodes.map((code) => (
-              <Card
-                key={code.id}
-                className="shadow-sm hover:shadow-md transition-shadow"
-              >
-                <CardHeader className="pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
-                        {code.code}
-                        {code.type === "COUPON" && (
-                          <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs">
-                            Allowance Code
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="mt-1">
-                        {code.type === "COUPON" ? (
-                          <>
-                            {code.commissionRate > 0 && `${code.commissionRate}% discount`}
-                            {code.freeShipping && (
-                              <span>
-                                {code.commissionRate > 0 && " + "}Free Shipping
-                              </span>
-                            )}
-                            {" • "}
-                          </>
-                        ) : (
-                          <>{code.commissionRate}% commission • </>
-                        )}
-                        {code.currentUses} uses
-                        {code.maxUses && ` / ${code.maxUses}`}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(code)}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          copyToClipboard(code.code, "Referral code")
-                        }
-                        className="px-3"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      {code.type !== "COUPON" ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditClick(code)}
-                            className="px-3 hover:bg-blue-50"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteClick(code.id, code.code)}
-                            className="px-3 text-destructive hover:text-destructive hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
-                      ) : (
-                        <div className="text-xs text-gray-500 italic">
-                          Admin-managed
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  {code.type === "COUPON" && code.description && (
-                    <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                      <p className="text-sm text-purple-900">{code.description}</p>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-                    <div className="space-y-1">
-                      <p className="font-medium text-gray-700">Created</p>
-                      <p className="text-muted-foreground">
-                        {new Date(code.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-medium text-gray-700">
-                        {code.type === "COUPON" ? "Discount" : "Commission"}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {code.commissionRate}%
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-medium text-gray-700">Expires</p>
-                      <p className="text-muted-foreground">
-                        {code.expiresAt
-                          ? parseDateOnly(code.expiresAt)?.toLocaleDateString() ??
-                            "Never"
-                          : "Never"}
-                      </p>
-                    </div>
-                    {code.type === "COUPON" && code.freeShipping && (
-                      <div className="space-y-1">
-                        <p className="font-medium text-gray-700">Shipping</p>
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-                          Free Shipping
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Total Earnings
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  ${stats.totalCommissions.toFixed(2)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  ${stats.pendingCommissions.toFixed(2)} pending
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Conversion Rate
+                </CardTitle>
+                <Target className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.conversionRate.toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground">Last 30 days</p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Active Tracking Codes
+                </CardTitle>
+                <TrendingUp className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {
+                    referralCodes.filter(
+                      (c) =>
+                        c.type !== "COUPON" &&
+                        c.isActive &&
+                        (!c.expiresAt || new Date(c.expiresAt) > new Date())
+                    ).length
+                  }
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {referralCodes.filter((c) => c.type !== "COUPON").length} total tracking codes
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ===== TRACKING CODES LIST (only tracking codes, not allowance/coupon codes) ===== */}
+      <div>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Your Tracking Codes</h2>
+        <div className="space-y-6">
+          <div className="grid gap-6">
+            {referralCodes.filter((c) => c.type !== "COUPON").length === 0 ? (
+              <Card className="shadow-sm">
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">
+                    No tracking codes yet. Create your first tracking code to get
+                    started!
+                  </p>
                 </CardContent>
               </Card>
-            ))
-          )}
+            ) : (
+              referralCodes
+                .filter((code) => code.type !== "COUPON")
+                .map((code) => (
+                <Card
+                  key={code.id}
+                  className="shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+                          {code.code}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          {code.commissionRate}% commission • {code.currentUses} uses
+                          {code.maxUses && ` / ${code.maxUses}`}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(code)}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            copyToClipboard(code.code, "Tracking code")
+                          }
+                          className="px-3"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditClick(code)}
+                          className="px-3 hover:bg-blue-50"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteClick(code.id, code.code)}
+                          className="px-3 text-destructive hover:text-destructive hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                      <div className="space-y-1">
+                        <p className="font-medium text-gray-700">Created</p>
+                        <p className="text-muted-foreground">
+                          {new Date(code.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-medium text-gray-700">Commission</p>
+                        <p className="text-muted-foreground">
+                          {code.commissionRate}%
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-medium text-gray-700">Expires</p>
+                        <p className="text-muted-foreground">
+                          {code.expiresAt
+                            ? parseDateOnly(code.expiresAt)?.toLocaleDateString() ??
+                              "Never"
+                            : "Never"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

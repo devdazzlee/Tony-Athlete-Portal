@@ -61,7 +61,6 @@ export default function SystemSettingsPage() {
       requireApproval: true,
       maxAffiliates: 1000,
       allowSelfReferrals: false,
-      tierBasedCommissions: true,
     },
     // Security Settings
     security: {
@@ -118,7 +117,6 @@ export default function SystemSettingsPage() {
           requireApproval: true,
           maxAffiliates: 1000,
           allowSelfReferrals: false,
-          tierBasedCommissions: true,
         },
         security: data.security || {
           twoFactorRequired: false,

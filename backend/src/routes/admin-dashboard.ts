@@ -246,21 +246,29 @@ router.get(
             },
             select: { code: true },
           });
+          // Combine all codes and normalize for case-insensitive matching
+          const rawCodes = [
+            ...affiliateCoupons.map(c => c.code),
+            ...affiliateReferralCodes.map(r => r.code),
+          ];
           const affiliateCodes = [
-            ...affiliateCoupons.map(c => c.code.toUpperCase()),
-            ...affiliateReferralCodes.map(r => r.code.toUpperCase()),
+            ...new Set([
+              ...rawCodes,
+              ...rawCodes.map(c => c.toUpperCase()),
+              ...rawCodes.map(c => c.toLowerCase()),
+            ])
           ];
           
-          // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
-          const ordersWhere = affiliateCodes.length > 0 
+          // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes (case-insensitive)
+          const ordersWhere = rawCodes.length > 0 
             ? {
                 affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes },
+                referralCode: { in: affiliateCodes, mode: "insensitive" as const },
                 ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
               }
             : {
                 affiliateId: affiliate.id,
-                referralCode: { in: [] },
+                referralCode: { in: [] as string[] },
                 ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
               };
 
@@ -304,10 +312,13 @@ router.get(
               "Unknown",
             email: (affiliate as any).user?.email || "No email",
             status: affiliate.status,
-            tier: affiliate.tier,
+            commissionRate: affiliate.commissionRate || 0,
+            spendingLimit: affiliate.spendingLimit || null,
             totalEarnings: earnings._sum.commissionAmount || 0,
             totalConversions: conversions,
             totalClicks: clicks,
+            discountCodes: affiliateCoupons.map(c => c.code),
+            referralCodes: affiliateReferralCodes.map(r => r.code),
             lastActivity: lastLoginActivity?.createdAt
               ? lastLoginActivity.createdAt
                   .toISOString()

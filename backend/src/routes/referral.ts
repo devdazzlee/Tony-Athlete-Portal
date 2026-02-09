@@ -52,6 +52,8 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
       type: "COUPON", // Add type to distinguish
       description: coupon.description,
       freeShipping: coupon.freeShipping,
+      syncedToShopify: coupon.syncedToShopify || false,
+      syncedStores: coupon.syncedStores || [],
     }));
 
     // Combine both types of codes

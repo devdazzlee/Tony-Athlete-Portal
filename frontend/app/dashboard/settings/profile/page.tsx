@@ -45,7 +45,6 @@ interface UserProfile {
     id: string;
     companyName: string;
     website: string;
-    tier: string;
     status: string;
   } | null;
 }
@@ -265,9 +264,6 @@ export default function ProfileSettingsPage() {
                 <Badge>{profile.user.role}</Badge>
                 {profile.affiliate && (
                   <>
-                    <Badge variant="outline">
-                      {profile.affiliate.tier} Tier
-                    </Badge>
                     <Badge
                       className={
                         profile.affiliate.status === "ACTIVE"

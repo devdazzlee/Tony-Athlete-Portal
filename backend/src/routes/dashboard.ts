@@ -28,18 +28,25 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    // Get affiliate's discount codes (normalize for case-insensitive matching)
+    const affiliateCodesRaw = affiliate.coupons.map(c => c.code);
+    const affiliateCodes = [
+      ...new Set([
+        ...affiliateCodesRaw,
+        ...affiliateCodesRaw.map(c => c.toUpperCase()),
+        ...affiliateCodesRaw.map(c => c.toLowerCase()),
+      ])
+    ];
     
     // Build where clause for orders - must match affiliateId AND referralCode must be in affiliate's codes
     const ordersWhere = affiliateCodes.length > 0 
       ? {
           affiliateId: affiliate.id,
-          referralCode: { in: affiliateCodes },
+          referralCode: { in: affiliateCodes, mode: "insensitive" as const },
         }
       : {
           affiliateId: affiliate.id,
-          referralCode: { in: [] }, // Empty array will return no results
+          referralCode: { in: [] as string[] },
         };
 
     // Get affiliate clicks and orders (conversions) from the correct tables
@@ -228,16 +235,23 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
+    // Get affiliate's discount codes (normalize for case-insensitive matching)
+    const affiliateCodesRaw = affiliate.coupons.map(c => c.code);
+    const affiliateCodes = [
+      ...new Set([
+        ...affiliateCodesRaw,
+        ...affiliateCodesRaw.map(c => c.toUpperCase()),
+        ...affiliateCodesRaw.map(c => c.toLowerCase()),
+      ])
+    ];
     const ordersWhere = affiliateCodes.length > 0 
       ? {
           affiliateId: affiliate.id,
-          referralCode: { in: affiliateCodes },
+          referralCode: { in: affiliateCodes, mode: "insensitive" as const },
         }
       : {
           affiliateId: affiliate.id,
-          referralCode: { in: [] },
+          referralCode: { in: [] as string[] },
         };
 
     // Get real-time metrics

@@ -75,7 +75,6 @@ interface Affiliate {
   id: string;
   name: string;
   email: string;
-  tier: string;
   status: string;
   referralCodes: ReferralCode[];
 }
@@ -803,7 +802,7 @@ export default function OffersManagementPage() {
                   <SelectContent>
                     {affiliates.map((affiliate) => (
                       <SelectItem key={affiliate.id} value={affiliate.id}>
-                        {affiliate.name} ({affiliate.email}) - {affiliate.tier}
+                        {affiliate.name} ({affiliate.email})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -862,8 +861,7 @@ export default function OffersManagementPage() {
                               {selectedAffiliate.name}
                             </p>
                             <p className="text-sm text-blue-700">
-                              {selectedAffiliate.email} •{" "}
-                              {selectedAffiliate.tier}
+                              {selectedAffiliate.email}
                             </p>
                           </div>
                           <Badge
@@ -998,7 +996,7 @@ export default function OffersManagementPage() {
                   <SelectContent>
                     {affiliates.map((affiliate) => (
                       <SelectItem key={affiliate.id} value={affiliate.id}>
-                        {affiliate.name} ({affiliate.email}) - {affiliate.tier}
+                        {affiliate.name} ({affiliate.email})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1023,8 +1021,7 @@ export default function OffersManagementPage() {
                               {selectedAffiliate.name}
                             </p>
                             <p className="text-sm text-blue-700">
-                              {selectedAffiliate.email} •{" "}
-                              {selectedAffiliate.tier}
+                              {selectedAffiliate.email}
                             </p>
                           </div>
                           <Badge

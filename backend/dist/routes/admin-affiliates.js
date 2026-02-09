@@ -45,13 +45,11 @@ const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
-        const { page = 1, limit = 20, status, tier, search } = req.query;
+        const { page = 1, limit = 20, status, search } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const where = {};
         if (status)
             where.status = status;
-        if (tier)
-            where.tier = tier;
         const affiliates = await prisma.affiliateProfile.findMany({
             where,
             include: {
@@ -64,18 +62,6 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                         phone: true,
                         createdAt: true,
                     },
-                },
-                tierAssignments: {
-                    where: {
-                        status: "ACTIVE",
-                    },
-                    include: {
-                        tier: true,
-                    },
-                    orderBy: {
-                        assignedAt: "desc",
-                    },
-                    take: 1,
                 },
             },
             orderBy: { createdAt: "desc" },
@@ -125,8 +111,6 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                     createdAt: true,
                 },
             });
-            const activeTierAssignment = affiliate.tierAssignments?.[0];
-            const tierName = activeTierAssignment?.tier?.name || affiliate.tier;
             return {
                 id: affiliate.id,
                 name: `${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() ||
@@ -134,9 +118,8 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                 email: affiliate.user?.email || "No email",
                 joinDate: affiliate.createdAt.toISOString().split("T")[0],
                 status: affiliate.status,
-                tier: tierName,
-                tierId: activeTierAssignment?.tierId || null,
                 commissionRate: affiliate.commissionRate || null,
+                spendingLimit: affiliate.spendingLimit || null,
                 totalEarnings: earnings._sum.commissionAmount || 0,
                 totalClicks: clicks,
                 totalConversions: conversions,
@@ -181,18 +164,6 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
                         phone: true,
                         createdAt: true,
                     },
-                },
-                tierAssignments: {
-                    where: {
-                        status: "ACTIVE",
-                    },
-                    include: {
-                        tier: true,
-                    },
-                    orderBy: {
-                        assignedAt: "desc",
-                    },
-                    take: 1,
                 },
             },
         });
@@ -258,13 +229,10 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
             },
         });
         const socialMedia = affiliate.socialMedia || {};
-        const activeTierAssignment = affiliate.tierAssignments?.[0];
-        const assignedTierId = activeTierAssignment?.tierId || null;
         res.json({
             affiliate: {
                 ...affiliate,
                 user: affiliate.user,
-                assignedTierId,
                 stats: {
                     totalEarnings: earnings._sum.commissionAmount || 0,
                     totalConversions: conversions,

@@ -10,6 +10,20 @@ const prisma = new PrismaClient();
 // Default commission rate (10%)
 const DEFAULT_COMMISSION_RATE = 0.10;
 
+/**
+ * Normalize affiliate codes to include all case variants for case-insensitive matching.
+ * Shopify may store discount codes with different casing than what we have in the DB.
+ */
+function normalizeCodesForMatching(codes: string[]): string[] {
+  return [
+    ...new Set([
+      ...codes,
+      ...codes.map(c => c.toUpperCase()),
+      ...codes.map(c => c.toLowerCase()),
+    ])
+  ];
+}
+
 // All routes require authentication
 router.use(authenticateToken);
 
@@ -242,9 +256,9 @@ router.get("/performance", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
-    if (affiliateCodes.length === 0) {
+    // Get affiliate's discount codes (case-insensitive matching)
+    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
+    if (affiliate.coupons.length === 0) {
       return res.json({
         conversions: 0,
         commissionEarned: "$0.00",
@@ -317,17 +331,17 @@ router.get("/performance", async (req: any, res) => {
     // Get commission rate
     const commissionRate = (affiliate.commissionRate || 10) / 100;
 
-    // Build where clauses - must match affiliateId AND referralCode must be in affiliate's codes
+    // Build where clauses - must match affiliateId AND referralCode must be in affiliate's codes (case-insensitive)
     const currentOrdersWhere = {
       affiliateId: affiliate.id,
-      referralCode: { in: affiliateCodes },
+      referralCode: { in: affiliateCodes, mode: "insensitive" as const },
       orderCreatedAt: { gte: startDate, lte: endDate },
       status: { not: "CANCELLED" },
     };
 
     const previousOrdersWhere = {
       affiliateId: affiliate.id,
-      referralCode: { in: affiliateCodes },
+      referralCode: { in: affiliateCodes, mode: "insensitive" as const },
       orderCreatedAt: { gte: previousStartDate, lte: previousEndDate },
       status: { not: "CANCELLED" },
     };
@@ -616,15 +630,15 @@ router.get("/orders", async (req: any, res) => {
     }
 
     // Get affiliate's discount codes (case-insensitive matching)
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
-    if (affiliateCodes.length === 0) {
+    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
+    if (affiliate.coupons.length === 0) {
       return res.json([]);
     }
 
     // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
     const whereClause: any = { 
       affiliateId: affiliate.id,
-      referralCode: { in: affiliateCodes },
+      referralCode: { in: affiliateCodes, mode: "insensitive" },
     };
     if (storeId && storeId !== "all") {
       whereClause.storeId = storeId;
@@ -697,22 +711,23 @@ router.get("/orders/:orderId", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = (await prisma.coupon.findMany({
+    // Get affiliate's discount codes (case-insensitive matching)
+    const rawCodes = (await prisma.coupon.findMany({
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
       },
     })).map(c => c.code);
+    const affiliateCodes = normalizeCodesForMatching(rawCodes);
 
-    if (affiliateCodes.length === 0) {
+    if (rawCodes.length === 0) {
       return res.status(404).json({ error: "Order not found" });
     }
 
     const order = await prisma.affiliateOrder.findFirst({
       where: {
         affiliateId: affiliate.id,
-        referralCode: { in: affiliateCodes },
+        referralCode: { in: affiliateCodes, mode: "insensitive" },
         orderId,
       },
     });
@@ -1051,9 +1066,9 @@ router.get("/commission-summary", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
-    if (affiliateCodes.length === 0) {
+    // Get affiliate's discount codes (case-insensitive matching)
+    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
+    if (affiliate.coupons.length === 0) {
       return res.json({
         currentMonth: {
           month: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
@@ -1070,10 +1085,10 @@ router.get("/commission-summary", async (req: any, res) => {
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes (case-insensitive)
     const currentMonthWhere = {
       affiliateId: affiliate.id,
-      referralCode: { in: affiliateCodes },
+      referralCode: { in: affiliateCodes, mode: "insensitive" as const },
       createdAt: { gte: currentMonthStart, lte: currentMonthEnd },
     };
 
@@ -1112,7 +1127,7 @@ router.get("/commission-summary", async (req: any, res) => {
 
       const monthWhere = {
         affiliateId: affiliate.id,
-        referralCode: { in: affiliateCodes },
+        referralCode: { in: affiliateCodes, mode: "insensitive" as const },
         createdAt: { gte: monthStart, lte: monthEnd },
       };
 
@@ -1212,9 +1227,9 @@ router.get("/shop", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes
-    const affiliateCodes = affiliate.coupons.map(c => c.code);
-    if (affiliateCodes.length === 0) {
+    // Get affiliate's discount codes (case-insensitive matching)
+    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
+    if (affiliate.coupons.length === 0) {
       return res.json({
         stores: [],
         orderStats: [],
@@ -1251,10 +1266,10 @@ router.get("/shop", async (req: any, res) => {
       })
     );
 
-    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
+    // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes (case-insensitive)
     const ordersWhere = {
       affiliateId: affiliate.id,
-      referralCode: { in: affiliateCodes },
+      referralCode: { in: affiliateCodes, mode: "insensitive" as const },
     };
 
     // Get recent orders (last 10)

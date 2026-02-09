@@ -122,7 +122,7 @@ export default function TeamOverviewPage() {
                   <TableHead>Member</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Tier</TableHead>
+                  <TableHead>Commission</TableHead>
                   <TableHead>Earnings</TableHead>
                 </TableRow>
               </TableHeader>
@@ -150,7 +150,7 @@ export default function TeamOverviewPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{member.tier}</Badge>
+                      {member.commissionRate || 0}%
                     </TableCell>
                     <TableCell className="font-medium">
                       ${(member.totalEarnings || 0).toFixed(2)}

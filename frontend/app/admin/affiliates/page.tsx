@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -54,6 +55,8 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  ShoppingBag,
+  AlertCircle,
 } from "lucide-react";
 import {
   Tooltip,
@@ -73,7 +76,6 @@ import { formatLastActivity, formatRelativeTime } from "@/lib/date-utils";
 import apiClient from "@/lib/api-client";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 import { AdminLoading } from "@/components/ui/loading";
-import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
@@ -81,9 +83,8 @@ interface Affiliate {
   email: string;
   joinDate: string;
   status: string;
-  tier: string; // Now contains the actual tier name from assignment, not just enum
-  tierId?: string | null; // Tier ID from assignment
   commissionRate?: number;
+  spendingLimit?: number | null;
   totalEarnings: number;
   totalClicks: number;
   totalConversions: number;
@@ -94,13 +95,13 @@ interface Affiliate {
 }
 
 export default function AffiliatesManagementPage() {
+  const router = useRouter();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tierFilter, setTierFilter] = useState("all");
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
   const [sortBy, setSortBy] = useState<"createdAt" | "name">("createdAt");
@@ -124,7 +125,6 @@ export default function AffiliatesManagementPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
-    tierId: "", // Store tier ID only - this is the source of truth
     commissionRate: 5,
     deliverablesNote: "",
     discountCode: "",
@@ -140,7 +140,6 @@ export default function AffiliatesManagementPage() {
     firstName: "",
     lastName: "",
     commissionRate: 10,
-    tierId: "", // Store tier ID only - this is the source of truth
     discountCode: "",
     discountValue: "10",
     instagram: "",
@@ -149,118 +148,14 @@ export default function AffiliatesManagementPage() {
   });
   const [existingDiscountCodes, setExistingDiscountCodes] = useState<any[]>([]);
   const [existingReferralCodes, setExistingReferralCodes] = useState<any[]>([]);
-  
-  // Fetch tiers from API
-  const { tiers, isLoading: tiersLoading, getTierBadgeColor } = useTiers();
-
-  // Helper function to map tier name to enum value (for backend compatibility)
-  const getTierEnumValue = (tierNameOrEnum: string): string => {
-    if (!tierNameOrEnum) return "BRONZE"; // Default fallback
-    
-    // If it's already a valid enum value, return it
-    const upperValue = tierNameOrEnum.toUpperCase();
-    if (["BRONZE", "SILVER", "GOLD", "PLATINUM"].includes(upperValue)) {
-      return upperValue;
-    }
-    
-    // Try to find matching tier by name
-    const tier = tiers.find(t => 
-      t.name.toLowerCase() === tierNameOrEnum.toLowerCase() ||
-      t.name.toUpperCase() === upperValue
-    );
-    
-    if (tier) {
-      // First try direct name mapping
-      const nameToEnum: Record<string, string> = {
-        "bronze": "BRONZE",
-        "silver": "SILVER",
-        "gold": "GOLD",
-        "platinum": "PLATINUM",
-      };
-      const lowerName = tier.name.toLowerCase();
-      if (nameToEnum[lowerName]) {
-        return nameToEnum[lowerName];
-      }
-      
-      // If name doesn't match, map by level
-      // Level 1 -> BRONZE, Level 2 -> SILVER, Level 3 -> GOLD, Level 4+ -> PLATINUM
-      const levelToEnum: Record<number, string> = {
-        1: "BRONZE",
-        2: "SILVER",
-        3: "GOLD",
-        4: "PLATINUM",
-      };
-      return levelToEnum[tier.level] || (tier.level >= 4 ? "PLATINUM" : "BRONZE");
-    }
-    
-    // Fallback: try direct mapping
-    const nameToEnum: Record<string, string> = {
-      "bronze": "BRONZE",
-      "silver": "SILVER",
-      "gold": "GOLD",
-      "platinum": "PLATINUM",
-    };
-    const lowerName = tierNameOrEnum.toLowerCase();
-    return nameToEnum[lowerName] || "BRONZE"; // Safe default
-  };
-
-  // Helper function to get tier name from enum value
-  const getTierNameFromEnum = (tierNameOrEnum: string): string => {
-    if (!tierNameOrEnum) return "Select tier";
-    
-    // If it's already a tier name (from backend assignment), return it directly
-    // Check if it matches any tier name exactly
-    const exactMatch = tiers.find(t => 
-      t.name.toUpperCase() === tierNameOrEnum.toUpperCase()
-    );
-    if (exactMatch) return exactMatch.name;
-    
-    // If it's an enum value, try to find matching tier
-    const tierByEnum = tiers.find(t => 
-      getTierEnumValue(t.name) === tierNameOrEnum.toUpperCase()
-    );
-    if (tierByEnum) return tierByEnum.name;
-    
-    // Fallback: return the value itself (might be a custom tier name)
-    return tierNameOrEnum;
-  };
-
-  // Helper to get tier ID from enum value (for Select component)
-  const getTierIdFromEnum = (enumValue: string): string => {
-    if (!enumValue) return "";
-    const tier = tiers.find(t => 
-      getTierEnumValue(t.name) === enumValue.toUpperCase() ||
-      t.name.toUpperCase() === enumValue.toUpperCase()
-    );
-    return tier ? tier.id : "";
-  };
-
-  // Helper to get enum value from tier ID
-  const getEnumValueFromTierId = (tierId: string): string => {
-    if (!tierId) return "";
-    const tier = tiers.find(t => t.id === tierId);
-    return tier ? getTierEnumValue(tier.name) : "";
-  };
-
-  // Set default tier when tiers are loaded
-  useEffect(() => {
-    if (tiers.length > 0 && !createForm.tierId) {
-      const lowestTier = tiers.sort((a, b) => a.level - b.level)[0];
-      if (lowestTier) {
-        setCreateForm(prev => ({ ...prev, tierId: lowestTier.id }));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tiers]);
 
   useEffect(() => {
     fetchAffiliates();
-  }, [statusFilter, tierFilter, currentPage]);
+  }, [statusFilter, currentPage]);
 
   const filtersActive =
     searchQuery.trim() !== "" ||
     statusFilter !== "all" ||
-    tierFilter !== "all" ||
     fromDate !== undefined ||
     toDate !== undefined ||
     sortBy !== "createdAt" ||
@@ -269,7 +164,6 @@ export default function AffiliatesManagementPage() {
   const handleResetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
-    setTierFilter("all");
     setFromDate(undefined);
     setToDate(undefined);
     setSortBy("createdAt");
@@ -277,20 +171,14 @@ export default function AffiliatesManagementPage() {
     setCurrentPage(1);
   };
 
-  const fetchAffiliates = async (overrideStatus?: string, overrideTier?: string) => {
+  const fetchAffiliates = async (overrideStatus?: string) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
       const status = overrideStatus !== undefined ? overrideStatus : statusFilter;
-      const tier = overrideTier !== undefined ? overrideTier : tierFilter;
       
       if (status !== "all")
         params.append("status", status.toUpperCase());
-      if (tier !== "all") {
-        // Convert tier name to enum value for backend
-        const tierEnumValue = getTierEnumValue(tier);
-        params.append("tier", tierEnumValue);
-      }
       params.append("limit", "500");
 
       const response = await apiClient.get(
@@ -321,17 +209,12 @@ export default function AffiliatesManagementPage() {
 
     setIsCreating(true);
     try {
-      await apiClient.post("/admin/affiliates/create", {
+      const createResponse = await apiClient.post("/admin/affiliates/create", {
         email: createForm.email,
         password: createForm.password,
         firstName: createForm.firstName,
         lastName: createForm.lastName,
         commissionRate: createForm.commissionRate,
-        tier: (() => {
-          const selectedTier = tiers.find((t) => t.id === createForm.tierId);
-          return selectedTier ? getTierEnumValue(selectedTier.name) : "BRONZE";
-        })(),
-        tierId: createForm.tierId || undefined,
         discountCode: createForm.discountCode || undefined,
         discountValue: createForm.discountValue
           ? parseFloat(createForm.discountValue)
@@ -343,19 +226,23 @@ export default function AffiliatesManagementPage() {
           : undefined,
       });
 
-      toast.success("Affiliate created successfully");
+      // Show appropriate success message with Shopify sync status
+      const syncData = createResponse.data?.shopifySync;
+      if (syncData?.synced) {
+        toast.success(`Affiliate created & discount code synced to Shopify (${syncData.stores.length} store${syncData.stores.length > 1 ? "s" : ""})`);
+      } else if (syncData?.errors?.length > 0) {
+        toast.warning(`Affiliate created but Shopify sync failed: ${syncData.errors.join("; ")}`);
+      } else {
+        toast.success(createResponse.data?.message || "Affiliate created successfully");
+      }
         
         // Reset form first
-        const lowestTier = tiers.length > 0 
-          ? tiers.sort((a, b) => a.level - b.level)[0]
-          : null;
         setCreateForm({
           email: "",
           password: "",
           firstName: "",
           lastName: "",
           commissionRate: 10,
-          tierId: lowestTier ? lowestTier.id : "",
           discountCode: "",
           discountValue: "10",
           instagram: "",
@@ -375,12 +262,11 @@ export default function AffiliatesManagementPage() {
         setToDate(undefined);
         setCurrentPage(1);
         setStatusFilter("all");
-        setTierFilter("all");
         
         // Fetch with explicit "all" filters to ensure we get the new affiliate
         // Small delay to ensure dialog closes and state updates
         setTimeout(() => {
-          fetchAffiliates("all", "all");
+          fetchAffiliates("all");
         }, 150);
     } catch (error: any) {
       console.error("Error creating affiliate:", error);
@@ -418,27 +304,8 @@ export default function AffiliatesManagementPage() {
   const handleEditAffiliate = async (affiliate: Affiliate) => {
     setSelectedAffiliate(affiliate);
     
-    // First, try to find tier by exact name match (for custom tiers)
-    let matchingTier = tiers.find(t => 
-      t.name.toUpperCase() === affiliate.tier.toUpperCase()
-    );
-    
-    // If not found by name, convert to enum and find by enum value
-    if (!matchingTier) {
-      const tierEnumValue = getTierEnumValue(affiliate.tier);
-      // Find all tiers that map to this enum value
-      const matchingTiers = tiers.filter(t => 
-        getTierEnumValue(t.name) === tierEnumValue
-      );
-      // If multiple tiers match, prefer the one with matching name, otherwise take first
-      matchingTier = matchingTiers.find(t => 
-        t.name.toUpperCase() === affiliate.tier.toUpperCase()
-      ) || matchingTiers[0];
-    }
-    
     setEditForm({
       status: affiliate.status.toUpperCase(),
-      tierId: matchingTier?.id || "",
       commissionRate: affiliate.commissionRate || 5,
       deliverablesNote: "",
       discountCode: "",
@@ -455,13 +322,10 @@ export default function AffiliatesManagementPage() {
       const data = response.data;
       const socialMedia = data.affiliate?.socialMedia || {};
       setSelectedAffiliateDetails(data.affiliate);
-        
-      // Use assignedTierId from backend if available, otherwise use the matching tier we found
-      const tierIdToUse = data.affiliate?.assignedTierId || matchingTier?.id || "";
       
       setEditForm((prev) => ({
         ...prev,
-        tierId: tierIdToUse,
+        commissionRate: data.affiliate?.commissionRate || prev.commissionRate,
         deliverablesNote: data.affiliate?.deliverablesNote || "",
         instagram: socialMedia.instagram || "",
         tiktok: socialMedia.tiktok || "",
@@ -490,21 +354,10 @@ export default function AffiliatesManagementPage() {
         });
       }
 
-      // Update tier and commission rate
-      // Get the selected tier to compute enum value
-      const selectedTier = tiers.find(t => t.id === editForm.tierId);
-      const currentTierEnum = getTierEnumValue(selectedAffiliate.tier);
-      const newTierEnum = selectedTier ? getTierEnumValue(selectedTier.name) : currentTierEnum;
-      
-      if (
-        newTierEnum !== currentTierEnum ||
-        editForm.commissionRate !== (selectedAffiliate.commissionRate || 5) ||
-        editForm.tierId // Also update if tierId changed (for custom tiers)
-      ) {
+      // Update commission rate
+      if (editForm.commissionRate !== (selectedAffiliate.commissionRate || 5)) {
         try {
           await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/tier`, {
-            tier: newTierEnum,
-            tierId: editForm.tierId || undefined,
             commissionRate: editForm.commissionRate,
           });
         } catch (e: any) {
@@ -534,7 +387,7 @@ export default function AffiliatesManagementPage() {
             }
           }
 
-          throw new Error(errorData?.error || errorData?.message || "Failed to update tier");
+          throw new Error(errorData?.error || errorData?.message || "Failed to update commission rate");
         }
       }
 
@@ -546,13 +399,21 @@ export default function AffiliatesManagementPage() {
         }
       );
 
-      // Create discount code if provided
+      // Create discount code if provided (auto-syncs to Shopify)
       if (editForm.discountCode && editForm.discountValue) {
-        await apiClient.post(`/admin/affiliates/${selectedAffiliate.id}/discount-code`, {
+        const codeResponse = await apiClient.post(`/admin/affiliates/${selectedAffiliate.id}/discount-code`, {
           code: editForm.discountCode,
           discount: editForm.discountValue,
           expiresAt: editForm.discountExpiresAt || undefined,
         });
+
+        // Show Shopify sync status
+        const syncData = codeResponse.data?.shopifySync;
+        if (syncData?.synced) {
+          toast.success(`Discount code "${editForm.discountCode}" synced to Shopify (${syncData.stores.length} store${syncData.stores.length > 1 ? "s" : ""})`);
+        } else if (syncData?.errors?.length > 0) {
+          toast.warning(`Code created but Shopify sync failed: ${syncData.errors.join("; ")}`);
+        }
 
         // Refresh discount codes list after successful creation
         const refreshResponse = await apiClient.get(
@@ -657,16 +518,6 @@ export default function AffiliatesManagementPage() {
       );
     }
 
-    // Filter by tier - compare tier names (handle both enum values and tier names)
-    if (tierFilter !== "all") {
-      result = result.filter((aff) => {
-        const affiliateTierName = getTierNameFromEnum(aff.tier);
-        // Compare with tier filter (which is a tier name from dropdown)
-        return affiliateTierName.toLowerCase() === tierFilter.toLowerCase() ||
-               getTierEnumValue(affiliateTierName) === getTierEnumValue(tierFilter);
-      });
-    }
-
     if (fromDate) {
       const start = new Date(fromDate);
       start.setHours(0, 0, 0, 0);
@@ -702,7 +553,7 @@ export default function AffiliatesManagementPage() {
     }
 
     return result;
-  }, [affiliates, searchQuery, tierFilter, fromDate, toDate, sortBy, sortOrder, tiers]);
+  }, [affiliates, searchQuery, fromDate, toDate, sortBy, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAffiliates.length / PAGE_SIZE));
 
@@ -832,14 +683,14 @@ export default function AffiliatesManagementPage() {
               Filters
             </CardTitle>
             <CardDescription>
-              Refine the affiliate list by name, status, or tier.
+              Refine the affiliate list by name, status, or date.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-              <div className="md:col-span-6 lg:col-span-5 space-y-1">
+              <div className="md:col-span-6 lg:col-span-6 space-y-1">
                 <Label>Search</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -855,33 +706,7 @@ export default function AffiliatesManagementPage() {
                 </div>
               </div>
 
-              <div className="md:col-span-3 lg:col-span-3 space-y-1">
-                <Label>Tier</Label>
-                <Select
-                  value={tierFilter}
-                  onValueChange={(value) => {
-                    setTierFilter(value);
-                    setCurrentPage(1);
-                  }}
-                >
-                  <SelectTrigger className="h-11 rounded-lg w-full px-4">
-                    <SelectValue placeholder="All tiers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    {tiers
-                      .filter((tier) => tier.status === "ACTIVE")
-                      .sort((a, b) => a.level - b.level)
-                      .map((tier) => (
-                        <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
-                          {tier.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="md:col-span-3 lg:col-span-4 space-y-1">
+              <div className="md:col-span-6 lg:col-span-6 space-y-1">
                 <Label>Date range</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <DatePicker
@@ -997,7 +822,7 @@ export default function AffiliatesManagementPage() {
           {filteredAffiliates.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No affiliates found.{" "}
-              {statusFilter !== "all" || tierFilter !== "all"
+              {statusFilter !== "all"
                 ? "Try adjusting your filters."
                 : ""}
             </div>
@@ -1011,8 +836,8 @@ export default function AffiliatesManagementPage() {
                       <div className="space-y-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="font-medium text-base">{affiliate.name}</div>
-                            <div className="text-sm text-muted-foreground">{affiliate.email}</div>
+                            <div className="font-medium text-base">{affiliate.name || "No Name"}</div>
+                            <div className="text-sm text-muted-foreground">{affiliate.email || "No email"}</div>
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1024,6 +849,12 @@ export default function AffiliatesManagementPage() {
                               <DropdownMenuItem onClick={() => handleEditAffiliate(affiliate)}>
                                 <Edit className="w-4 h-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => router.push(`/admin/commissions?affiliateId=${affiliate.id}`)}
+                              >
+                                <DollarSign className="w-4 h-4 mr-2" />
+                                View Transactions
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDeleteClick(affiliate.id, affiliate.name)}
@@ -1042,20 +873,18 @@ export default function AffiliatesManagementPage() {
                             <div className="mt-1">{getStatusBadge(affiliate.status)}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Tier:</span>
-                            <div className="mt-1">
-                              <Badge variant="outline" className={getTierBadgeColor(getTierNameFromEnum(affiliate.tier))}>
-                                {getTierNameFromEnum(affiliate.tier)}
-                              </Badge>
-                            </div>
+                            <span className="text-muted-foreground">Commission:</span>
+                            <div className="mt-1 font-medium">{affiliate.commissionRate || 0}%</div>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Earnings:</span>
                             <div className="mt-1 font-medium">${affiliate.totalEarnings.toFixed(2)}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Conversions:</span>
-                            <div className="mt-1 font-medium">{affiliate.totalConversions}</div>
+                            <span className="text-muted-foreground">Allowance:</span>
+                            <div className="mt-1 font-medium">
+                              {affiliate.spendingLimit ? `$${Number(affiliate.spendingLimit).toFixed(2)}` : "—"}
+                            </div>
                           </div>
                         </div>
                         
@@ -1075,9 +904,9 @@ export default function AffiliatesManagementPage() {
                     <TableRow>
                       <TableHead>Affiliate</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Tier</TableHead>
+                      <TableHead>Commission</TableHead>
+                      <TableHead>Allowance</TableHead>
                       <TableHead>Earnings</TableHead>
-                      <TableHead>Conversions</TableHead>
                       <TableHead>Last Activity</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -1087,22 +916,22 @@ export default function AffiliatesManagementPage() {
                       <TableRow key={affiliate.id}>
                         <TableCell>
                           <div>
-                            <div className="font-medium">{affiliate.name}</div>
+                            <div className="font-medium">{affiliate.name || "No Name"}</div>
                             <div className="text-sm text-muted-foreground">
-                              {affiliate.email}
+                              {affiliate.email || "No email"}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(affiliate.status)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={getTierBadgeColor(getTierNameFromEnum(affiliate.tier))}>
-                            {getTierNameFromEnum(affiliate.tier)}
-                          </Badge>
+                        <TableCell className="font-medium">
+                          {affiliate.commissionRate || 0}%
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {affiliate.spendingLimit ? `$${Number(affiliate.spendingLimit).toFixed(2)}` : "—"}
                         </TableCell>
                         <TableCell className="font-medium">
                           ${affiliate.totalEarnings.toFixed(2)}
                         </TableCell>
-                        <TableCell>{affiliate.totalConversions}</TableCell>
                         <TableCell className="text-sm">
                           <TooltipProvider>
                             <Tooltip>
@@ -1132,6 +961,12 @@ export default function AffiliatesManagementPage() {
                               >
                                 <Edit className="w-4 h-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => router.push(`/admin/commissions?affiliateId=${affiliate.id}`)}
+                              >
+                                <DollarSign className="w-4 h-4 mr-2" />
+                                View Transactions
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() =>
@@ -1184,7 +1019,7 @@ export default function AffiliatesManagementPage() {
           <DialogHeader>
             <DialogTitle>Edit Affiliate</DialogTitle>
             <DialogDescription>
-              Update affiliate status, tier, and commission rate
+              Update affiliate status, commission rate, and allowance
             </DialogDescription>
           </DialogHeader>
           {selectedAffiliate && (
@@ -1216,42 +1051,8 @@ export default function AffiliatesManagementPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="tier">Tier</Label>
-                <Select
-                  value={editForm.tierId}
-                  onValueChange={(tierId) => {
-                    setEditForm({ 
-                      ...editForm, 
-                      tierId: tierId
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue>
-                      {editForm.tierId 
-                        ? tiers.find(t => t.id === editForm.tierId)?.name || "Select tier"
-                        : "Select tier"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tiersLoading ? (
-                      <SelectItem value="" disabled>Loading tiers...</SelectItem>
-                    ) : (
-                      tiers
-                        .filter(tier => tier.status === "ACTIVE")
-                        .sort((a, b) => a.level - b.level)
-                        .map((tier) => (
-                          <SelectItem key={tier.id} value={tier.id}>
-                            {tier.name}
-                          </SelectItem>
-                        ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="commissionRate">
-                  Custom Commission Rate (%)
+                  Commission Rate (%)
                 </Label>
                 <Input
                   id="commissionRate"
@@ -1267,7 +1068,7 @@ export default function AffiliatesManagementPage() {
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Leave at tier default or set custom rate
+                  Set the commission rate for this affiliate
                 </p>
               </div>
               <div className="space-y-2">
@@ -1353,27 +1154,51 @@ export default function AffiliatesManagementPage() {
               {existingDiscountCodes.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-sm">Existing Discount Codes</Label>
-                  <div className="space-y-1.5 max-h-24 overflow-y-auto border rounded-md p-2 bg-muted/30">
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto border rounded-md p-2 bg-muted/30">
                     {existingDiscountCodes.map((code) => (
-                      <div key={code.id} className="flex items-center justify-between text-xs">
+                      <div key={code.id} className="flex items-center justify-between text-xs gap-2">
                         <div className="flex-1 min-w-0">
                           <span className="font-mono font-semibold">{code.code}</span>
                           <span className="text-muted-foreground ml-1.5">
                             - {code.discount}
                           </span>
+                          {code.description && (
+                            <span className="text-muted-foreground ml-1 italic truncate block text-[10px]">
+                              {code.description}
+                            </span>
+                          )}
                         </div>
-                        <Badge variant={code.status === "ACTIVE" ? "default" : "secondary"} className="text-xs px-1.5 py-0">
-                          {code.status}
-                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {code.syncedToShopify ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-300 text-green-700 bg-green-50">
+                              <ShoppingBag className="w-2.5 h-2.5 mr-0.5" />
+                              Shopify
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-300 text-yellow-700 bg-yellow-50">
+                              <AlertCircle className="w-2.5 h-2.5 mr-0.5" />
+                              Not Synced
+                            </Badge>
+                          )}
+                          <Badge variant={code.status === "ACTIVE" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                            {code.status}
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Create New Discount Code */}
+              {/* Create New Discount Code (auto-syncs to Shopify) */}
               <div className="space-y-2 border-t pt-3">
-                <Label className="text-sm font-semibold">Assign Discount Code</Label>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Assign Discount Code</Label>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-300 text-green-700 bg-green-50">
+                    <ShoppingBag className="w-2.5 h-2.5 mr-0.5" />
+                    Auto-syncs to Shopify
+                  </Badge>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="discountCode">Code</Label>
@@ -1427,7 +1252,8 @@ export default function AffiliatesManagementPage() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Leave empty to create a new discount code. Format: "10%" for percentage or "$10" for fixed amount.
+                  Enter a custom code and discount value. Use &quot;10%&quot; for percentage or &quot;$10&quot; for fixed amount.
+                  Codes are automatically synced to all connected Shopify stores.
                 </p>
               </div>
 
@@ -1500,16 +1326,12 @@ export default function AffiliatesManagementPage() {
           setCreateDialogOpen(open);
           if (!open) {
             // Reset form when dialog closes
-            const lowestTier = tiers.length > 0 
-              ? tiers.sort((a, b) => a.level - b.level)[0]
-              : null;
             setCreateForm({
               email: "",
               password: "",
               firstName: "",
               lastName: "",
               commissionRate: 10,
-              tierId: lowestTier ? lowestTier.id : "",
               discountCode: "",
               discountValue: "10",
               instagram: "",
@@ -1601,33 +1423,6 @@ export default function AffiliatesManagementPage() {
             <div className="space-y-4 border-t pt-4">
               <h4 className="font-semibold text-sm">Affiliate Settings</h4>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-tier">Tier</Label>
-                  <Select
-                    value={createForm.tierId}
-                    onValueChange={(tierId) => {
-                      setCreateForm({ ...createForm, tierId: tierId });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select tier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tiersLoading ? (
-                        <SelectItem value="" disabled>Loading tiers...</SelectItem>
-                      ) : (
-                        tiers
-                          .filter(tier => tier.status === "ACTIVE")
-                          .sort((a, b) => a.level - b.level)
-                          .map((tier) => (
-                            <SelectItem key={tier.id} value={tier.id}>
-                              {tier.name}
-                            </SelectItem>
-                          ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="create-commissionRate">Commission Rate (%)</Label>
                   <Input

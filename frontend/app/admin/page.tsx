@@ -2,10 +2,10 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { KPITile } from "@/components/dashboard/kpi-tile";
 import { LineChartComponent } from "@/components/charts/line-chart";
 import { BarChartComponent } from "@/components/charts/bar-chart";
-import { DoughnutChartComponent } from "@/components/charts/doughnut-chart";
 import { DataTable } from "@/components/dashboard/data-table";
 import {
   Card,
@@ -30,208 +30,16 @@ import {
   TrendingUp,
   Target,
   Calendar,
-  Download,
   Bell,
   ExternalLink,
-  UserPlus,
-  CreditCard,
-  BarChart3,
-  Send,
   RefreshCw,
+  Tag,
+  Link2,
 } from "lucide-react";
-import { getFullName } from "@/lib/auth-client";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
-import { config } from "@/config/config";
-import { formatLastActivity, formatRelativeTime } from "@/lib/date-utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { formatLastActivity } from "@/lib/date-utils";
 
-// Mock data for program overview - updated to match your chart design
-const programPerformanceData = [
-  {
-    date: "2024-01-01",
-    totalClicks: 120,
-    totalConversions: 8,
-    totalRevenue: 250,
-    totalCommissions: 75,
-  },
-  {
-    date: "2024-01-03",
-    totalClicks: 180,
-    totalConversions: 12,
-    totalRevenue: 420,
-    totalCommissions: 126,
-  },
-  {
-    date: "2024-01-05",
-    totalClicks: 200,
-    totalConversions: 18,
-    totalRevenue: 580,
-    totalCommissions: 174,
-  },
-  {
-    date: "2024-01-07",
-    totalClicks: 180,
-    totalConversions: 15,
-    totalRevenue: 470,
-    totalCommissions: 141,
-  },
-];
-
-const topAffiliatesData = [
-  {
-    affiliate: "John Doe",
-    clicks: 1250,
-    conversions: 89,
-    revenue: 2670,
-    commission: 801,
-  },
-  {
-    affiliate: "Sarah Wilson",
-    clicks: 980,
-    conversions: 67,
-    revenue: 2010,
-    commission: 603,
-  },
-  {
-    affiliate: "Mike Johnson",
-    clicks: 850,
-    conversions: 58,
-    revenue: 1740,
-    commission: 522,
-  },
-  {
-    affiliate: "Lisa Brown",
-    clicks: 720,
-    conversions: 49,
-    revenue: 1470,
-    commission: 441,
-  },
-  {
-    affiliate: "David Lee",
-    clicks: 680,
-    conversions: 46,
-    revenue: 1380,
-    commission: 414,
-  },
-];
-
-const trafficSourcesData = [
-  { name: "Social Media", value: 45, color: "#3b82f6" },
-  { name: "Email Marketing", value: 35, color: "#10b981" },
-  { name: "Direct Traffic", value: 15, color: "#f59e0b" },
-  { name: "Search Engines", value: 5, color: "#ef4444" },
-];
-
-const recentAffiliates = [
-  {
-    id: "AFF-001",
-    name: "John Doe",
-    email: "john@example.com",
-    joinDate: "2024-01-07",
-    status: "active",
-    totalEarnings: 1250.0,
-    lastActivity: "2024-01-07 14:30",
-  },
-  {
-    id: "AFF-002",
-    name: "Sarah Wilson",
-    email: "sarah@example.com",
-    joinDate: "2024-01-06",
-    status: "active",
-    totalEarnings: 980.0,
-    lastActivity: "2024-01-07 12:15",
-  },
-  {
-    id: "AFF-003",
-    name: "Mike Johnson",
-    email: "mike@example.com",
-    joinDate: "2024-01-05",
-    status: "pending",
-    totalEarnings: 0.0,
-    lastActivity: "2024-01-05 16:45",
-  },
-  {
-    id: "AFF-004",
-    name: "Lisa Brown",
-    email: "lisa@example.com",
-    joinDate: "2024-01-04",
-    status: "active",
-    totalEarnings: 720.0,
-    lastActivity: "2024-01-07 09:20",
-  },
-  {
-    id: "AFF-005",
-    name: "David Lee",
-    email: "david@example.com",
-    joinDate: "2024-01-03",
-    status: "suspended",
-    totalEarnings: 680.0,
-    lastActivity: "2024-01-03 18:10",
-  },
-];
-
-const pendingPayouts = [
-  {
-    id: "PAYOUT-001",
-    affiliate: "John Doe",
-    amount: 450.0,
-    method: "PayPal",
-    status: "pending",
-    requestDate: "2024-01-07",
-    email: "john@example.com",
-  },
-  {
-    id: "PAYOUT-002",
-    affiliate: "Sarah Wilson",
-    amount: 320.0,
-    method: "PayPal",
-    status: "pending",
-    requestDate: "2024-01-06",
-    email: "sarah@example.com",
-  },
-  {
-    id: "PAYOUT-003",
-    affiliate: "Mike Johnson",
-    amount: 280.0,
-    method: "PayPal",
-    status: "pending",
-    requestDate: "2024-01-05",
-    email: "mike@example.com",
-  },
-];
-
-const affiliateColumns = [
-  { key: "id", label: "ID", sortable: true },
-  { key: "name", label: "Name", sortable: true },
-  { key: "email", label: "Email", sortable: true },
-  { key: "joinDate", label: "Join Date", sortable: true },
-  {
-    key: "status",
-    label: "Status",
-    sortable: true,
-    render: (value: string) => (
-      <Badge
-        variant={
-          value === "active"
-            ? "default"
-            : value === "pending"
-            ? "secondary"
-            : "destructive"
-        }
-      >
-        {value.charAt(0).toUpperCase() + value.slice(1)}
-      </Badge>
-    ),
-  },
-  {
-    key: "totalEarnings",
-    label: "Total Earnings",
-    sortable: true,
-    render: (value: number) => `$${value.toFixed(2)}`,
-  },
-  { key: "lastActivity", label: "Last Activity", sortable: true },
-];
 
 const payoutColumns = [
   { key: "id", label: "Payout ID", sortable: true },
@@ -257,31 +65,6 @@ const payoutColumns = [
   { key: "email", label: "Email", sortable: true },
 ];
 
-const systemAlerts = [
-  {
-    type: "warning",
-    title: "3 Pending Affiliate Applications",
-    description:
-      "Review and approve new affiliate applications to grow your program.",
-    time: "2 hours ago",
-    color: "bg-yellow-100 border-yellow-200 text-yellow-800",
-  },
-  {
-    type: "info",
-    title: "Monthly Payout Processing",
-    description: "Process monthly payouts for 45 affiliates totaling $12,450.",
-    time: "1 day ago",
-    color: "bg-blue-100 border-blue-200 text-blue-800",
-  },
-  {
-    type: "success",
-    title: "Program Performance Up 15%",
-    description:
-      "Great month! Your affiliate program generated 15% more revenue than last month.",
-    time: "3 days ago",
-    color: "bg-green-100 border-green-200 text-green-800",
-  },
-];
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -341,9 +124,13 @@ interface AdminDashboardData {
     name: string;
     email: string;
     status: string;
-    tier: string;
+    commissionRate: number;
+    spendingLimit: number | null;
     totalEarnings: number;
     totalConversions: number;
+    totalClicks: number;
+    discountCodes: string[];
+    referralCodes: string[];
     lastActivity: Date | string | null;
   }>;
   pendingPayouts: Array<any>;
@@ -352,6 +139,7 @@ interface AdminDashboardData {
 
 export default function AdminDashboardPage() {
   const { user, isLoading } = useAuth();
+  const router = useRouter();
   const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(
     null
   );
@@ -562,36 +350,116 @@ export default function AdminDashboardPage() {
         />
       </div>
 
-      {/* Data Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DataTable
-          title="Top Affiliates"
-          description="Top performing affiliates this month"
-          columns={affiliateColumns}
-          data={dashboardData.topAffiliates.map((aff) => ({
-            id: aff.id,
-            name: aff.name,
-            email: aff.email,
-            joinDate: "-",
-            status: aff.status.toLowerCase(),
-            tier: aff.tier,
-            totalEarnings: aff.totalEarnings,
-            totalClicks: 0,
-            totalConversions: aff.totalConversions,
-            conversionRate: 0,
-            lastActivity: formatLastActivity(
-              aff.lastActivity?.toString() || "Never"
-            ),
-            paymentMethod: "PayPal",
-            country: "Unknown",
-          }))}
-          searchable={true}
-          filterable={true}
-          exportable={true}
-          pagination={true}
-          pageSize={5}
-        />
+      {/* Top Affiliates Detail Cards */}
+      <Card className="bg-white border-gray-200">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center text-gray-900">
+                <Users className="h-5 w-5 mr-2" />
+                Top Affiliates
+              </CardTitle>
+              <CardDescription>
+                Affiliate codes, earnings, and key info at a glance
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/admin/affiliates")}
+            >
+              View All
+              <ExternalLink className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {dashboardData.topAffiliates.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No affiliate data available yet.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {dashboardData.topAffiliates.map((aff) => (
+                <div
+                  key={aff.id}
+                  className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50/50 transition-colors"
+                >
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                    {/* Left: Name, Email, Status */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 truncate">
+                          {aff.name || "N/A"}
+                        </span>
+                        {getStatusBadge(aff.status.toLowerCase())}
+                      </div>
+                      <div className="text-sm text-muted-foreground truncate">
+                        {aff.email || "N/A"}
+                      </div>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        <span>Commission: <strong className="text-gray-900">{aff.commissionRate}%</strong></span>
+                        {aff.spendingLimit && (
+                          <span>Allowance: <strong className="text-gray-900">${Number(aff.spendingLimit).toFixed(2)}</strong></span>
+                        )}
+                        <span>Last active: {formatLastActivity(aff.lastActivity?.toString() || "Never")}</span>
+                      </div>
+                    </div>
 
+                    {/* Right: Earnings & Stats */}
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-gray-900">
+                          ${aff.totalEarnings.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {aff.totalConversions} conversions · {aff.totalClicks} clicks
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/admin/commissions?affiliateId=${aff.id}`)}
+                        title="View transactions"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Codes Row */}
+                  {(aff.discountCodes.length > 0 || aff.referralCodes.length > 0) && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                      {aff.discountCodes.map((code) => (
+                        <Badge
+                          key={`d-${code}`}
+                          variant="secondary"
+                          className="bg-emerald-50 text-emerald-700 border-emerald-200 font-mono text-xs"
+                        >
+                          <Tag className="h-3 w-3 mr-1" />
+                          {code}
+                        </Badge>
+                      ))}
+                      {aff.referralCodes.map((code) => (
+                        <Badge
+                          key={`r-${code}`}
+                          variant="secondary"
+                          className="bg-blue-50 text-blue-700 border-blue-200 font-mono text-xs"
+                        >
+                          <Link2 className="h-3 w-3 mr-1" />
+                          {code}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pending Payouts */}
         <DataTable
           title="Pending Payouts"
           description="Affiliate payout requests awaiting approval"
@@ -603,7 +471,6 @@ export default function AdminDashboardPage() {
           pagination={true}
           pageSize={5}
         />
-      </div>
 
       {/* System Alerts */}
       <Card className="bg-white border-gray-200">

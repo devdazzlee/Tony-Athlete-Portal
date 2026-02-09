@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -160,6 +161,8 @@ type FiltersState = {
 };
 
 export default function CommissionsPage() {
+  const searchParams = useSearchParams();
+  const urlAffiliateId = searchParams?.get("affiliateId") || "";
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [analytics, setAnalytics] = useState<CommissionAnalytics | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true); // For initial page load
@@ -178,7 +181,7 @@ export default function CommissionsPage() {
   );
   const [filters, setFilters] = useState<FiltersState>({
     status: "all",
-    affiliateId: "",
+    affiliateId: urlAffiliateId, // Pre-populate from URL if provided
     affiliateSearch: "", // Search by affiliate name or email
     dateFrom: undefined,
     dateTo: undefined,

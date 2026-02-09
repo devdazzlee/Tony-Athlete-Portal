@@ -11,25 +11,27 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { TrendingUp, RefreshCw, Users, DollarSign, Copy, Check, Target, Award, Tag } from "lucide-react";
+  TrendingUp,
+  RefreshCw,
+  Users,
+  DollarSign,
+  Copy,
+  Check,
+  Target,
+  Tag,
+  ShoppingBag,
+  AlertCircle,
+} from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { DashboardLoading } from "@/components/ui/loading";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [dateRange, setDateRange] = useState("Yesterday");
   const [isSavingSocials, setIsSavingSocials] = useState(false);
   const [copiedAllowanceCode, setCopiedAllowanceCode] = useState<string | null>(null);
   const copiedAllowanceCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,17 +46,6 @@ export default function DashboardPage() {
     }>,
     spendingLimit: "Not Set",
     commissionRate: 0 as number,
-  });
-  const [performanceData, setPerformanceData] = useState({
-    conversions: 0,
-    commissionEarned: "$0.00",
-    conversionChange: 0,
-    commissionChange: 0,
-    currentDateRange: "",
-    previousPeriod: "",
-    conversionChartData: [] as any[],
-    commissionChartData: [] as any[],
-    discountCodeUsage: 0,
   });
   const [commissionSummary, setCommissionSummary] = useState({
     currentMonth: {
@@ -71,26 +62,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const dateRangeMap: Record<string, string> = {
-    Yesterday: "yesterday",
-    "Last 7 days": "last_7_days",
-    "Last 30 days": "last_30_days",
-    "Last 6 months": "last_6_months",
-  };
-
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [profileRes, performanceRes, summaryRes, referralCodesRes, referralStatsRes] = await Promise.all([
+      const [profileRes, summaryRes, referralCodesRes, referralStatsRes] = await Promise.all([
         apiClient.get("/athlete/profile"),
-        apiClient.get(`/athlete/performance?dateRange=${dateRangeMap[dateRange] || "yesterday"}`),
         apiClient.get("/athlete/commission-summary").catch(() => ({ data: { currentMonth: { month: "", status: "Pending", totalOrders: 0, totalUnits: 0, commission: "$0.00" }, previousMonths: [] } })),
         apiClient.get("/referral/codes").catch(() => ({ data: [] })),
         apiClient.get("/referral/stats").catch(() => ({ data: null })),
       ]);
 
       setProfileData(profileRes.data);
-      setPerformanceData(performanceRes.data);
       setCommissionSummary(summaryRes.data);
       setReferralCodes(referralCodesRes.data);
       setReferralStats(referralStatsRes.data);
@@ -126,7 +108,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-  }, [dateRange]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -156,63 +138,78 @@ export default function DashboardPage() {
     return <DashboardLoading message="Loading dashboard..." />;
   }
 
-  // Generate bar chart data for KPI cards (mock data for now - will come from API)
-  const conversionBarData = performanceData.conversionChartData.length > 0 
-    ? performanceData.conversionChartData 
-    : Array.from({ length: 6 }, (_, i) => ({ name: `M${i + 1}`, value: Math.floor(Math.random() * 30) }));
-  
-  const commissionBarData = performanceData.commissionChartData.length > 0 
-    ? performanceData.commissionChartData 
-    : Array.from({ length: 6 }, (_, i) => ({ name: `M${i + 1}`, value: Math.floor(Math.random() * 100) }));
-
-  // Format commission earned to extract number and pending status
-  const commissionMatch = performanceData.commissionEarned.match(/\$([\d.]+)(?:\s*\(Pending\))?/);
-  const commissionAmount = commissionMatch ? commissionMatch[1] : "0.00";
-  const isPending = performanceData.commissionEarned.includes("Pending");
-
   return (
     <div className="p-4 sm:p-6 space-y-6 sm:space-y-8 w-full max-w-full overflow-x-hidden">
-      {/* Your Profile Section */}
+      {/* Quick Overview Stats */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">Your Profile</h1>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Monthly allowance & commission rate */}
-          <Card className="bg-white border-gray-200 overflow-hidden">
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <CardTitle className="text-gray-900">Monthly allowance &amp; commission rate</CardTitle>
-                  <div className="text-sm text-gray-500 mt-1">Your current monthly allowance and earnings rate</div>
-                </div>
-                <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
-                  <Award className="h-5 w-5 text-purple-700" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-gray-600">Monthly allowance</div>
-                    <DollarSign className="h-4 w-4 text-gray-500" />
-                  </div>
-                  <div className="mt-2 text-2xl font-bold text-gray-900">{profileData.spendingLimit}</div>
-                </div>
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-gray-700 hover:bg-gray-100"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+        </div>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-gray-600">Commission rate</div>
-                    <TrendingUp className="h-4 w-4 text-gray-500" />
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <div className="text-2xl font-bold text-gray-900">{profileData.commissionRate}%</div>
-                    <Badge className="bg-purple-100 text-purple-800 border-purple-200">Current</Badge>
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Commission Rate */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-500">Commission Rate</span>
+                <TrendingUp className="h-4 w-4 text-purple-500" />
               </div>
+              <div className="text-2xl font-bold text-gray-900">{profileData.commissionRate}%</div>
             </CardContent>
           </Card>
 
+          {/* Monthly Allowance */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-500">Monthly Allowance</span>
+                <DollarSign className="h-4 w-4 text-green-500" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900">{profileData.spendingLimit}</div>
+            </CardContent>
+          </Card>
+
+          {/* Total Referrals */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-500">Total Referrals</span>
+                <Users className="h-4 w-4 text-blue-500" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900">{referralStats?.totalReferrals || 0}</div>
+              <p className="text-xs text-gray-500 mt-1">{referralStats?.conversionRate?.toFixed(1) || 0}% conversion</p>
+            </CardContent>
+          </Card>
+
+          {/* Referral Earnings */}
+          <Card className="bg-white border-gray-200">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-500">Referral Earnings</span>
+                <Target className="h-4 w-4 text-orange-500" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900">${referralStats?.totalCommissions?.toFixed(2) || "0.00"}</div>
+              <p className="text-xs text-gray-500 mt-1">${referralStats?.pendingCommissions?.toFixed(2) || "0.00"} pending</p>
+            </CardContent>
+          </Card>
+        </div>
+
+      </div>
+
+      {/* Your Profile Section */}
+      <div>
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">Your Profile</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Social Media Card */}
           <Card className="bg-white border-gray-200">
             <CardHeader>
@@ -263,10 +260,10 @@ export default function DashboardPage() {
                 <div className="min-w-0">
                   <CardTitle className="text-gray-900 flex items-center gap-2">
                     <Tag className="h-5 w-5 text-purple-600" />
-                    Allowance &amp; Codes
+                    Your Discount Codes
                   </CardTitle>
                   <CardDescription className="text-gray-600">
-                    Your monthly allowance and personal discount codes
+                    Personal discount codes assigned to your account
                   </CardDescription>
                 </div>
                 <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
@@ -291,12 +288,14 @@ export default function DashboardPage() {
                         key={index}
                         className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100/60 transition-colors"
                       >
-                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-gray-900 font-bold font-mono text-base sm:text-lg break-all">
                               {code.code}
                             </div>
-                            <div className="text-xs text-gray-500 italic mt-1">Allowance Code</div>
+                            <div className="text-xs text-gray-500 italic mt-1">
+                              {code.description || "Discount Code"}
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
@@ -334,13 +333,18 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {code.description && (
-                          <div className="mt-3 text-sm text-gray-700 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                            {code.description}
-                          </div>
-                        )}
-
                         <div className="flex flex-wrap items-center gap-2 mt-3">
+                          {code.syncedToShopify ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-[11px]">
+                              <ShoppingBag className="w-3 h-3 mr-1" />
+                              Synced to Shopify
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-[11px]">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Not Synced
+                            </Badge>
+                          )}
                           {code.freeShipping && (
                             <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[11px]">
                               Free Shipping
@@ -355,225 +359,12 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500 text-sm bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                  No allowance codes assigned yet
+                  No discount codes assigned yet
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
-      </div>
-
-      {/* Your Performance Section */}
-      <div>
-        <div className="flex flex-col gap-4 mb-4 sm:mb-6">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Your Performance</h2>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-full sm:w-[180px] bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="Select date range" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-gray-200">
-                <SelectItem value="Yesterday" className="text-gray-900">
-                  Yesterday
-                </SelectItem>
-                <SelectItem value="Last 7 days" className="text-gray-900">
-                  Last 7 days
-                </SelectItem>
-                <SelectItem value="Last 30 days" className="text-gray-900">
-                  Last 30 days
-                </SelectItem>
-                <SelectItem value="Last 6 months" className="text-gray-900">
-                  Last 6 months
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-gray-700 hover:bg-gray-100 w-full sm:w-auto"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
-          </div>
-        </div>
-
-        <div className="mb-4 text-xs sm:text-sm text-gray-600 space-y-1">
-          <div className="break-words">Current Date Range: {performanceData.currentDateRange}</div>
-          <div className="break-words">Previous Period: {performanceData.previousPeriod}</div>
-        </div>
-
-        {/* Referral System Section - Integrated from Tracking */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="h-6 w-6 text-gray-900" />
-            <h3 className="text-xl font-bold text-gray-900">Referral System</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            {/* Referral Stats Summary */}
-            <Card className="bg-white border-gray-200 md:col-span-1">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500 uppercase">Total Referrals</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-gray-900">{referralStats?.totalReferrals || 0}</div>
-                <div className="flex items-center text-sm text-blue-600 mt-1">
-                  <Target className="h-4 w-4 mr-1" />
-                  {referralStats?.conversionRate.toFixed(1) || 0}% conversion rate
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border-gray-200 md:col-span-1">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500 uppercase">Referral Earnings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-gray-900">${referralStats?.totalCommissions.toFixed(2) || "0.00"}</div>
-                <div className="text-xs text-gray-500 mt-1">${referralStats?.pendingCommissions.toFixed(2) || "0.00"} pending</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border-gray-200 md:col-span-1">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500 uppercase">Active Links</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-gray-900">
-                  {referralCodes.filter(c => c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date())).length}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">{referralCodes.length} total codes</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {referralCodes.filter(c => c.type !== "COUPON").slice(0, 4).map((code: any) => (
-              <Card key={code.id} className="bg-white border-gray-200 hover:shadow-sm transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold font-mono text-gray-900">{code.code}</span>
-                        <Badge variant={code.isActive ? "default" : "secondary"} className="text-[10px]">
-                          {code.isActive ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        {code.commissionRate}% commission • {code.currentUses} uses
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(code.code, "Referral code")}
-                      className="h-9"
-                    >
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copy
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {referralCodes.filter(c => c.type !== "COUPON").length === 0 && (
-              <div className="lg:col-span-2 text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                <p className="text-gray-500">No referral tracking codes assigned yet.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Conversions Card */}
-          <Card className="bg-white border-gray-200">
-              <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <CardTitle className="text-gray-900">Conversions</CardTitle>
-                <Users className="h-5 w-5 text-gray-600" />
-              </div>
-              <div className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-                {performanceData.conversions}
-              </div>
-              <div className="flex items-center text-green-600 mb-4">
-                <TrendingUp className="h-4 w-4 mr-1 flex-shrink-0" />
-                <span className="text-sm sm:text-base">
-                  {performanceData.conversionChange >= 0 ? "+" : ""}
-                  {performanceData.conversionChange}% from previous period
-                </span>
-              </div>
-              {/* Bar Chart */}
-              <div className="h-32 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={conversionBarData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
-                    <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} />
-                    <YAxis stroke="#9ca3af" fontSize={10} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#1f2937",
-                        border: "1px solid #374151",
-                        borderRadius: "6px",
-                        color: "#fff",
-                      }}
-                    />
-                    <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-          {/* Commission Earned Card */}
-          <Card className="bg-white border-gray-200">
-              <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <CardTitle className="text-gray-900">Commission Earned</CardTitle>
-                <DollarSign className="h-5 w-5 text-gray-600" />
-              </div>
-              <div className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-                ${commissionAmount}
-                {isPending && (
-                  <span className="text-base sm:text-lg font-normal text-gray-500 ml-2">
-                    (Pending)
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center text-green-600 mb-4">
-                <TrendingUp className="h-4 w-4 mr-1 flex-shrink-0" />
-                <span className="text-sm sm:text-base">
-                  {performanceData.commissionChange >= 0 ? "+" : ""}
-                  {performanceData.commissionChange}% from previous period
-                </span>
-              </div>
-              {/* Bar Chart */}
-              <div className="h-32 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={commissionBarData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
-                    <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} />
-                    <YAxis stroke="#9ca3af" fontSize={10} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#1f2937",
-                        border: "1px solid #374151",
-                        borderRadius: "6px",
-                        color: "#fff",
-                      }}
-                    />
-                    <Bar dataKey="value" fill="#f97316" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-xs text-gray-500 mt-4">
-                Pending commission can be subject to change due to returns and adjustments.
-              </p>
-              </CardContent>
-            </Card>
-          </div>
       </div>
 
       {/* Commission Summary Section */}
@@ -631,59 +422,67 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500 mt-4">
               * Commission amounts are subject to pending returns.
             </p>
-              </CardContent>
-            </Card>
+          </CardContent>
+        </Card>
 
         {/* Previous Months */}
         <div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">Previous Months</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-            {commissionSummary.previousMonths.map((month: any, index: number) => (
-              <Card
-                key={index}
-                className="bg-white border-gray-200"
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-gray-900 text-base font-semibold">
-                      {month.month}
-                    </CardTitle>
-                    <Badge
-                      variant={month.status === "Approved" ? "default" : "secondary"}
-                      className={
-                        month.status === "Approved"
-                          ? "bg-green-500/20 text-green-600 border-green-500"
-                          : "bg-gray-500/20 text-gray-600 border-gray-500"
-                      }
-                    >
-                      {month.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Total Orders:</div>
-                      <div className="text-base font-semibold text-gray-900">
-                        {month.totalOrders}
+            {commissionSummary.previousMonths.length > 0 ? (
+              commissionSummary.previousMonths.map((month: any, index: number) => (
+                <Card
+                  key={index}
+                  className="bg-white border-gray-200"
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-gray-900 text-base font-semibold">
+                        {month.month}
+                      </CardTitle>
+                      <Badge
+                        variant={month.status === "Approved" ? "default" : "secondary"}
+                        className={
+                          month.status === "Approved"
+                            ? "bg-green-500/20 text-green-600 border-green-500"
+                            : "bg-gray-500/20 text-gray-600 border-gray-500"
+                        }
+                      >
+                        {month.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Total Orders:</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {month.totalOrders}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Total Units:</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {month.totalUnits}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Commission:</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {month.commission}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Total Units:</div>
-                      <div className="text-base font-semibold text-gray-900">
-                        {month.totalUnits}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Commission:</div>
-                      <div className="text-base font-semibold text-gray-900">
-                        {month.commission}
-                      </div>
-                    </div>
-                  </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Card className="col-span-full bg-white border-gray-200">
+                <CardContent className="py-8 text-center text-gray-500 text-sm">
+                  No previous month data available yet.
                 </CardContent>
               </Card>
-            ))}
+            )}
           </div>
         </div>
       </div>

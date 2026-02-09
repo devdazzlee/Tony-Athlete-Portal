@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTiers } from "@/hooks/useTiers";
 
 interface TrafficData {
   totalClicks: number;
@@ -31,7 +30,7 @@ interface TrafficData {
     clicks: number;
     conversions: number;
     rate: number;
-    tier: string;
+    commissionRate: number;
   }[];
   trafficByStore: {
     storeName: string;
@@ -42,7 +41,6 @@ interface TrafficData {
 
 export default function TrafficAnalysisPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [trafficData, setTrafficData] = useState<TrafficData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -81,7 +79,7 @@ export default function TrafficAnalysisPage() {
           clicks: aff.totalClicks || 0,
           conversions: aff.totalConversions || 0,
           rate: aff.totalClicks > 0 ? ((aff.totalConversions || 0) / aff.totalClicks) * 100 : 0,
-          tier: aff.tier || "BRONZE",
+          commissionRate: aff.commissionRate || 0,
         }))
         .sort((a: any, b: any) => b.clicks - a.clicks)
         .slice(0, 15);
@@ -104,16 +102,6 @@ export default function TrafficAnalysisPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const getTierBadge = (tierEnum: string) => {
-    // Try to find tier by enum value or name
-    const tier = getTierByName(tierEnum) || tiers.find(t => 
-      t.name.toUpperCase() === tierEnum.toUpperCase()
-    );
-    const tierName = tier ? tier.name : tierEnum;
-    const badgeColor = getTierBadgeColor(tierName);
-    return <Badge className={badgeColor}>{tierName}</Badge>;
   };
 
   if (authLoading || isLoading) {
@@ -252,7 +240,7 @@ export default function TrafficAnalysisPage() {
                 <TableRow>
                   <TableHead>Rank</TableHead>
                   <TableHead>Affiliate</TableHead>
-                  <TableHead>Tier</TableHead>
+                  <TableHead>Commission</TableHead>
                   <TableHead>Clicks</TableHead>
                   <TableHead>Conversions</TableHead>
                   <TableHead>Conv. Rate</TableHead>
@@ -272,7 +260,7 @@ export default function TrafficAnalysisPage() {
                         <p className="text-sm text-gray-500">{source.email}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{getTierBadge(source.tier)}</TableCell>
+                    <TableCell className="font-medium">{source.commissionRate}%</TableCell>
                     <TableCell className="font-semibold">{source.clicks.toLocaleString()}</TableCell>
                     <TableCell>{source.conversions}</TableCell>
                     <TableCell>

@@ -25,13 +25,12 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
   name: string;
   email: string;
-  tier: string;
+  commissionRate: number;
   status: string;
   joinDate: string;
   totalEarnings: number;
@@ -47,13 +46,11 @@ interface AssignmentStats {
 
 export default function TeamAssignmentsPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [stats, setStats] = useState<AssignmentStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tierFilter, setTierFilter] = useState("all");
 
   useEffect(() => {
     if (user) {
@@ -70,7 +67,7 @@ export default function TeamAssignmentsPage() {
         id: aff.id,
         name: aff.name || "Unknown",
         email: aff.email || "",
-        tier: aff.tier || "BRONZE",
+        commissionRate: aff.commissionRate || 0,
         status: aff.status || "PENDING",
         joinDate: aff.joinDate || new Date().toISOString(),
         totalEarnings: aff.totalEarnings || 0,
@@ -121,19 +118,6 @@ export default function TeamAssignmentsPage() {
     }
   };
 
-  const getTierBadge = (tierEnum: string) => {
-    // Try to find tier by enum value or name
-    const tier = tiers.find(t => 
-      t.name.toUpperCase() === tierEnum.toUpperCase() ||
-      getTierByName(tierEnum)
-    ) || getTierByName(tierEnum);
-    
-    const tierName = tier ? tier.name : tierEnum;
-    const badgeColor = getTierBadgeColor(tierName);
-    
-    return <Badge className={badgeColor}>{tierName}</Badge>;
-  };
-
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       ACTIVE: "bg-green-100 text-green-800",
@@ -151,10 +135,7 @@ export default function TeamAssignmentsPage() {
       aff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       aff.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || aff.status === statusFilter;
-    const matchesTier = tierFilter === "all" || 
-      aff.tier === tierFilter || 
-      tiers.find(t => t.name === tierFilter && (t.name.toUpperCase() === aff.tier.toUpperCase() || aff.tier === t.name));
-    return matchesSearch && matchesStatus && matchesTier;
+    return matchesSearch && matchesStatus;
   });
 
   if (authLoading || isLoading) {
@@ -259,22 +240,6 @@ export default function TeamAssignmentsPage() {
                 <SelectItem value="REJECTED">Rejected</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={tierFilter} onValueChange={setTierFilter}>
-              <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder="Tier" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tiers</SelectItem>
-                {tiers
-                  .filter(tier => tier.status === "ACTIVE")
-                  .sort((a, b) => b.level - a.level)
-                  .map((tier) => (
-                    <SelectItem key={tier.id} value={tier.name}>
-                      {tier.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>
@@ -293,7 +258,7 @@ export default function TeamAssignmentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Affiliate</TableHead>
-                  <TableHead>Tier</TableHead>
+                  <TableHead>Commission</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Join Date</TableHead>
                   <TableHead>Last Activity</TableHead>
@@ -310,7 +275,7 @@ export default function TeamAssignmentsPage() {
                         <p className="text-sm text-gray-500">{affiliate.email}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{getTierBadge(affiliate.tier)}</TableCell>
+                    <TableCell className="font-medium">{affiliate.commissionRate}%</TableCell>
                     <TableCell>{getStatusBadge(affiliate.status)}</TableCell>
                     <TableCell>{new Date(affiliate.joinDate).toLocaleDateString()}</TableCell>
                     <TableCell>

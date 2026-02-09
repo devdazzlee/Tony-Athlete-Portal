@@ -224,10 +224,13 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
                     "Unknown",
                 email: affiliate.user?.email || "No email",
                 status: affiliate.status,
-                tier: affiliate.tier,
+                commissionRate: affiliate.commissionRate || 0,
+                spendingLimit: affiliate.spendingLimit || null,
                 totalEarnings: earnings._sum.commissionAmount || 0,
                 totalConversions: conversions,
                 totalClicks: clicks,
+                discountCodes: affiliateCoupons.map(c => c.code),
+                referralCodes: affiliateReferralCodes.map(r => r.code),
                 lastActivity: lastLoginActivity?.createdAt
                     ? lastLoginActivity.createdAt
                         .toISOString()

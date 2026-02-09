@@ -325,7 +325,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
   }
 });
 
-// Delete affiliate code
+// Delete affiliate code (also removes from Shopify)
 router.delete("/:id", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -338,18 +338,40 @@ router.delete("/:id", authenticateToken, requireRole(["ADMIN"]), async (req: Req
       return res.status(404).json({ error: "Affiliate code not found" });
     }
 
+    // Delete from Shopify first (if synced)
+    const shopifyErrors: string[] = [];
+    if (code.syncedToShopify && code.shopifyPriceRuleIds) {
+      const priceRuleIds = code.shopifyPriceRuleIds as Record<string, number>;
+      for (const [storeId, priceRuleId] of Object.entries(priceRuleIds)) {
+        try {
+          await shopifyService.deletePriceRule(storeId, priceRuleId);
+          console.log(`✅ Deleted price rule ${priceRuleId} from Shopify store ${storeId}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to delete price rule ${priceRuleId} from ${storeId}:`, err.message);
+          shopifyErrors.push(`${storeId}: ${err.message}`);
+        }
+      }
+    }
+
+    // Delete from database
     await prisma.coupon.delete({
       where: { id },
     });
 
-    res.json({ message: "Affiliate code deleted successfully" });
+    const message = shopifyErrors.length > 0
+      ? `Code deleted from database but failed to remove from some Shopify stores: ${shopifyErrors.join("; ")}`
+      : code.syncedToShopify
+        ? "Affiliate code deleted from database and Shopify"
+        : "Affiliate code deleted successfully";
+
+    res.json({ message, shopifyErrors });
   } catch (error) {
     console.error("Error deleting affiliate code:", error);
     res.status(500).json({ error: "Failed to delete affiliate code" });
   }
 });
 
-// Update affiliate code status (activate/deactivate)
+// Update affiliate code status (activate/deactivate) — syncs to Shopify
 router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -367,6 +389,121 @@ router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (re
       return res.status(404).json({ error: "Affiliate code not found" });
     }
 
+    const shopifyErrors: string[] = [];
+
+    if (status === "INACTIVE" && code.syncedToShopify && code.shopifyPriceRuleIds) {
+      // DEACTIVATING: Delete price rules from Shopify so the code stops working on the store
+      const priceRuleIds = code.shopifyPriceRuleIds as Record<string, number>;
+      for (const [storeId, priceRuleId] of Object.entries(priceRuleIds)) {
+        try {
+          await shopifyService.deletePriceRule(storeId, priceRuleId);
+          console.log(`✅ Deactivated: deleted price rule ${priceRuleId} from Shopify store ${storeId}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to deactivate code on ${storeId}:`, err.message);
+          shopifyErrors.push(`${storeId}: ${err.message}`);
+        }
+      }
+
+      // Update DB: mark as not synced since we removed from Shopify
+      const updatedCode = await prisma.coupon.update({
+        where: { id },
+        data: {
+          status,
+          syncedToShopify: false,
+          shopifyPriceRuleIds: undefined,
+          shopifyDiscountIds: undefined,
+          syncedStores: [],
+        },
+        include: {
+          affiliate: {
+            include: {
+              user: {
+                select: { id: true, email: true, firstName: true, lastName: true },
+              },
+            },
+          },
+        },
+      });
+
+      const message = shopifyErrors.length > 0
+        ? `Code deactivated in database but failed to remove from some Shopify stores: ${shopifyErrors.join("; ")}`
+        : "Code deactivated and removed from Shopify";
+
+      return res.json({ message, code: updatedCode, shopifyErrors });
+    }
+
+    if (status === "ACTIVE" && !code.syncedToShopify) {
+      // REACTIVATING: Re-create price rules on Shopify
+      const shopifyPriceRuleIds: Record<string, number> = {};
+      const shopifyDiscountIds: Record<string, number> = {};
+      const syncedStores: string[] = [];
+
+      const stores = shopifyService.getAllStores();
+      const discountValue = parseFloat(code.discount.replace(/[^0-9.]/g, "")) || 0;
+      const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+      const valueType = code.discount.includes("$") ? "fixed_amount" as const : "percentage" as const;
+
+      for (const store of stores) {
+        try {
+          const priceRule = await shopifyService.createPriceRule(store.id, {
+            title: `Affiliate Code: ${code.code}`,
+            valueType,
+            value: shopifyValue,
+            startsAt: new Date().toISOString(),
+            endsAt: code.validUntil.toISOString(),
+            usageLimit: code.maxUsage || undefined,
+            oncePerCustomer: true,
+          });
+
+          const discountCode = await shopifyService.createDiscountCode(
+            store.id,
+            priceRule.id,
+            code.code
+          );
+
+          shopifyPriceRuleIds[store.id] = priceRule.id;
+          shopifyDiscountIds[store.id] = discountCode.id;
+          syncedStores.push(store.id);
+
+          console.log(`✅ Reactivated: synced code "${code.code}" to ${store.name}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to re-sync code "${code.code}" to ${store.name}:`, err.message);
+          shopifyErrors.push(`${store.name}: ${err.message}`);
+        }
+      }
+
+      const syncedToShopify = syncedStores.length > 0;
+
+      const updatedCode = await prisma.coupon.update({
+        where: { id },
+        data: {
+          status,
+          syncedToShopify,
+          shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+          shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+          syncedStores,
+        },
+        include: {
+          affiliate: {
+            include: {
+              user: {
+                select: { id: true, email: true, firstName: true, lastName: true },
+              },
+            },
+          },
+        },
+      });
+
+      const message = shopifyErrors.length > 0
+        ? `Code reactivated but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+        : syncedToShopify
+          ? `Code reactivated and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+          : "Code reactivated in database (Shopify sync unavailable)";
+
+      return res.json({ message, code: updatedCode, shopifyErrors });
+    }
+
+    // Simple status update (e.g., already synced and just toggling)
     const updatedCode = await prisma.coupon.update({
       where: { id },
       data: { status },
@@ -374,12 +511,7 @@ router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (re
         affiliate: {
           include: {
             user: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-              },
+              select: { id: true, email: true, firstName: true, lastName: true },
             },
           },
         },

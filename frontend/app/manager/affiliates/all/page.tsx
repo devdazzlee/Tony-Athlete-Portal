@@ -41,7 +41,6 @@ import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
-import { useTiers } from "@/hooks/useTiers";
 
 interface Affiliate {
   id: string;
@@ -49,7 +48,7 @@ interface Affiliate {
   email: string;
   joinDate: string;
   status: string;
-  tier: string;
+  commissionRate?: number;
   totalEarnings: number;
   totalClicks: number;
   totalConversions: number;
@@ -58,18 +57,16 @@ interface Affiliate {
 
 export default function AllAffiliatesPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const { tiers } = useTiers();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tierFilter, setTierFilter] = useState("all");
 
   useEffect(() => {
     if (user) {
       fetchAffiliates();
     }
-  }, [user, statusFilter, tierFilter]);
+  }, [user, statusFilter]);
 
   const fetchAffiliates = async () => {
     setIsLoading(true);
@@ -77,7 +74,6 @@ export default function AllAffiliatesPage() {
       const params = new URLSearchParams();
       if (statusFilter !== "all")
         params.append("status", statusFilter.toUpperCase());
-      if (tierFilter !== "all") params.append("tier", tierFilter.toUpperCase());
       params.append("limit", "500");
 
       const response = await apiClient.get(`/admin/affiliates?${params.toString()}`);
@@ -189,7 +185,7 @@ export default function AllAffiliatesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Status</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -201,25 +197,6 @@ export default function AllAffiliatesPage() {
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tier</Label>
-              <Select value={tierFilter} onValueChange={setTierFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {tiers
-                    .filter(tier => tier.status === "ACTIVE")
-                    .sort((a, b) => a.level - b.level)
-                    .map((tier) => (
-                      <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
-                        {tier.name}
-                      </SelectItem>
-                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -258,7 +235,7 @@ export default function AllAffiliatesPage() {
                 <TableRow>
                   <TableHead>Affiliate</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Tier</TableHead>
+                  <TableHead>Commission</TableHead>
                   <TableHead>Earnings</TableHead>
                   <TableHead>Clicks</TableHead>
                   <TableHead>Conversions</TableHead>
@@ -287,8 +264,8 @@ export default function AllAffiliatesPage() {
                         {affiliate.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{affiliate.tier}</Badge>
+                    <TableCell className="font-medium">
+                      {affiliate.commissionRate || 0}%
                     </TableCell>
                     <TableCell className="font-medium">
                       ${affiliate.totalEarnings.toFixed(2)}
@@ -308,9 +285,3 @@ export default function AllAffiliatesPage() {
     </div>
   );
 }
-
-
-
-
-
-

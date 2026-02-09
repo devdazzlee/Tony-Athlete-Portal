@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTiers } from "@/hooks/useTiers";
 
 interface TeamPerformance {
   totalAffiliates: number;
@@ -29,22 +28,15 @@ interface TeamPerformance {
     id: string;
     name: string;
     email: string;
-    tier: string;
     revenue: number;
     conversions: number;
     commissionRate: number;
     status: string;
   }[];
-  tierBreakdown: {
-    tier: string;
-    count: number;
-    revenue: number;
-  }[];
 }
 
 export default function TeamPerformancePage() {
   const { user, isLoading: authLoading } = useAuth();
-  const { tiers, getTierBadgeColor, getTierByName } = useTiers();
   const [performance, setPerformance] = useState<TeamPerformance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -76,36 +68,18 @@ export default function TeamPerformancePage() {
       );
       const totalCommissions = stats.totalCommissions || 0;
 
-      // Calculate tier breakdown
-      const tierCounts: Record<string, { count: number; revenue: number }> = {};
-      affiliates.forEach((aff: any) => {
-        const tier = aff.tier || "BRONZE";
-        if (!tierCounts[tier]) {
-          tierCounts[tier] = { count: 0, revenue: 0 };
-        }
-        tierCounts[tier].count++;
-        tierCounts[tier].revenue += aff.totalEarnings || 0;
-      });
-
-      const tierBreakdown = Object.entries(tierCounts).map(([tier, data]) => ({
-        tier,
-        count: data.count,
-        revenue: data.revenue,
-      }));
-
       // Build top performers
       const topPerformers = affiliates
         .map((aff: any) => ({
           id: aff.id,
           name: aff.name || "Unknown",
           email: aff.email || "",
-          tier: aff.tier || "BRONZE",
           revenue: aff.totalEarnings || 0,
           conversions: aff.totalConversions || 0,
           commissionRate: aff.commissionRate || 10,
           status: aff.status || "ACTIVE",
         }))
-        .sort((a, b) => b.revenue - a.revenue)
+        .sort((a: any, b: any) => b.revenue - a.revenue)
         .slice(0, 15);
 
       // Calculate average conversion rate
@@ -120,7 +94,6 @@ export default function TeamPerformancePage() {
         totalCommissions,
         avgConversionRate,
         topPerformers,
-        tierBreakdown,
       });
     } catch (error) {
       console.error("Error fetching performance:", error);
@@ -128,13 +101,6 @@ export default function TeamPerformancePage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const getTierBadge = (tierEnum: string) => {
-    const tier = getTierByName(tierEnum);
-    const tierName = tier ? tier.name : tierEnum;
-    const badgeColor = getTierBadgeColor(tierName);
-    return <Badge className={badgeColor}>{tierName}</Badge>;
   };
 
   const getStatusBadge = (status: string) => {
@@ -250,40 +216,6 @@ export default function TeamPerformancePage() {
         </Card>
       </div>
 
-      {/* Tier Breakdown */}
-      {performance?.tierBreakdown && performance.tierBreakdown.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Award className="h-5 w-5 text-yellow-500" />
-              Affiliates by Tier
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {tiers
-                .filter(tier => tier.status === "ACTIVE")
-                .sort((a, b) => b.level - a.level)
-                .map((tier) => {
-                  const data = performance.tierBreakdown.find((t) => 
-                    t.tier === tier.name || t.tier.toUpperCase() === tier.name.toUpperCase()
-                  );
-                  return (
-                    <div key={tier.id} className="p-4 border rounded-lg text-center">
-                      {getTierBadge(tier.name)}
-                      <p className="text-2xl font-bold mt-2">{data?.count || 0}</p>
-                      <p className="text-xs text-gray-500">affiliates</p>
-                      <p className="text-sm font-medium text-green-600 mt-1">
-                        ${(data?.revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                      </p>
-                    </div>
-                  );
-                })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Top Performers */}
       <Card>
         <CardHeader>
@@ -299,7 +231,6 @@ export default function TeamPerformancePage() {
                 <TableRow>
                   <TableHead>Rank</TableHead>
                   <TableHead>Affiliate</TableHead>
-                  <TableHead>Tier</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Conversions</TableHead>
                   <TableHead>Commission Rate</TableHead>
@@ -331,7 +262,6 @@ export default function TeamPerformancePage() {
                         <p className="text-sm text-gray-500">{affiliate.email}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{getTierBadge(affiliate.tier)}</TableCell>
                     <TableCell>{getStatusBadge(affiliate.status)}</TableCell>
                     <TableCell className="font-medium">{affiliate.conversions}</TableCell>
                     <TableCell>{affiliate.commissionRate}%</TableCell>
