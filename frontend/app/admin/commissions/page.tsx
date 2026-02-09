@@ -865,172 +865,186 @@ export default function CommissionsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <Label>Search Affiliate</Label>
-              <Input
-                type="text"
-                placeholder="Name or email..."
-                value={filters.affiliateSearch}
-                onChange={(e) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    affiliateSearch: e.target.value,
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-                className="h-11 rounded-lg"
-              />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              <div className="md:col-span-8 lg:col-span-4 space-y-1">
+                <Label>Search</Label>
+                <Input
+                  type="text"
+                  placeholder="Search affiliate name or email..."
+                  value={filters.affiliateSearch}
+                  onChange={(e) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      affiliateSearch: e.target.value,
+                    }));
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  className="h-11 rounded-lg"
+                />
+              </div>
+
+              <div className="md:col-span-4 lg:col-span-4 space-y-1">
+                <Label>Affiliate</Label>
+                <Select
+                  value={filters.affiliateId || "all"}
+                  onValueChange={(value) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      affiliateId: value === "all" ? "" : value,
+                    }));
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                >
+                  <SelectTrigger className="h-11 rounded-lg w-full">
+                    <SelectValue
+                      placeholder={
+                        isAffiliatesLoading
+                          ? "Loading affiliates..."
+                          : "All affiliates"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All affiliates</SelectItem>
+                    {affiliates.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} {a.email ? `(${a.email})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="md:col-span-12 lg:col-span-4 space-y-1">
+                <Label>Date range</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <DatePicker
+                    value={filters.dateFrom}
+                    onChange={(date) => {
+                      setFilters((prev) => ({
+                        ...prev,
+                        dateFrom: date,
+                      }));
+                      setPagination((prev) => ({ ...prev, page: 1 }));
+                    }}
+                    placeholder="From"
+                    className="h-11 rounded-lg"
+                  />
+                  <DatePicker
+                    value={filters.dateTo}
+                    onChange={(date) => {
+                      setFilters((prev) => ({
+                        ...prev,
+                        dateTo: date,
+                      }));
+                      setPagination((prev) => ({ ...prev, page: 1 }));
+                    }}
+                    placeholder="To"
+                    className="h-11 rounded-lg"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <Label>Affiliate</Label>
-              <Select
-                value={filters.affiliateId || "all"}
-                onValueChange={(value) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    affiliateId: value === "all" ? "" : value,
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue
-                    placeholder={
-                      isAffiliatesLoading
-                        ? "Loading affiliates..."
-                        : "All affiliates"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All affiliates</SelectItem>
-                  {affiliates.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name} {a.email ? `(${a.email})` : ""}
-                    </SelectItem>
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { value: "all", label: "All" },
+                    { value: "PENDING", label: "Pending" },
+                    { value: "APPROVED", label: "Approved" },
+                    { value: "PAID", label: "Paid" },
+                    { value: "CANCELLED", label: "Cancelled" },
+                  ] as const).map((s) => (
+                    <Button
+                      key={s.value}
+                      type="button"
+                      variant={filters.status === s.value ? "default" : "outline"}
+                      size="sm"
+                      className="h-9 rounded-lg px-4"
+                      onClick={() => {
+                        setFilters((prev) => ({ ...prev, status: s.value }));
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    >
+                      {s.label}
+                    </Button>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>From Date</Label>
-              <DatePicker
-                value={filters.dateFrom}
-                onChange={(date) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    dateFrom: date,
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-11 rounded-lg"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>To Date</Label>
-              <DatePicker
-                value={filters.dateTo}
-                onChange={(date) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    dateTo: date,
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-11 rounded-lg"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Status</Label>
-              <Select
-                value={filters.status}
-                onValueChange={(value) => {
-                  setFilters((prev) => ({ ...prev, status: value }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="APPROVED">Approved</SelectItem>
-                  <SelectItem value="PAID">Paid</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Sort By</Label>
-              <Select
-                value={filters.sortBy}
-                onValueChange={(value) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    sortBy: value as SortByOption,
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="createdAt">Date Created</SelectItem>
-                  <SelectItem value="commissionAmount">
-                    Commission Amount
-                  </SelectItem>
-                  <SelectItem value="orderValue">Order Value</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Order</Label>
-              <Select
-                value={filters.sortOrder}
-                onValueChange={(value) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    sortOrder: value as "asc" | "desc",
-                  }));
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="desc">Descending</SelectItem>
-                  <SelectItem value="asc">Ascending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                onClick={() => {
-                  setFilters({
-                    status: "all",
-                    affiliateId: "",
-                    affiliateSearch: "",
-                    dateFrom: undefined,
-                    dateTo: undefined,
-                    sortBy: "createdAt",
-                    sortOrder: "desc",
-                  });
-                  setPagination((prev) => ({ ...prev, page: 1 }));
-                }}
-                variant="outline"
-                className="w-full h-11 rounded-lg gap-2"
-              >
-                <Filter className="w-4 h-4" />
-                Clear Filters
-              </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Sort</Label>
+                    <Select
+                      value={filters.sortBy}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          sortBy: value as SortByOption,
+                        }));
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="createdAt">Date Created</SelectItem>
+                        <SelectItem value="commissionAmount">
+                          Commission Amount
+                        </SelectItem>
+                        <SelectItem value="orderValue">Order Value</SelectItem>
+                        <SelectItem value="status">Status</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Order</Label>
+                    <Select
+                      value={filters.sortOrder}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          sortOrder: value as "asc" | "desc",
+                        }));
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="desc">Descending</SelectItem>
+                        <SelectItem value="asc">Ascending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => {
+                    setFilters({
+                      status: "all",
+                      affiliateId: "",
+                      affiliateSearch: "",
+                      dateFrom: undefined,
+                      dateTo: undefined,
+                      sortBy: "createdAt",
+                      sortOrder: "desc",
+                    });
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  variant="outline"
+                  className="h-11 rounded-lg gap-2"
+                >
+                  <Filter className="w-4 h-4" />
+                  Clear
+                </Button>
+              </div>
             </div>
           </div>
 

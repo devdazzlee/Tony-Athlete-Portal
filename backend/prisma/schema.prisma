@@ -429,6 +429,8 @@ model AffiliateOrder {
   commissionAmount Float
   commissionRate   Float
   status           String  @default("PENDING") // PENDING, APPROVED, PAID, CANCELLED, REFUNDED
+  approvedAt       DateTime?
+  paidAt           DateTime?
   financialStatus  String? // Shopify financial status (paid, pending, refunded)
   fulfillmentStatus String? // Shopify fulfillment status (fulfilled, partial, null)
   items            Json?   // Line items from Shopify
@@ -455,6 +457,8 @@ model AffiliateOrder {
   @@index([orderId])
   @@index([shopifyOrderId])
   @@index([status])
+  @@index([approvedAt])
+  @@index([paidAt])
   @@index([financialStatus])
   @@index([createdAt])
   @@index([orderCreatedAt])

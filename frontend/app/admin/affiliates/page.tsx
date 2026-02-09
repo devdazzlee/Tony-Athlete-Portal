@@ -837,136 +837,149 @@ export default function AffiliatesManagementPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <Label>Status</Label>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => {
-                  setStatusFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Tier</Label>
-              <Select
-                value={tierFilter}
-                onValueChange={(value) => {
-                  setTierFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue placeholder="All Tiers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {tiers
-                    .filter(tier => tier.status === "ACTIVE")
-                    .sort((a, b) => a.level - b.level)
-                    .map((tier) => (
-                      <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
-                        {tier.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Search Affiliate</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Name or email..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              <div className="md:col-span-6 lg:col-span-5 space-y-1">
+                <Label>Search</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search affiliate name or email..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-10 pr-4 h-11 py-0 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-3 lg:col-span-3 space-y-1">
+                <Label>Tier</Label>
+                <Select
+                  value={tierFilter}
+                  onValueChange={(value) => {
+                    setTierFilter(value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 h-11 rounded-lg"
-                />
+                >
+                  <SelectTrigger className="h-11 rounded-lg w-full px-4">
+                    <SelectValue placeholder="All tiers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    {tiers
+                      .filter((tier) => tier.status === "ACTIVE")
+                      .sort((a, b) => a.level - b.level)
+                      .map((tier) => (
+                        <SelectItem key={tier.id} value={tier.name.toLowerCase()}>
+                          {tier.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="md:col-span-3 lg:col-span-4 space-y-1">
+                <Label>Date range</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <DatePicker
+                    value={fromDate}
+                    onChange={(date) => {
+                      setFromDate(date);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="From"
+                  />
+                  <DatePicker
+                    value={toDate}
+                    onChange={(date) => {
+                      setToDate(date);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="To"
+                  />
+                </div>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>From Date</Label>
-              <DatePicker
-                value={fromDate}
-                onChange={(date) => {
-                  setFromDate(date);
-                  setCurrentPage(1);
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-11 rounded-lg"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>To Date</Label>
-              <DatePicker
-                value={toDate}
-                onChange={(date) => {
-                  setToDate(date);
-                  setCurrentPage(1);
-                }}
-                placeholder="dd/mm/yyyy"
-                className="h-11 rounded-lg"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Sort By</Label>
-              <Select
-                value={sortBy}
-                onValueChange={(value: "createdAt" | "name") => {
-                  setSortBy(value);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue placeholder="Sort By" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="createdAt">Date Created</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Order</Label>
-              <Select
-                value={sortOrder}
-                onValueChange={(value: "asc" | "desc") => {
-                  setSortOrder(value);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-lg">
-                  <SelectValue placeholder="Order" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="asc">Ascending</SelectItem>
-                  <SelectItem value="desc">Descending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                className="gap-2 h-11 rounded-lg w-full"
-                onClick={handleResetFilters}
-                disabled={!filtersActive}
-              >
-                <RefreshCw className="h-4 w-4" />
-                Clear Filters
-              </Button>
+
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { value: "all", label: "All" },
+                    { value: "active", label: "Active" },
+                    { value: "pending", label: "Pending" },
+                    { value: "suspended", label: "Suspended" },
+                    { value: "inactive", label: "Inactive" },
+                  ] as const).map((s) => (
+                    <Button
+                      key={s.value}
+                      type="button"
+                      variant={statusFilter === s.value ? "default" : "outline"}
+                      size="sm"
+                      className="h-9 rounded-lg px-4"
+                      onClick={() => {
+                        setStatusFilter(s.value);
+                        setCurrentPage(1);
+                      }}
+                    >
+                      {s.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Sort</Label>
+                    <Select
+                      value={sortBy}
+                      onValueChange={(value: "createdAt" | "name") => {
+                        setSortBy(value);
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-lg w-full">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="createdAt">Date Created</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Order</Label>
+                    <Select
+                      value={sortOrder}
+                      onValueChange={(value: "asc" | "desc") => {
+                        setSortOrder(value);
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-lg w-full">
+                        <SelectValue placeholder="Order" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="asc">Ascending</SelectItem>
+                        <SelectItem value="desc">Descending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="gap-2 h-11 rounded-lg"
+                  onClick={handleResetFilters}
+                  disabled={!filtersActive}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

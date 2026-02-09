@@ -222,7 +222,7 @@ router.get("/", auth_1.authenticateToken, async (req, res) => {
                 rate: order.commissionRate,
                 status: order.status,
                 createdAt: order.createdAt,
-                payoutDate: order.status === "PAID" ? order.updatedAt : undefined,
+                payoutDate: order.paidAt ? order.paidAt : undefined,
                 affiliate: {
                     ...order.affiliate,
                     lastLogin: lastLoginActivity?.createdAt
@@ -359,12 +359,46 @@ router.patch("/:id/status", auth_1.authenticateToken, async (req, res) => {
         });
         const { status, notes } = schema.parse(req.body);
         const { id } = req.params;
+        const existing = await prisma_1.prisma.affiliateOrder.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                affiliateId: true,
+                status: true,
+                commissionAmount: true,
+                approvedAt: true,
+                paidAt: true,
+                orderValue: true,
+                commissionRate: true,
+                referralCode: true,
+                orderId: true,
+                createdAt: true,
+            },
+        });
+        if (!existing) {
+            return res.status(404).json({ error: "Commission not found" });
+        }
+        const now = new Date();
+        const wasApprovedLike = existing.status === "APPROVED" || existing.status === "PAID";
+        const willBeApprovedLike = status === "APPROVED" || status === "PAID";
+        const shouldSetApprovedAt = (status === "APPROVED" || status === "PAID") && !existing.approvedAt;
+        const shouldSetPaidAt = status === "PAID" && !existing.paidAt;
+        const earningsDelta = !wasApprovedLike && willBeApprovedLike
+            ? existing.commissionAmount
+            : wasApprovedLike && !willBeApprovedLike
+                ? -existing.commissionAmount
+                : 0;
+        const orderUpdateData = {
+            status,
+            updatedAt: now,
+        };
+        if (shouldSetApprovedAt)
+            orderUpdateData.approvedAt = now;
+        if (shouldSetPaidAt)
+            orderUpdateData.paidAt = now;
         const order = await prisma_1.prisma.affiliateOrder.update({
             where: { id },
-            data: {
-                status,
-                updatedAt: new Date(),
-            },
+            data: orderUpdateData,
         });
         const affiliate = await prisma_1.prisma.affiliateProfile.findUnique({
             where: { id: order.affiliateId },
@@ -378,11 +412,11 @@ router.patch("/:id/status", auth_1.authenticateToken, async (req, res) => {
                 },
             },
         });
-        if (status === "APPROVED" || status === "PAID") {
+        if (earningsDelta !== 0) {
             await prisma_1.prisma.affiliateProfile.update({
                 where: { id: order.affiliateId },
                 data: {
-                    totalEarnings: { increment: order.commissionAmount },
+                    totalEarnings: { increment: earningsDelta },
                 },
             });
         }
@@ -413,6 +447,8 @@ router.patch("/:id/status", auth_1.authenticateToken, async (req, res) => {
             rate: order.commissionRate,
             status: order.status,
             createdAt: order.createdAt,
+            approvedAt: order.approvedAt,
+            paidAt: order.paidAt,
             affiliate,
             conversion: {
                 orderValue: order.orderValue,
@@ -470,15 +506,62 @@ router.patch("/bulk-status", auth_1.authenticateToken, async (req, res) => {
             notes: zod_1.z.string().optional(),
         });
         const { commissionIds, status, notes } = schema.parse(req.body);
-        const updateData = {
-            status,
-            updatedAt: new Date(),
-        };
-        const result = await prisma_1.prisma.affiliateOrder.updateMany({
-            where: {
-                id: { in: commissionIds },
+        const now = new Date();
+        const existingOrders = await prisma_1.prisma.affiliateOrder.findMany({
+            where: { id: { in: commissionIds } },
+            select: {
+                id: true,
+                affiliateId: true,
+                status: true,
+                commissionAmount: true,
+                approvedAt: true,
+                paidAt: true,
             },
-            data: updateData,
+        });
+        const ordersById = new Map(existingOrders.map((o) => [o.id, o]));
+        const updates = commissionIds
+            .map((id) => {
+            const existing = ordersById.get(id);
+            if (!existing)
+                return null;
+            const wasApprovedLike = existing.status === "APPROVED" || existing.status === "PAID";
+            const willBeApprovedLike = status === "APPROVED" || status === "PAID";
+            const shouldSetApprovedAt = (status === "APPROVED" || status === "PAID") && !existing.approvedAt;
+            const shouldSetPaidAt = status === "PAID" && !existing.paidAt;
+            const earningsDelta = !wasApprovedLike && willBeApprovedLike
+                ? existing.commissionAmount
+                : wasApprovedLike && !willBeApprovedLike
+                    ? -existing.commissionAmount
+                    : 0;
+            return {
+                id,
+                affiliateId: existing.affiliateId,
+                earningsDelta,
+                data: {
+                    status,
+                    updatedAt: now,
+                    ...(shouldSetApprovedAt ? { approvedAt: now } : {}),
+                    ...(shouldSetPaidAt ? { paidAt: now } : {}),
+                },
+            };
+        })
+            .filter(Boolean);
+        const affiliateEarningsDeltas = updates.reduce((acc, u) => {
+            if (!u.earningsDelta)
+                return acc;
+            acc[u.affiliateId] = (acc[u.affiliateId] || 0) + u.earningsDelta;
+            return acc;
+        }, {});
+        const result = await prisma_1.prisma.$transaction(async (tx) => {
+            const updated = await Promise.all(updates.map((u) => tx.affiliateOrder.update({
+                where: { id: u.id },
+                data: u.data,
+            })));
+            await Promise.all(Object.entries(affiliateEarningsDeltas).map(([affiliateId, delta]) => tx.affiliateProfile.update({
+                where: { id: affiliateId },
+                data: { totalEarnings: { increment: delta } },
+            })));
+            return { count: updated.length };
         });
         if (status === "PAID") {
             const orders = await prisma_1.prisma.affiliateOrder.findMany({

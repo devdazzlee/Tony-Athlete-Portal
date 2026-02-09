@@ -60,9 +60,10 @@ async function fetchPublicLink(slug: string) {
 export default async function LinkLandingPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const data = await fetchPublicLink(params.slug);
+  const { slug } = await params;
+  const data = await fetchPublicLink(slug);
 
   if (!data?.success || !data.link) {
     notFound();

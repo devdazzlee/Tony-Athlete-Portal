@@ -220,11 +220,11 @@ const adminNavItems = [
     href: "/admin/payouts",
     icon: CreditCard,
   },
-  {
-    title: "Offers & Creatives",
-    href: "/admin/offers",
-    icon: LinkIcon,
-  },
+  // {
+  //   title: "Offers & Creatives",
+  //   href: "/admin/offers",
+  //   icon: LinkIcon,
+  // },
   {
     title: "General Feedback",
     href: "/admin/feedback",
@@ -236,8 +236,8 @@ const adminNavItems = [
     icon: Settings,
     subItems: [
       { title: "Profile", href: "/admin/settings/profile" },
-      { title: "System Settings", href: "/admin/settings" },
-      { title: "Websites", href: "/admin/settings/websites" },
+      // { title: "System Settings", href: "/admin/settings" },
+      // { title: "Websites", href: "/admin/settings/websites" },
       { title: "Security", href: "/admin/settings/security" },
     ],
   },

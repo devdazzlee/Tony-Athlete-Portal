@@ -260,7 +260,7 @@ router.get("/", authenticateToken, async (req: any, res) => {
           rate: order.commissionRate,
           status: order.status,
           createdAt: order.createdAt,
-          payoutDate: order.status === "PAID" ? order.updatedAt : undefined,
+          payoutDate: order.paidAt ? order.paidAt : undefined,
           affiliate: {
             ...order.affiliate,
             lastLogin: lastLoginActivity?.createdAt
@@ -426,13 +426,54 @@ router.patch("/:id/status", authenticateToken, async (req: any, res) => {
     const { status, notes } = schema.parse(req.body);
     const { id } = req.params;
 
+    const existing = await prisma.affiliateOrder.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        affiliateId: true,
+        status: true,
+        commissionAmount: true,
+        approvedAt: true,
+        paidAt: true,
+        orderValue: true,
+        commissionRate: true,
+        referralCode: true,
+        orderId: true,
+        createdAt: true,
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Commission not found" });
+    }
+
+    const now = new Date();
+    const wasApprovedLike =
+      existing.status === "APPROVED" || existing.status === "PAID";
+    const willBeApprovedLike = status === "APPROVED" || status === "PAID";
+
+    const shouldSetApprovedAt =
+      (status === "APPROVED" || status === "PAID") && !existing.approvedAt;
+    const shouldSetPaidAt = status === "PAID" && !existing.paidAt;
+
+    const earningsDelta =
+      !wasApprovedLike && willBeApprovedLike
+        ? existing.commissionAmount
+        : wasApprovedLike && !willBeApprovedLike
+          ? -existing.commissionAmount
+          : 0;
+
     // Update AffiliateOrder status (real commission data)
+    const orderUpdateData: any = {
+      status,
+      updatedAt: now,
+    };
+    if (shouldSetApprovedAt) orderUpdateData.approvedAt = now;
+    if (shouldSetPaidAt) orderUpdateData.paidAt = now;
+
     const order = await prisma.affiliateOrder.update({
       where: { id },
-      data: {
-        status,
-        updatedAt: new Date(),
-      },
+      data: orderUpdateData,
     });
 
     // Get affiliate profile for response
@@ -449,12 +490,11 @@ router.patch("/:id/status", authenticateToken, async (req: any, res) => {
       },
     });
 
-    // If approved or paid, update affiliate's total earnings
-    if (status === "APPROVED" || status === "PAID") {
+    if (earningsDelta !== 0) {
       await prisma.affiliateProfile.update({
         where: { id: order.affiliateId },
         data: {
-          totalEarnings: { increment: order.commissionAmount },
+          totalEarnings: { increment: earningsDelta },
         },
       });
     }
@@ -492,6 +532,8 @@ router.patch("/:id/status", authenticateToken, async (req: any, res) => {
       rate: order.commissionRate,
       status: order.status,
       createdAt: order.createdAt,
+      approvedAt: order.approvedAt,
+      paidAt: order.paidAt,
       affiliate,
       conversion: {
         orderValue: order.orderValue,
@@ -558,16 +600,91 @@ router.patch("/bulk-status", authenticateToken, async (req: any, res) => {
 
     const { commissionIds, status, notes } = schema.parse(req.body);
 
-    const updateData: any = {
-      status,
-      updatedAt: new Date(),
-    };
+    const now = new Date();
 
-    const result = await prisma.affiliateOrder.updateMany({
-      where: {
-        id: { in: commissionIds },
+    const existingOrders = await prisma.affiliateOrder.findMany({
+      where: { id: { in: commissionIds } },
+      select: {
+        id: true,
+        affiliateId: true,
+        status: true,
+        commissionAmount: true,
+        approvedAt: true,
+        paidAt: true,
       },
-      data: updateData,
+    });
+
+    const ordersById = new Map(existingOrders.map((o) => [o.id, o]));
+
+    const updates = commissionIds
+      .map((id) => {
+        const existing = ordersById.get(id);
+        if (!existing) return null;
+
+        const wasApprovedLike = existing.status === "APPROVED" || existing.status === "PAID";
+        const willBeApprovedLike = status === "APPROVED" || status === "PAID";
+
+        const shouldSetApprovedAt =
+          (status === "APPROVED" || status === "PAID") && !existing.approvedAt;
+        const shouldSetPaidAt = status === "PAID" && !existing.paidAt;
+
+        const earningsDelta =
+          !wasApprovedLike && willBeApprovedLike
+            ? existing.commissionAmount
+            : wasApprovedLike && !willBeApprovedLike
+              ? -existing.commissionAmount
+              : 0;
+
+        return {
+          id,
+          affiliateId: existing.affiliateId,
+          earningsDelta,
+          data: {
+            status,
+            updatedAt: now,
+            ...(shouldSetApprovedAt ? { approvedAt: now } : {}),
+            ...(shouldSetPaidAt ? { paidAt: now } : {}),
+          } as const,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      affiliateId: string;
+      earningsDelta: number;
+      data: {
+        status: string;
+        updatedAt: Date;
+        approvedAt?: Date;
+        paidAt?: Date;
+      };
+    }>;
+
+    const affiliateEarningsDeltas = updates.reduce((acc, u) => {
+      if (!u.earningsDelta) return acc;
+      acc[u.affiliateId] = (acc[u.affiliateId] || 0) + u.earningsDelta;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await Promise.all(
+        updates.map((u) =>
+          tx.affiliateOrder.update({
+            where: { id: u.id },
+            data: u.data,
+          })
+        )
+      );
+
+      await Promise.all(
+        Object.entries(affiliateEarningsDeltas).map(([affiliateId, delta]) =>
+          tx.affiliateProfile.update({
+            where: { id: affiliateId },
+            data: { totalEarnings: { increment: delta } },
+          })
+        )
+      );
+
+      return { count: updated.length };
     });
 
     // If status is PAID, send email notifications to affiliates
