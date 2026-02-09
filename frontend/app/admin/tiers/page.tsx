@@ -38,8 +38,7 @@ import {
   Award,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
 import { Switch } from "@/components/ui/switch";
 
@@ -111,16 +110,8 @@ export default function TiersManagementPage() {
   const fetchTiers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/tiers`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTiers(data.tiers || []);
-      } else {
-        toast.error("Failed to load tiers");
-      }
+      const response = await apiClient.get("/admin/tiers");
+      setTiers(response.data?.tiers || []);
     } catch (error) {
       console.error("Error fetching tiers:", error);
       toast.error("Failed to load tiers");
@@ -193,29 +184,17 @@ export default function TiersManagementPage() {
       // Update existing tier
       setIsSaving(true);
       try {
-        const response = await fetch(
-          `${config.apiUrl}/admin/tiers/${selectedTier.id}`,
-          {
-            method: "PATCH",
-            headers: {
-              ...getAuthHeaders(),
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(dataToSave),
-          }
-        );
-
-        if (response.ok) {
-          toast.success("Tier updated successfully");
-          setEditDialogOpen(false);
-          fetchTiers();
-        } else {
-          const error = await response.json();
-          toast.error(error.error || "Failed to update tier");
-        }
+        await apiClient.patch(`/admin/tiers/${selectedTier.id}`, dataToSave);
+        toast.success("Tier updated successfully");
+        setEditDialogOpen(false);
+        fetchTiers();
       } catch (error) {
         console.error("Error updating tier:", error);
-        toast.error("Failed to update tier");
+        toast.error(
+          (error as any)?.response?.data?.error ||
+            (error as any)?.response?.data?.message ||
+            "Failed to update tier"
+        );
       } finally {
         setIsSaving(false);
       }
@@ -223,26 +202,17 @@ export default function TiersManagementPage() {
       // Create new tier
       setIsCreating(true);
       try {
-        const response = await fetch(`${config.apiUrl}/admin/tiers`, {
-          method: "POST",
-          headers: {
-            ...getAuthHeaders(),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(dataToSave),
-        });
-
-        if (response.ok) {
-          toast.success("Tier created successfully");
-          setCreateDialogOpen(false);
-          fetchTiers();
-        } else {
-          const error = await response.json();
-          toast.error(error.error || "Failed to create tier");
-        }
+        await apiClient.post("/admin/tiers", dataToSave);
+        toast.success("Tier created successfully");
+        setCreateDialogOpen(false);
+        fetchTiers();
       } catch (error) {
         console.error("Error creating tier:", error);
-        toast.error("Failed to create tier");
+        toast.error(
+          (error as any)?.response?.data?.error ||
+            (error as any)?.response?.data?.message ||
+            "Failed to create tier"
+        );
       } finally {
         setIsCreating(false);
       }
@@ -255,18 +225,9 @@ export default function TiersManagementPage() {
     }
 
     try {
-      const response = await fetch(`${config.apiUrl}/admin/tiers/${tierId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        toast.success("Tier deleted successfully");
-        fetchTiers();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to delete tier");
-      }
+      await apiClient.delete(`/admin/tiers/${tierId}`);
+      toast.success("Tier deleted successfully");
+      fetchTiers();
     } catch (error) {
       console.error("Error deleting tier:", error);
       toast.error("Failed to delete tier");

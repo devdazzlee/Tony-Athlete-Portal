@@ -25,8 +25,7 @@ import {
   Lock,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 
@@ -68,16 +67,8 @@ export default function WebsitesSettingsPage() {
   const loadWebsites = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${config.apiUrl}/websites`, {
-        method: "GET",
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load websites: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const response = await apiClient.get("/websites");
+      const data = response.data;
       if (data.success && data.websites) {
         setWebsites(data.websites);
       } else {
@@ -126,22 +117,14 @@ export default function WebsitesSettingsPage() {
 
     try {
       const websiteId = generateWebsiteId(formData.domain);
-      const response = await fetch(`${config.apiUrl}/websites`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: formData.name,
-          domain: formData.domain,
-          websiteId: websiteId,
-          description: formData.description || undefined,
-        }),
+      const response = await apiClient.post("/websites", {
+        name: formData.name,
+        domain: formData.domain,
+        websiteId: websiteId,
+        description: formData.description || undefined,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create website");
-      }
+      const data = response.data;
 
       if (data.success && data.website) {
         // Reload websites from API
@@ -155,7 +138,10 @@ export default function WebsitesSettingsPage() {
     } catch (error: any) {
       console.error("Error creating website:", error);
       toast.error(
-        error.message || "Failed to create website. Please try again."
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error.message ||
+          "Failed to create website. Please try again."
       );
     }
   };
@@ -176,19 +162,10 @@ export default function WebsitesSettingsPage() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/websites/${deleteModal.websiteId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.delete(
+        `/websites/${deleteModal.websiteId}`
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete website");
-      }
+      const data = response.data;
 
       // Reload websites from API
       await loadWebsites();
@@ -197,7 +174,10 @@ export default function WebsitesSettingsPage() {
     } catch (error: any) {
       console.error("Error deleting website:", error);
       toast.error(
-        error.message || "Failed to delete website. Please try again."
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error.message ||
+          "Failed to delete website. Please try again."
       );
     } finally {
       setIsDeleting(false);

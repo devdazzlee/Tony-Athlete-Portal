@@ -270,6 +270,7 @@ export declare class AffiliateService {
             createdAt: Date;
             updatedAt: Date;
             expiresAt: Date | null;
+            isActive: boolean;
             clicks: number;
             conversions: number;
             affiliateId: string;
@@ -278,7 +279,6 @@ export declare class AffiliateService {
             shortUrl: string;
             customSlug: string | null;
             earnings: number;
-            isActive: boolean;
         }[];
         pagination: {
             page: any;
@@ -292,6 +292,7 @@ export declare class AffiliateService {
         createdAt: Date;
         updatedAt: Date;
         expiresAt: Date | null;
+        isActive: boolean;
         clicks: number;
         conversions: number;
         affiliateId: string;
@@ -300,13 +301,13 @@ export declare class AffiliateService {
         shortUrl: string;
         customSlug: string | null;
         earnings: number;
-        isActive: boolean;
     }>;
     updateAffiliateLink(linkId: string, data: UpdateLinkData): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
         expiresAt: Date | null;
+        isActive: boolean;
         clicks: number;
         conversions: number;
         affiliateId: string;
@@ -315,7 +316,6 @@ export declare class AffiliateService {
         shortUrl: string;
         customSlug: string | null;
         earnings: number;
-        isActive: boolean;
     }>;
     deleteAffiliateLink(linkId: string): Promise<void>;
     getCommissions(affiliateId: string, params: GetCommissionsParams): Promise<{

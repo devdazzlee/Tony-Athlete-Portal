@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Clock, CheckCircle, RefreshCw, DollarSign } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -45,22 +44,19 @@ export default function PendingPayoutsPage() {
   const fetchPayouts = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/payouts`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const pendingPayouts = (data.data || []).filter(
-          (p: Payout) => p.status === "PENDING"
-        );
-        setPayouts(pendingPayouts);
-      } else {
-        toast.error("Failed to load payouts");
-      }
+      const response = await apiClient.get("/admin/payouts");
+      const data = response.data;
+      const pendingPayouts = (data.data || []).filter(
+        (p: Payout) => p.status === "PENDING"
+      );
+      setPayouts(pendingPayouts);
     } catch (error) {
       console.error("Error fetching payouts:", error);
-      toast.error("Failed to load payouts");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load payouts"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -69,24 +65,18 @@ export default function PendingPayoutsPage() {
   const handleProcessPayout = async (payoutId: string) => {
     setProcessingId(payoutId);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/payouts/${payoutId}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status: "PROCESSING" }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Payout processing started");
-        fetchPayouts();
-      } else {
-        toast.error("Failed to process payout");
-      }
+      await apiClient.patch(`/admin/payouts/${payoutId}/status`, {
+        status: "PROCESSING",
+      });
+      toast.success("Payout processing started");
+      fetchPayouts();
     } catch (error) {
       console.error("Error processing payout:", error);
-      toast.error("Failed to process payout");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to process payout"
+      );
     } finally {
       setProcessingId(null);
     }

@@ -31,7 +31,7 @@ import {
 import { toast } from "sonner";
 import { config } from "@/config/config";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 interface UserProfile {
   user: {
@@ -84,23 +84,15 @@ export default function AdminProfileSettingsPage() {
 
   const fetchProfile = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/settings/profile`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get("/admin/settings/profile");
+      const data = response.data;
+      setProfile(data);
+      setFormData({
+        firstName: data.user.firstName || "",
+        lastName: data.user.lastName || "",
+        phone: data.user.phone || "",
+        department: data.admin?.department || "",
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-        setFormData({
-          firstName: data.user.firstName || "",
-          lastName: data.user.lastName || "",
-          phone: data.user.phone || "",
-          department: data.admin?.department || "",
-        });
-      } else {
-        console.error("Failed to fetch profile:", response.status);
-        toast.error("Failed to load profile");
-      }
     } catch (error) {
       console.error("Error fetching profile:", error);
       toast.error("Failed to load profile");
@@ -113,23 +105,17 @@ export default function AdminProfileSettingsPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${config.apiUrl}/admin/settings/profile`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast.success("Profile updated successfully");
-        fetchProfile(); // Refresh profile data
-        refreshUser(); // Refresh auth context
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update profile");
-      }
+      await apiClient.put("/admin/settings/profile", formData);
+      toast.success("Profile updated successfully");
+      fetchProfile(); // Refresh profile data
+      refreshUser(); // Refresh auth context
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update profile"
+      );
     } finally {
       setIsSaving(false);
     }
@@ -159,26 +145,17 @@ export default function AdminProfileSettingsPage() {
       const formData = new FormData();
       formData.append("avatar", file);
 
-      const response = await fetch(
-        `${config.apiUrl}/admin/settings/profile/avatar`,
-        {
-          method: "POST",
-          headers: getAuthHeaders({ contentType: null }),
-          body: formData,
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Avatar updated successfully");
-        fetchProfile(); // Refresh profile data
-        refreshUser(); // Refresh auth context
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to upload avatar");
-      }
+      await apiClient.post("/admin/settings/profile/avatar", formData);
+      toast.success("Avatar updated successfully");
+      fetchProfile(); // Refresh profile data
+      refreshUser(); // Refresh auth context
     } catch (error) {
       console.error("Error uploading avatar:", error);
-      toast.error("Failed to upload avatar");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to upload avatar"
+      );
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -186,25 +163,17 @@ export default function AdminProfileSettingsPage() {
 
   const handleRemoveAvatar = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/settings/profile/avatar`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Avatar removed successfully");
-        fetchProfile(); // Refresh profile data
-        refreshUser(); // Refresh auth context
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to remove avatar");
-      }
+      await apiClient.delete("/admin/settings/profile/avatar");
+      toast.success("Avatar removed successfully");
+      fetchProfile(); // Refresh profile data
+      refreshUser(); // Refresh auth context
     } catch (error) {
       console.error("Error removing avatar:", error);
-      toast.error("Failed to remove avatar");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to remove avatar"
+      );
     }
   };
 

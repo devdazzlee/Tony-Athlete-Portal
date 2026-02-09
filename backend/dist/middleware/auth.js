@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clearAuthCookies = exports.setAuthCookies = exports.optionalAuth = exports.requireAdmin = exports.requireAffiliate = exports.requireRole = exports.authenticateToken = exports.COOKIE_CONFIG = void 0;
+exports.clearAuthCookies = exports.setAuthCookies = exports.optionalAuth = exports.requireAdmin = exports.requireAffiliate = exports.requireRole = exports.authenticateToken = exports.REFRESH_COOKIE_MAX_AGE_MS = exports.ACCESS_COOKIE_MAX_AGE_MS = exports.COOKIE_CONFIG = void 0;
 const jwt = __importStar(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const isVercel = process.env.VERCEL === "1";
@@ -45,6 +45,8 @@ exports.COOKIE_CONFIG = {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
 };
+exports.ACCESS_COOKIE_MAX_AGE_MS = parseDurationMs(process.env.ACCESS_TOKEN_EXPIRES_IN || "15m");
+exports.REFRESH_COOKIE_MAX_AGE_MS = parseDurationMs(process.env.REFRESH_TOKEN_EXPIRES_IN || "30d");
 const prisma = new client_1.PrismaClient();
 const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers["authorization"];
@@ -57,6 +59,16 @@ const authenticateToken = async (req, res, next) => {
     }
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const session = await prisma.session.findFirst({
+            where: {
+                token,
+                isActive: true,
+                expiresAt: { gt: new Date() },
+            },
+        });
+        if (!session) {
+            return res.status(401).json({ error: "Session expired" });
+        }
         const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
             include: {
@@ -77,6 +89,12 @@ const authenticateToken = async (req, res, next) => {
             affiliateProfile: user.affiliateProfile,
             adminProfile: user.adminProfile,
         };
+        prisma.session
+            .update({
+            where: { id: session.id },
+            data: { lastActivity: new Date() },
+        })
+            .catch(() => undefined);
         next();
     }
     catch (error) {
@@ -154,7 +172,7 @@ const optionalAuth = async (req, res, next) => {
     next();
 };
 exports.optionalAuth = optionalAuth;
-const setAuthCookies = (res, token, user, req) => {
+const setAuthCookies = (res, token, refreshToken, user, req) => {
     const origin = req?.headers?.origin;
     const host = req?.headers?.host;
     const isCrossDomain = origin && host && !origin.includes(host);
@@ -162,7 +180,16 @@ const setAuthCookies = (res, token, user, req) => {
         console.log("Cross-domain request detected, skipping cookie setting");
         return;
     }
-    res.cookie("accessToken", token, exports.COOKIE_CONFIG);
+    res.cookie("accessToken", token, {
+        ...exports.COOKIE_CONFIG,
+        maxAge: exports.ACCESS_COOKIE_MAX_AGE_MS,
+    });
+    if (refreshToken) {
+        res.cookie("refreshToken", refreshToken, {
+            ...exports.COOKIE_CONFIG,
+            maxAge: exports.REFRESH_COOKIE_MAX_AGE_MS,
+        });
+    }
     const userData = {
         id: user.id,
         email: user.email,
@@ -185,8 +212,32 @@ const clearAuthCookies = (res) => {
         path: "/",
     };
     res.clearCookie("accessToken", clearOptions);
+    res.clearCookie("refreshToken", clearOptions);
     res.clearCookie("userData", clearOptions);
     res.clearCookie("token", clearOptions);
 };
 exports.clearAuthCookies = clearAuthCookies;
+function parseDurationMs(input) {
+    const trimmed = String(input || "").trim();
+    const match = trimmed.match(/^(\d+)\s*(ms|s|m|h|d)$/i);
+    if (!match) {
+        return 7 * 24 * 60 * 60 * 1000;
+    }
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    switch (unit) {
+        case "ms":
+            return value;
+        case "s":
+            return value * 1000;
+        case "m":
+            return value * 60 * 1000;
+        case "h":
+            return value * 60 * 60 * 1000;
+        case "d":
+            return value * 24 * 60 * 60 * 1000;
+        default:
+            return 7 * 24 * 60 * 60 * 1000;
+    }
+}
 //# sourceMappingURL=auth.js.map

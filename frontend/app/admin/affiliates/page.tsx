@@ -70,7 +70,7 @@ import {
 import { toast } from "sonner";
 import { config } from "@/config/config";
 import { formatLastActivity, formatRelativeTime } from "@/lib/date-utils";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 import { AdminLoading } from "@/components/ui/loading";
 import { useTiers } from "@/hooks/useTiers";
@@ -293,21 +293,11 @@ export default function AffiliatesManagementPage() {
       }
       params.append("limit", "500");
 
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/admin/affiliates?${params.toString()}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        const affiliatesList = data.data || [];
-        setAffiliates(affiliatesList);
-      } else {
-        console.error("Failed to fetch affiliates:", response.status);
-        toast.error("Failed to load affiliates");
-      }
+      const affiliatesList = response.data?.data || [];
+      setAffiliates(affiliatesList);
     } catch (error) {
       console.error("Error fetching affiliates:", error);
       toast.error("Failed to load affiliates");
@@ -331,34 +321,29 @@ export default function AffiliatesManagementPage() {
 
     setIsCreating(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/affiliates/create`, {
-        method: "POST",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: createForm.email,
-          password: createForm.password,
-          firstName: createForm.firstName,
-          lastName: createForm.lastName,
-          commissionRate: createForm.commissionRate,
-          tier: (() => {
-            const selectedTier = tiers.find(t => t.id === createForm.tierId);
-            return selectedTier ? getTierEnumValue(selectedTier.name) : "BRONZE";
-          })(),
-          tierId: createForm.tierId || undefined,
-          discountCode: createForm.discountCode || undefined,
-          discountValue: createForm.discountValue ? parseFloat(createForm.discountValue) : undefined,
-          instagram: createForm.instagram || undefined,
-          tiktok: createForm.tiktok || undefined,
-          spendingLimit: createForm.spendingLimit ? parseFloat(createForm.spendingLimit) : undefined,
-        }),
+      await apiClient.post("/admin/affiliates/create", {
+        email: createForm.email,
+        password: createForm.password,
+        firstName: createForm.firstName,
+        lastName: createForm.lastName,
+        commissionRate: createForm.commissionRate,
+        tier: (() => {
+          const selectedTier = tiers.find((t) => t.id === createForm.tierId);
+          return selectedTier ? getTierEnumValue(selectedTier.name) : "BRONZE";
+        })(),
+        tierId: createForm.tierId || undefined,
+        discountCode: createForm.discountCode || undefined,
+        discountValue: createForm.discountValue
+          ? parseFloat(createForm.discountValue)
+          : undefined,
+        instagram: createForm.instagram || undefined,
+        tiktok: createForm.tiktok || undefined,
+        spendingLimit: createForm.spendingLimit
+          ? parseFloat(createForm.spendingLimit)
+          : undefined,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        toast.success("Affiliate created successfully");
+      toast.success("Affiliate created successfully");
         
         // Reset form first
         const lowestTier = tiers.length > 0 
@@ -397,37 +382,34 @@ export default function AffiliatesManagementPage() {
         setTimeout(() => {
           fetchAffiliates("all", "all");
         }, 150);
-      } else {
-        const error = await response.json();
-        
-        // Handle validation errors with better messages
-        if (error.details && Array.isArray(error.details) && error.details.length > 0) {
-          // Extract the first error message from details
-          const firstError = error.details[0];
-          let errorMessage = firstError.message || "Invalid input data";
-          
-          // Make error messages more user-friendly
-          if (firstError.path && firstError.path.length > 0) {
-            const fieldName = firstError.path[0];
-            const fieldLabel = fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/([A-Z])/g, " $1");
-            
-            if (firstError.code === "too_small" && fieldName === "password") {
-              errorMessage = `Password must be at least ${firstError.minimum} characters long`;
-            } else if (firstError.code === "invalid_string" && fieldName === "email") {
-              errorMessage = "Please enter a valid email address";
-            } else if (!firstError.message) {
-              errorMessage = `${fieldLabel}: ${errorMessage}`;
-            }
-          }
-          
-          toast.error(errorMessage);
-        } else {
-          toast.error(error.error || "Failed to create affiliate");
-        }
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating affiliate:", error);
-      toast.error("Failed to create affiliate");
+      const errData = error?.response?.data;
+      if (errData?.details && Array.isArray(errData.details) && errData.details.length > 0) {
+        const firstError = errData.details[0];
+        let errorMessage = firstError.message || "Invalid input data";
+
+        if (firstError.path && firstError.path.length > 0) {
+          const fieldName = firstError.path[0];
+          const fieldLabel =
+            fieldName.charAt(0).toUpperCase() +
+            fieldName
+              .slice(1)
+              .replace(/([A-Z])/g, " $1");
+
+          if (firstError.code === "too_small" && fieldName === "password") {
+            errorMessage = `Password must be at least ${firstError.minimum} characters long`;
+          } else if (firstError.code === "invalid_string" && fieldName === "email") {
+            errorMessage = "Please enter a valid email address";
+          } else if (!firstError.message) {
+            errorMessage = `${fieldLabel}: ${errorMessage}`;
+          }
+        }
+
+        toast.error(errorMessage);
+      } else {
+        toast.error(errData?.error || errData?.message || "Failed to create affiliate");
+      }
     } finally {
       setIsCreating(false);
     }
@@ -469,31 +451,26 @@ export default function AffiliatesManagementPage() {
     
     // Fetch affiliate details to get deliverables note
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates/${affiliate.id}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const socialMedia = data.affiliate?.socialMedia || {};
-        setSelectedAffiliateDetails(data.affiliate);
+      const response = await apiClient.get(`/admin/affiliates/${affiliate.id}`);
+      const data = response.data;
+      const socialMedia = data.affiliate?.socialMedia || {};
+      setSelectedAffiliateDetails(data.affiliate);
         
-        // Use assignedTierId from backend if available, otherwise use the matching tier we found
-        const tierIdToUse = data.affiliate?.assignedTierId || matchingTier?.id || "";
-        
-        setEditForm((prev) => ({
-          ...prev,
-          tierId: tierIdToUse,
-          deliverablesNote: data.affiliate?.deliverablesNote || "",
-          instagram: socialMedia.instagram || "",
-          tiktok: socialMedia.tiktok || "",
-          spendingLimit: data.affiliate?.spendingLimit ? data.affiliate.spendingLimit.toString() : "",
-        }));
-        setExistingDiscountCodes(data.affiliate?.discountCodes || []);
-        setExistingReferralCodes(data.affiliate?.referralCodes || []);
-      }
+      // Use assignedTierId from backend if available, otherwise use the matching tier we found
+      const tierIdToUse = data.affiliate?.assignedTierId || matchingTier?.id || "";
+      
+      setEditForm((prev) => ({
+        ...prev,
+        tierId: tierIdToUse,
+        deliverablesNote: data.affiliate?.deliverablesNote || "",
+        instagram: socialMedia.instagram || "",
+        tiktok: socialMedia.tiktok || "",
+        spendingLimit: data.affiliate?.spendingLimit
+          ? data.affiliate.spendingLimit.toString()
+          : "",
+      }));
+      setExistingDiscountCodes(data.affiliate?.discountCodes || []);
+      setExistingReferralCodes(data.affiliate?.referralCodes || []);
     } catch (error) {
       console.error("Error fetching affiliate details:", error);
     }
@@ -508,18 +485,9 @@ export default function AffiliatesManagementPage() {
     try {
       // Update status
       if (editForm.status !== selectedAffiliate.status.toUpperCase()) {
-        const statusResponse = await fetch(
-          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/status`,
-          {
-            method: "PATCH",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ status: editForm.status }),
-          }
-        );
-
-        if (!statusResponse.ok) {
-          throw new Error("Failed to update status");
-        }
+        await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/status`, {
+          status: editForm.status,
+        });
       }
 
       // Update tier and commission rate
@@ -533,27 +501,15 @@ export default function AffiliatesManagementPage() {
         editForm.commissionRate !== (selectedAffiliate.commissionRate || 5) ||
         editForm.tierId // Also update if tierId changed (for custom tiers)
       ) {
-        const tierResponse = await fetch(
-          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/tier`,
-          {
-            method: "PATCH",
-            headers: {
-              ...getAuthHeaders(),
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              tier: newTierEnum,
-              tierId: editForm.tierId || undefined, // Send tierId if available
-              commissionRate: editForm.commissionRate,
-            }),
-          }
-        );
-
-        if (!tierResponse.ok) {
-          const errorData = await tierResponse.json();
-
-          // Handle validation errors with better messages
-          if (errorData.details && Array.isArray(errorData.details)) {
+        try {
+          await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/tier`, {
+            tier: newTierEnum,
+            tierId: editForm.tierId || undefined,
+            commissionRate: editForm.commissionRate,
+          });
+        } catch (e: any) {
+          const errorData = e?.response?.data;
+          if (errorData?.details && Array.isArray(errorData.details)) {
             const commissionError = errorData.details.find((detail: any) =>
               detail.path?.includes("commissionRate")
             );
@@ -561,76 +517,50 @@ export default function AffiliatesManagementPage() {
             if (commissionError) {
               let errorMessage = commissionError.message;
 
-              // If no message from backend, create a user-friendly one
               if (!errorMessage) {
                 if (commissionError.code === "too_big") {
-                  errorMessage = `Commission rate is too large. Please enter a value less than or equal to 100%.`;
+                  errorMessage =
+                    "Commission rate is too large. Please enter a value less than or equal to 100%.";
                 } else if (commissionError.code === "too_small") {
-                  errorMessage = `Commission rate is too small. Please enter a value greater than or equal to 0%.`;
+                  errorMessage =
+                    "Commission rate is too small. Please enter a value greater than or equal to 0%.";
                 } else {
-                  errorMessage = `Invalid commission rate. Please enter a value between 0 and 100%.`;
+                  errorMessage = "Invalid commission rate";
                 }
               }
 
               toast.error(errorMessage);
-              setIsSaving(false);
               return;
             }
           }
 
-          throw new Error(errorData.error || "Failed to update tier");
+          throw new Error(errorData?.error || errorData?.message || "Failed to update tier");
         }
       }
 
       // Update deliverables note
-      const noteResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/deliverables-note`,
+      await apiClient.patch(
+        `/admin/affiliates/${selectedAffiliate.id}/deliverables-note`,
         {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            deliverablesNote: editForm.deliverablesNote || null,
-          }),
+          deliverablesNote: editForm.deliverablesNote || null,
         }
       );
 
-      if (!noteResponse.ok) {
-        throw new Error("Failed to update deliverables note");
-      }
-
       // Create discount code if provided
       if (editForm.discountCode && editForm.discountValue) {
-        const discountResponse = await fetch(
-          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/discount-code`,
-          {
-            method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-              code: editForm.discountCode,
-              discount: editForm.discountValue,
-              description: `Discount code for ${selectedAffiliate.name}`,
-              expiresAt: editForm.discountExpiresAt || undefined,
-            }),
-          }
-        );
-
-        if (!discountResponse.ok) {
-          const errorData = await discountResponse.json();
-          throw new Error(errorData.error || "Failed to create discount code");
-        }
+        await apiClient.post(`/admin/affiliates/${selectedAffiliate.id}/discount-code`, {
+          code: editForm.discountCode,
+          discount: editForm.discountValue,
+          expiresAt: editForm.discountExpiresAt || undefined,
+        });
 
         // Refresh discount codes list after successful creation
-        const refreshResponse = await fetch(
-          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}`,
-          {
-            headers: getAuthHeaders(),
-          }
+        const refreshResponse = await apiClient.get(
+          `/admin/affiliates/${selectedAffiliate.id}`
         );
-        if (refreshResponse.ok) {
-          const refreshData = await refreshResponse.json();
-          setExistingDiscountCodes(refreshData.affiliate?.discountCodes || []);
-        }
-
+        setExistingDiscountCodes(
+          refreshResponse.data?.affiliate?.discountCodes || []
+        );
         // Reset discount code fields after successful creation
         setEditForm((prev) => ({
           ...prev,
@@ -641,41 +571,20 @@ export default function AffiliatesManagementPage() {
       }
 
       // Update social media links
-      const socialMediaResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/social-media`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            instagram: editForm.instagram || null,
-            tiktok: editForm.tiktok || null,
-          }),
-        }
-      );
-
-      if (!socialMediaResponse.ok) {
-        throw new Error("Failed to update social media links");
-      }
+      await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/social-media`, {
+        instagram: editForm.instagram || null,
+        tiktok: editForm.tiktok || null,
+      });
 
       // Update spending limit (monthly allowance)
       const spendingLimitValue = editForm.spendingLimit ? parseFloat(editForm.spendingLimit) : null;
       const currentSpendingLimit = selectedAffiliateDetails?.spendingLimit || null;
       
       if (spendingLimitValue !== currentSpendingLimit) {
-        const spendingLimitResponse = await fetch(
-          `${config.apiUrl}/admin/affiliates/${selectedAffiliate.id}/spending-limit`,
-          {
-            method: "PATCH",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-              spendingLimit: spendingLimitValue,
-            }),
-          }
+        await apiClient.patch(
+          `/admin/affiliates/${selectedAffiliate.id}/spending-limit`,
+          { spendingLimit: spendingLimitValue }
         );
-
-        if (!spendingLimitResponse.ok) {
-          throw new Error("Failed to update spending limit");
-        }
       }
 
       toast.success("Affiliate updated successfully");
@@ -698,25 +607,10 @@ export default function AffiliatesManagementPage() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates/${deleteModal.affiliateId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Affiliate deleted successfully");
-        setDeleteModal({
-          isOpen: false,
-          affiliateId: null,
-          affiliateName: null,
-        });
-        fetchAffiliates();
-      } else {
-        toast.error("Failed to delete affiliate");
-      }
+      await apiClient.delete(`/admin/affiliates/${deleteModal.affiliateId}`);
+      toast.success("Affiliate deleted successfully");
+      setDeleteModal({ isOpen: false, affiliateId: null, affiliateName: null });
+      fetchAffiliates();
     } catch (error) {
       console.error("Error deleting affiliate:", error);
       toast.error("Failed to delete affiliate");

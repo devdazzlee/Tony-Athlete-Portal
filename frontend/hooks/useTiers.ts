@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 export interface Tier {
   id: string;
@@ -38,16 +37,8 @@ export function useTiers() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/tiers`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTiers(data.tiers || []);
-      } else {
-        setError("Failed to load tiers");
-      }
+      const response = await apiClient.get("/admin/tiers");
+      setTiers(response.data?.tiers || []);
     } catch (err) {
       console.error("Error fetching tiers:", err);
       setError("Failed to load tiers");

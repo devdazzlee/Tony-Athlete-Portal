@@ -13,6 +13,7 @@ export interface User {
 export interface AuthResponse {
   message: string;
   token: string;
+  refreshToken?: string;
   user: User;
 }
 
@@ -22,6 +23,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 // localStorage keys
 const STORAGE_KEYS = {
   ACCESS_TOKEN: "accessToken",
+  REFRESH_TOKEN: "refreshToken",
   USER_DATA: "userData",
 } as const;
 
@@ -77,12 +79,15 @@ export class AuthClient {
     return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   }
 
-  public setAuth(token: string, user: User): void {
+  public setAuth(token: string, user: User, refreshToken?: string): void {
     this.user = user;
 
     // Store in localStorage
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      if (refreshToken) {
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
       localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
     }
   }
@@ -92,6 +97,7 @@ export class AuthClient {
     // Clear localStorage
     if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USER_DATA);
     }
     this.user = null;
@@ -132,7 +138,7 @@ export class AuthClient {
       }
 
       // Store token and user in localStorage
-      this.setAuth(data.token, data.user);
+      this.setAuth(data.token, data.user, data.refreshToken);
 
       return data;
     } catch (error) {
@@ -165,7 +171,7 @@ export class AuthClient {
 
       // Store in localStorage if token is returned
       if (data.token && data.user) {
-        this.setAuth(data.token, data.user);
+        this.setAuth(data.token, data.user, data.refreshToken);
       }
 
       return data;

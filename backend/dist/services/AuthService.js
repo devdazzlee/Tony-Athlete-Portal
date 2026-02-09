@@ -45,6 +45,40 @@ const crypto_1 = __importDefault(require("crypto"));
 const SystemSettingsService_1 = require("./SystemSettingsService");
 const prisma = new client_1.PrismaClient();
 class AuthService {
+    getAccessTokenExpiresIn() {
+        return (process.env.ACCESS_TOKEN_EXPIRES_IN ||
+            process.env.JWT_EXPIRES_IN ||
+            "15m");
+    }
+    getRefreshTokenExpiresInMs() {
+        return this.parseDurationMs(process.env.REFRESH_TOKEN_EXPIRES_IN || "30d");
+    }
+    parseDurationMs(input) {
+        const trimmed = String(input || "").trim();
+        const match = trimmed.match(/^(\d+)\s*(ms|s|m|h|d)$/i);
+        if (!match) {
+            return 30 * 24 * 60 * 60 * 1000;
+        }
+        const value = Number(match[1]);
+        const unit = match[2].toLowerCase();
+        switch (unit) {
+            case "ms":
+                return value;
+            case "s":
+                return value * 1000;
+            case "m":
+                return value * 60 * 1000;
+            case "h":
+                return value * 60 * 60 * 1000;
+            case "d":
+                return value * 24 * 60 * 60 * 1000;
+            default:
+                return 30 * 24 * 60 * 60 * 1000;
+        }
+    }
+    generateRefreshToken() {
+        return crypto_1.default.randomBytes(48).toString("hex");
+    }
     async register(data) {
         const existingUser = await prisma.user.findUnique({
             where: { email: data.email },
@@ -81,7 +115,6 @@ class AuthService {
                 },
             });
         }
-        const token = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
         await prisma.activity.create({
             data: {
                 userId: user.id,
@@ -100,7 +133,55 @@ class AuthService {
             console.error("Failed to send verification email:", error);
         }
         return {
-            token,
+            message: "Registration successful! Please check your email to verify your account.",
+        };
+    }
+    async refresh(refreshToken, ipAddress, userAgent) {
+        if (!refreshToken) {
+            throw new Error("Refresh token required");
+        }
+        const session = await prisma.session.findFirst({
+            where: {
+                refreshToken,
+                isActive: true,
+                refreshExpiresAt: { gt: new Date() },
+            },
+        });
+        if (!session) {
+            throw new Error("Invalid or expired refresh token");
+        }
+        const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            include: {
+                affiliateProfile: true,
+                adminProfile: true,
+            },
+        });
+        if (!user) {
+            throw new Error("User not found");
+        }
+        const accessTokenExpiresIn = this.getAccessTokenExpiresIn();
+        const now = new Date();
+        const newAccessToken = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: accessTokenExpiresIn });
+        const newRefreshToken = this.generateRefreshToken();
+        const accessExpiresAt = new Date(now.getTime() + this.parseDurationMs(accessTokenExpiresIn));
+        const refreshExpiresAt = new Date(now.getTime() + this.getRefreshTokenExpiresInMs());
+        await prisma.session.update({
+            where: { id: session.id },
+            data: {
+                token: newAccessToken,
+                refreshToken: newRefreshToken,
+                expiresAt: accessExpiresAt,
+                refreshExpiresAt,
+                ipAddress: ipAddress || session.ipAddress || null,
+                userAgent: userAgent || session.userAgent || null,
+                lastActivity: now,
+                isActive: true,
+            },
+        });
+        return {
+            token: newAccessToken,
+            refreshToken: newRefreshToken,
             user: {
                 id: user.id,
                 email: user.email,
@@ -108,8 +189,9 @@ class AuthService {
                 lastName: user.lastName,
                 role: user.role,
                 avatar: user.avatar || null,
+                affiliateProfile: user.affiliateProfile,
+                adminProfile: user.adminProfile,
             },
-            message: "Registration successful! Please check your email to verify your account.",
         };
     }
     async login(data, ipAddress, userAgent) {
@@ -131,7 +213,25 @@ class AuthService {
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
         });
-        const token = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
+        const accessTokenExpiresIn = this.getAccessTokenExpiresIn();
+        const token = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: accessTokenExpiresIn });
+        const refreshToken = this.generateRefreshToken();
+        const now = new Date();
+        const accessExpiresAt = new Date(now.getTime() + this.parseDurationMs(accessTokenExpiresIn));
+        const refreshExpiresAt = new Date(now.getTime() + this.getRefreshTokenExpiresInMs());
+        await prisma.session.create({
+            data: {
+                userId: user.id,
+                token,
+                refreshToken,
+                expiresAt: accessExpiresAt,
+                refreshExpiresAt,
+                ipAddress: ipAddress || null,
+                userAgent: userAgent || null,
+                isActive: true,
+                lastActivity: now,
+            },
+        });
         await prisma.activity.create({
             data: {
                 userId: user.id,
@@ -144,6 +244,7 @@ class AuthService {
         });
         return {
             token,
+            refreshToken,
             user: {
                 id: user.id,
                 email: user.email,
@@ -173,8 +274,9 @@ class AuthService {
         };
     }
     async logout(userId) {
-        await prisma.session.deleteMany({
+        await prisma.session.updateMany({
             where: { userId },
+            data: { isActive: false },
         });
         await prisma.activity.create({
             data: {

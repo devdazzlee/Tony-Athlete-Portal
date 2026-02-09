@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 export declare class AuthController {
     register(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     login(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    refresh(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     logout(req: any, res: Response): Promise<void>;
     getProfile(req: any, res: Response): Promise<void>;
     updateProfile(req: any, res: Response): Promise<Response<any, Record<string, any>>>;

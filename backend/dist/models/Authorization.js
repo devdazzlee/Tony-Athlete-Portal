@@ -243,8 +243,11 @@ class AuthorizationModel {
                 token: data.token,
                 refreshToken: data.refreshToken,
                 expiresAt: data.expiresAt,
-                ipAddress: data.ipAddress,
-                userAgent: data.userAgent,
+                refreshExpiresAt: data.refreshExpiresAt,
+                ipAddress: data.ipAddress ?? null,
+                userAgent: data.userAgent ?? null,
+                isActive: data.isActive ?? true,
+                lastActivity: data.lastActivity ?? new Date(),
             },
         }));
     }
@@ -252,6 +255,7 @@ class AuthorizationModel {
         return (await prisma.session.findFirst({
             where: {
                 token,
+                isActive: true,
                 expiresAt: { gt: new Date() },
             },
         }));
@@ -259,13 +263,13 @@ class AuthorizationModel {
     static async updateSessionActivity(sessionId) {
         return (await prisma.session.update({
             where: { id: sessionId },
-            data: {},
+            data: { lastActivity: new Date() },
         }));
     }
     static async revokeSession(sessionId) {
         await prisma.session.update({
             where: { id: sessionId },
-            data: {},
+            data: { isActive: false },
         });
     }
     static async revokeAllUserSessions(userId, accountId) {
@@ -273,7 +277,7 @@ class AuthorizationModel {
             where: {
                 userId,
             },
-            data: {},
+            data: { isActive: false },
         });
     }
     static async createTwoFactorAuth(data) {

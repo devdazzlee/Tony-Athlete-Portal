@@ -25,8 +25,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 interface SecuritySettings {
   email: string;
@@ -64,17 +63,8 @@ export default function SecuritySettingsPage() {
 
   const fetchSecuritySettings = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/settings/security`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSecurityData(data);
-      } else {
-        console.error("Failed to fetch security settings:", response.status);
-        toast.error("Failed to load security settings");
-      }
+      const response = await apiClient.get("/settings/security");
+      setSecurityData(response.data);
     } catch (error) {
       console.error("Error fetching security settings:", error);
       toast.error("Failed to load security settings");
@@ -99,30 +89,21 @@ export default function SecuritySettingsPage() {
     setIsChangingPassword(true);
 
     try {
-      const response = await fetch(
-        `${config.apiUrl}/settings/security/change-password`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(passwordForm),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Password changed successfully");
-        setPasswordForm({
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
-        });
-        fetchSecuritySettings();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to change password");
-      }
+      await apiClient.post("/settings/security/change-password", passwordForm);
+      toast.success("Password changed successfully");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      fetchSecuritySettings();
     } catch (error) {
       console.error("Error changing password:", error);
-      toast.error("Failed to change password");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to change password"
+      );
     } finally {
       setIsChangingPassword(false);
     }

@@ -91,14 +91,14 @@ export interface AuditLog {
 export interface Session {
   id: string;
   userId: string;
-  accountId: string;
   token: string;
   refreshToken: string;
   expiresAt: Date;
-  ipAddress: string;
-  userAgent: string;
-  isActive: boolean;
   createdAt: Date;
+  refreshExpiresAt: Date;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  isActive: boolean;
   lastActivity: Date;
 }
 
@@ -466,33 +466,37 @@ export class AuthorizationModel {
         token: data.token!,
         refreshToken: data.refreshToken!,
         expiresAt: data.expiresAt!,
-        ipAddress: data.ipAddress!,
-        userAgent: data.userAgent!,
+        refreshExpiresAt: data.refreshExpiresAt!,
+        ipAddress: data.ipAddress ?? null,
+        userAgent: data.userAgent ?? null,
+        isActive: data.isActive ?? true,
+        lastActivity: data.lastActivity ?? new Date(),
       } as any,
-    })) as Session;
+    } as any)) as unknown as Session;
   }
 
   static async findSessionByToken(token: string): Promise<Session | null> {
     return (await prisma.session.findFirst({
       where: {
         token,
+        isActive: true,
         expiresAt: { gt: new Date() },
       } as any,
-    })) as Session | null;
+    } as any)) as unknown as Session | null;
   }
 
   static async updateSessionActivity(sessionId: string): Promise<Session> {
     return (await prisma.session.update({
       where: { id: sessionId },
-      data: {},
-    })) as Session;
+      data: { lastActivity: new Date() } as any,
+    } as any)) as unknown as Session;
   }
 
   static async revokeSession(sessionId: string): Promise<void> {
     await prisma.session.update({
       where: { id: sessionId },
-      data: {} as any,
-    });
+      data: { isActive: false } as any,
+    } as any);
   }
 
   static async revokeAllUserSessions(
@@ -503,8 +507,8 @@ export class AuthorizationModel {
       where: {
         userId,
       } as any,
-      data: {} as any,
-    });
+      data: { isActive: false } as any,
+    } as any);
   }
 
   static async createTwoFactorAuth(

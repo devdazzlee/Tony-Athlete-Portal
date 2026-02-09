@@ -45,9 +45,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
-import Loading from "@/app/link/[slug]/loading"; 
+import apiClient from "@/lib/api-client";
 interface ReferralCode {
   id: string;
   code: string;
@@ -139,17 +137,13 @@ export default function ReferralsPage() {
     if (showCreateDialog) {
       const fetchSystemSettings = async () => {
         try {
-          const settingsResponse = await fetch(`${config.apiUrl}/system/settings`, {
-            headers: getAuthHeaders(),
-          });
-          if (settingsResponse.ok) {
-            const settingsData = await settingsResponse.json();
-            if (settingsData.commission?.defaultRate) {
-              setNewCode((prev) => ({
-                ...prev,
-                commissionRate: settingsData.commission.defaultRate,
-              }));
-            }
+          const response = await apiClient.get("/system/settings");
+          const settingsData = response.data;
+          if (settingsData.commission?.defaultRate) {
+            setNewCode((prev) => ({
+              ...prev,
+              commissionRate: settingsData.commission.defaultRate,
+            }));
           }
         } catch (error) {
           console.error("Error fetching system settings:", error);
@@ -163,54 +157,37 @@ export default function ReferralsPage() {
     try {
       const [codesResponse, statsResponse, profileResponse, settingsResponse] =
         await Promise.all([
-          fetch(`${config.apiUrl}/referral/codes`, {
-            headers: getAuthHeaders(),
-          }),
-          fetch(`${config.apiUrl}/referral/stats`, {
-            headers: getAuthHeaders(),
-          }),
-          fetch(`${config.apiUrl}/settings/profile`, {
-            headers: getAuthHeaders(),
-          }),
-          fetch(`${config.apiUrl}/system/settings`, {
-            headers: getAuthHeaders(),
-          }),
+          apiClient.get("/referral/codes"),
+          apiClient.get("/referral/stats"),
+          apiClient.get("/settings/profile"),
+          apiClient.get("/system/settings"),
         ]);
 
-      if (codesResponse.ok) {
-        const codes = await codesResponse.json();
-        // Use the actual commissionRate from database - don't transform it
-        const formattedCodes = codes.map((code: any) => ({
-          ...code,
-          // Use the actual commissionRate from database response
-          // Only default to 0 if it's truly undefined/null
-          commissionRate:
-            code.commissionRate != null ? Number(code.commissionRate) : 0,
-        }));
-        setReferralCodes(formattedCodes);
-      }
+      const codes = codesResponse.data;
+      // Use the actual commissionRate from database - don't transform it
+      const formattedCodes = (codes || []).map((code: any) => ({
+        ...code,
+        // Use the actual commissionRate from database response
+        // Only default to 0 if it's truly undefined/null
+        commissionRate: code.commissionRate != null ? Number(code.commissionRate) : 0,
+      }));
+      setReferralCodes(formattedCodes);
 
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-      }
+      const statsData = statsResponse.data;
+      setStats(statsData);
 
       // Get default commission rate from system settings (not from affiliate profile)
       let defaultCommissionRate = 15; // Fallback
-      if (settingsResponse.ok) {
-        const settingsData = await settingsResponse.json();
-        if (settingsData.commission?.defaultRate) {
-          defaultCommissionRate = settingsData.commission.defaultRate;
-        }
+      const settingsData = settingsResponse.data;
+      if (settingsData.commission?.defaultRate) {
+        defaultCommissionRate = settingsData.commission.defaultRate;
       }
 
       // Fetch affiliate profile to get their current commission rate (for display only)
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        if (profileData.affiliate?.commissionRate) {
-          const commissionRate = profileData.affiliate.commissionRate;
-          setAffiliateCommissionRate(commissionRate);
-        }
+      const profileData = profileResponse.data;
+      if (profileData.affiliate?.commissionRate) {
+        const commissionRate = profileData.affiliate.commissionRate;
+        setAffiliateCommissionRate(commissionRate);
       }
 
       // Use system default commission rate for new codes
@@ -234,38 +211,24 @@ export default function ReferralsPage() {
 
     setIsCreatingCode(true);
     try {
-      const response = await fetch(`${config.apiUrl}/referral/codes`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          commissionRate: newCode.commissionRate,
-          expiresAt: formatDateOnly(newCode.expiresAt),
-        }),
+      await apiClient.post("/referral/codes", {
+        commissionRate: newCode.commissionRate,
+        expiresAt: formatDateOnly(newCode.expiresAt),
       });
 
-      if (response.ok) {
-        toast.success("Referral code created successfully!");
-        setShowCreateDialog(false);
-        // Reset to system default commission rate
-        const settingsResponse = await fetch(`${config.apiUrl}/system/settings`, {
-          headers: getAuthHeaders(),
-        });
-        let defaultCommissionRate = 15;
-        if (settingsResponse.ok) {
-          const settingsData = await settingsResponse.json();
-          if (settingsData.commission?.defaultRate) {
-            defaultCommissionRate = settingsData.commission.defaultRate;
-          }
-        }
-        setNewCode({
-          commissionRate: defaultCommissionRate,
-          expiresAt: new Date(),
-        });
-        fetchReferralData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to create referral code");
+      toast.success("Referral code created successfully!");
+      setShowCreateDialog(false);
+      // Reset to system default commission rate
+      const settingsResponse = await apiClient.get("/system/settings");
+      let defaultCommissionRate = 15;
+      if (settingsResponse.data?.commission?.defaultRate) {
+        defaultCommissionRate = settingsResponse.data.commission.defaultRate;
       }
+      setNewCode({
+        commissionRate: defaultCommissionRate,
+        expiresAt: new Date(),
+      });
+      fetchReferralData();
     } catch (error) {
       toast.error("Failed to create referral code");
     } finally {
@@ -299,29 +262,17 @@ export default function ReferralsPage() {
 
     setIsUpdatingCode(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/referral/codes/${editingCode.id}`,
-        {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            // Commission rate is not sent in update - it's controlled by admin only
-            productId: editingCode.productId || null,
-            expiresAt: editingCode.expiresAt,
-            isActive: editingCode.isActive,
-          }),
-        }
-      );
+      await apiClient.put(`/referral/codes/${editingCode.id}`, {
+        // Commission rate is not sent in update - it's controlled by admin only
+        productId: editingCode.productId || null,
+        expiresAt: editingCode.expiresAt,
+        isActive: editingCode.isActive,
+      });
 
-      if (response.ok) {
-        toast.success("Referral code updated successfully!");
-        setShowEditDialog(false);
-        setEditingCode(null);
-        fetchReferralData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update referral code");
-      }
+      toast.success("Referral code updated successfully!");
+      setShowEditDialog(false);
+      setEditingCode(null);
+      fetchReferralData();
     } catch (error) {
       console.error("Error updating referral code:", error);
       toast.error("Failed to update referral code");
@@ -339,22 +290,10 @@ export default function ReferralsPage() {
 
     setIsDeletingCode(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/referral/codes/${deleteModal.codeId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Referral code deleted successfully!");
-        setDeleteModal({ isOpen: false, codeId: null, codeName: null });
-        fetchReferralData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to delete referral code");
-      }
+      await apiClient.delete(`/referral/codes/${deleteModal.codeId}`);
+      toast.success("Referral code deleted successfully!");
+      setDeleteModal({ isOpen: false, codeId: null, codeName: null });
+      fetchReferralData();
     } catch (error) {
       console.error("Error deleting referral code:", error);
       toast.error("Failed to delete referral code");

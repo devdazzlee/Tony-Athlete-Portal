@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Target, RefreshCw, TrendingUp, TrendingDown, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -58,41 +57,16 @@ export default function ConversionReportsPage() {
   const fetchConversionData = async () => {
     setIsLoading(true);
     try {
-      // Fetch affiliates data
-      const affiliatesResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        { headers: getAuthHeaders() }
-      );
+      const [affiliatesResponse, ordersResponse, statsResponse] =
+        await Promise.all([
+          apiClient.get("/admin/affiliates?limit=500"),
+          apiClient.get("/manager/shopify/orders?limit=100"),
+          apiClient.get("/manager/shopify/stats"),
+        ]);
 
-      // Fetch orders data
-      const ordersResponse = await fetch(
-        `${config.apiUrl}/manager/shopify/orders?limit=100`,
-        { headers: getAuthHeaders() }
-      );
-
-      // Fetch stats
-      const statsResponse = await fetch(
-        `${config.apiUrl}/manager/shopify/stats`,
-        { headers: getAuthHeaders() }
-      );
-
-      let affiliates: any[] = [];
-      let orders: any[] = [];
-      let stats: any = {};
-
-      if (affiliatesResponse.ok) {
-        const data = await affiliatesResponse.json();
-        affiliates = data.data || [];
-      }
-
-      if (ordersResponse.ok) {
-        const data = await ordersResponse.json();
-        orders = data.orders || [];
-      }
-
-      if (statsResponse.ok) {
-        stats = await statsResponse.json();
-      }
+      const affiliates = affiliatesResponse.data?.data || [];
+      const orders = ordersResponse.data?.orders || [];
+      const stats = statsResponse.data || {};
 
       const totalConversions = stats.totalOrders || affiliates.reduce(
         (sum: number, aff: any) => sum + (aff.totalConversions || 0),
@@ -115,8 +89,8 @@ export default function ConversionReportsPage() {
           rate: aff.totalClicks > 0 ? ((aff.totalConversions || 0) / aff.totalClicks) * 100 : 0,
           revenue: aff.totalEarnings || 0,
         }))
-        .filter((a) => a.conversions > 0)
-        .sort((a, b) => b.conversions - a.conversions)
+        .filter((a: any) => a.conversions > 0)
+        .sort((a: any, b: any) => b.conversions - a.conversions)
         .slice(0, 10);
 
       // Build recent conversions from orders
@@ -140,7 +114,11 @@ export default function ConversionReportsPage() {
       });
     } catch (error) {
       console.error("Error fetching conversion data:", error);
-      toast.error("Failed to load conversion data");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load conversion data"
+      );
     } finally {
       setIsLoading(false);
     }

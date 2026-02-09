@@ -29,6 +29,46 @@ export interface UpdateProfileData {
 }
 
 export class AuthService {
+  private getAccessTokenExpiresIn(): string {
+    return (
+      process.env.ACCESS_TOKEN_EXPIRES_IN ||
+      process.env.JWT_EXPIRES_IN ||
+      "15m"
+    );
+  }
+
+  private getRefreshTokenExpiresInMs(): number {
+    return this.parseDurationMs(process.env.REFRESH_TOKEN_EXPIRES_IN || "30d");
+  }
+
+  private parseDurationMs(input: string): number {
+    const trimmed = String(input || "").trim();
+    const match = trimmed.match(/^(\d+)\s*(ms|s|m|h|d)$/i);
+    if (!match) {
+      return 30 * 24 * 60 * 60 * 1000;
+    }
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    switch (unit) {
+      case "ms":
+        return value;
+      case "s":
+        return value * 1000;
+      case "m":
+        return value * 60 * 1000;
+      case "h":
+        return value * 60 * 60 * 1000;
+      case "d":
+        return value * 24 * 60 * 60 * 1000;
+      default:
+        return 30 * 24 * 60 * 60 * 1000;
+    }
+  }
+
+  private generateRefreshToken(): string {
+    return crypto.randomBytes(48).toString("hex");
+  }
+
   async register(data: RegisterData) {
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -79,13 +119,6 @@ export class AuthService {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" } as any
-    );
-
     // Log activity
     await prisma.activity.create({
       data: {
@@ -112,7 +145,72 @@ export class AuthService {
     }
 
     return {
-      token,
+      message:
+        "Registration successful! Please check your email to verify your account.",
+    };
+  }
+
+  async refresh(refreshToken: string, ipAddress?: string, userAgent?: string) {
+    if (!refreshToken) {
+      throw new Error("Refresh token required");
+    }
+
+    const session = await prisma.session.findFirst({
+      where: {
+        refreshToken,
+        isActive: true,
+        refreshExpiresAt: { gt: new Date() },
+      } as any,
+    } as any);
+
+    if (!session) {
+      const error = new Error("Invalid or expired refresh token");
+      (error as any).code = "TOKEN_EXPIRED";
+      throw error;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: (session as any).userId },
+      include: {
+        affiliateProfile: true,
+        adminProfile: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const accessTokenExpiresIn = this.getAccessTokenExpiresIn();
+    const now = new Date();
+
+    const newAccessToken = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET!,
+      { expiresIn: accessTokenExpiresIn } as any
+    );
+
+    const newRefreshToken = this.generateRefreshToken();
+    const accessExpiresAt = new Date(now.getTime() + this.parseDurationMs(accessTokenExpiresIn));
+    const refreshExpiresAt = new Date(now.getTime() + this.getRefreshTokenExpiresInMs());
+
+    await prisma.session.update({
+      where: { id: (session as any).id },
+      data: {
+        token: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresAt: accessExpiresAt,
+        refreshExpiresAt,
+        ipAddress: ipAddress || (session as any).ipAddress || null,
+        userAgent: userAgent || (session as any).userAgent || null,
+        lastActivity: now,
+        isActive: true,
+      } as any,
+    } as any);
+
+    return {
+      token: newAccessToken,
+      refreshToken: newRefreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -120,9 +218,9 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         avatar: user.avatar || null,
+        affiliateProfile: user.affiliateProfile,
+        adminProfile: user.adminProfile,
       },
-      message:
-        "Registration successful! Please check your email to verify your account.",
     };
   }
 
@@ -152,12 +250,36 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    // Generate JWT token
+    const accessTokenExpiresIn = this.getAccessTokenExpiresIn();
+
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" } as any
+      { expiresIn: accessTokenExpiresIn } as any
     );
+
+    const refreshToken = this.generateRefreshToken();
+    const now = new Date();
+    const accessExpiresAt = new Date(
+      now.getTime() + this.parseDurationMs(accessTokenExpiresIn)
+    );
+    const refreshExpiresAt = new Date(
+      now.getTime() + this.getRefreshTokenExpiresInMs()
+    );
+
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        token,
+        refreshToken,
+        expiresAt: accessExpiresAt,
+        refreshExpiresAt,
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+        isActive: true,
+        lastActivity: now,
+      } as any,
+    } as any);
 
     // Log activity
     await prisma.activity.create({
@@ -173,6 +295,7 @@ export class AuthService {
 
     return {
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -214,10 +337,10 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    // Invalidate all sessions for the user
-    await prisma.session.deleteMany({
-      where: { userId },
-    });
+    await prisma.session.updateMany({
+      where: { userId } as any,
+      data: { isActive: false } as any,
+    } as any);
 
     // Log activity
     await prisma.activity.create({

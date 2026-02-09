@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { History, RefreshCw, DollarSign } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -34,19 +33,15 @@ export default function PayoutHistoryPage() {
   const fetchPayouts = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/payouts`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPayouts(data.data || []);
-      } else {
-        toast.error("Failed to load payout history");
-      }
+      const response = await apiClient.get("/admin/payouts");
+      setPayouts(response.data.data || []);
     } catch (error) {
       console.error("Error fetching payout history:", error);
-      toast.error("Failed to load payout history");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load payout history"
+      );
     } finally {
       setIsLoading(false);
     }

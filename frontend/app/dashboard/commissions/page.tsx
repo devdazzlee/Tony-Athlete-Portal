@@ -36,8 +36,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { Textarea } from "@/components/ui/textarea";
 
 interface Commission {
@@ -265,21 +264,12 @@ export default function CommissionsPage() {
   const fetchCommissionsData = async () => {
     setPendingLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/commissions/pending?period=${selectedPeriod}&status=${selectedStatus}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/commissions/pending?period=${selectedPeriod}&status=${selectedStatus}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPendingCommissions(data.data || []);
-        setCommissionSummary(data.summary || null);
-      } else {
-        console.error("Failed to fetch commissions:", response.status);
-        toast.error("Failed to load commissions data");
-      }
+      const data = response.data;
+      setPendingCommissions(data?.data || []);
+      setCommissionSummary(data?.summary || null);
     } catch (error) {
       console.error("Error fetching commissions:", error);
       toast.error("Failed to load commissions data");
@@ -295,23 +285,14 @@ export default function CommissionsPage() {
         page: page.toString(),
         limit: "10",
       });
-      const response = await fetch(
-        `${config.apiUrl}/commissions/history?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/commissions/history?${params.toString()}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPayoutHistory(data.data || []);
-        if (data.pagination) {
-          setHistoryPage(data.pagination.page || 1);
-          setHistoryTotalPages(data.pagination.pages || 1);
-        }
-      } else {
-        console.error("Failed to fetch payout history:", response.status);
-        toast.error("Failed to load payout history");
+      const data = response.data;
+      setPayoutHistory(data?.data || []);
+      if (data?.pagination) {
+        setHistoryPage(data.pagination.page || 1);
+        setHistoryTotalPages(data.pagination.pages || 1);
       }
     } catch (error) {
       console.error("Error fetching payout history:", error);
@@ -324,16 +305,8 @@ export default function CommissionsPage() {
   const fetchPayoutSettings = async () => {
     setSettingsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/commissions/settings`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        applySettingsResponse(data);
-      } else {
-        console.error("Failed to fetch payout settings:", response.status);
-      }
+      const response = await apiClient.get("/commissions/settings");
+      applySettingsResponse(response.data);
     } catch (error) {
       console.error("Error fetching payout settings:", error);
     } finally {
@@ -360,31 +333,21 @@ export default function CommissionsPage() {
     }
 
     try {
-      const response = await fetch(
-        `${config.apiUrl}/commissions/request-payout`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            amount: parseFloat(payoutRequestAmount),
-            reason: payoutRequestReason,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success("Payout request submitted successfully");
-        setPayoutRequestAmount("");
-        setPayoutRequestReason("");
-        fetchCommissionsData(); // Refresh data
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to submit payout request");
-      }
+      await apiClient.post("/commissions/request-payout", {
+        amount: parseFloat(payoutRequestAmount),
+        reason: payoutRequestReason,
+      });
+      toast.success("Payout request submitted successfully");
+      setPayoutRequestAmount("");
+      setPayoutRequestReason("");
+      fetchCommissionsData(); // Refresh data
     } catch (error) {
       console.error("Error requesting payout:", error);
-      toast.error("Failed to submit payout request");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to submit payout request"
+      );
     }
   };
 
@@ -423,24 +386,17 @@ export default function CommissionsPage() {
         bankDetails: bankDetailsPayload,
       };
 
-      const response = await fetch(`${config.apiUrl}/commissions/settings`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        applySettingsResponse(data);
-        toast.success("Payout settings updated");
-        fetchCommissionsData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update payout settings");
-      }
+      const response = await apiClient.put("/commissions/settings", payload);
+      applySettingsResponse(response.data);
+      toast.success("Payout settings updated");
+      fetchCommissionsData();
     } catch (error) {
       console.error("Error saving payout settings:", error);
-      toast.error("Failed to update payout settings");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update payout settings"
+      );
     } finally {
       setIsSavingSettings(false);
     }
@@ -459,24 +415,17 @@ export default function CommissionsPage() {
         bankDetails: null,
       };
 
-      const response = await fetch(`${config.apiUrl}/commissions/settings`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        applySettingsResponse(data);
-        toast.success("Bank details removed");
-        fetchCommissionsData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to remove bank details");
-      }
+      const response = await apiClient.put("/commissions/settings", payload);
+      applySettingsResponse(response.data);
+      toast.success("Bank details removed");
+      fetchCommissionsData();
     } catch (error) {
       console.error("Error clearing bank details:", error);
-      toast.error("Failed to remove bank details");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to remove bank details"
+      );
     } finally {
       setIsSavingSettings(false);
     }

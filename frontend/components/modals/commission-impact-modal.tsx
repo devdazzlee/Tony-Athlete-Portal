@@ -14,8 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AlertTriangle, Users, TrendingUp, TrendingDown } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 interface AffiliateImpact {
   id: string;
@@ -53,21 +52,11 @@ export default function CommissionImpactModal({
   const fetchImpactPreview = async () => {
     setIsLoadingPreview(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/system/settings/commission/preview`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ defaultRate: newDefaultRate }),
-        }
+      const response = await apiClient.post(
+        "/system/settings/commission/preview",
+        { defaultRate: newDefaultRate }
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setImpactData(data.preview);
-      } else {
-        console.error("Failed to fetch impact preview");
-      }
+      setImpactData(response.data?.preview);
     } catch (error) {
       console.error("Error fetching impact preview:", error);
     } finally {

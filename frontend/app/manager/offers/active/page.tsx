@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { LinkIcon, RefreshCw, TrendingUp, MousePointer, Target } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -45,22 +44,19 @@ export default function ActiveOffersPage() {
   const fetchOffers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const activeOffers = (data.data || []).filter(
-          (o: Offer) => o.status === "active"
-        );
-        setOffers(activeOffers);
-      } else {
-        toast.error("Failed to load offers");
-      }
+      const response = await apiClient.get("/admin/offers");
+      const data = response.data;
+      const activeOffers = (data.data || []).filter(
+        (o: Offer) => o.status === "active"
+      );
+      setOffers(activeOffers);
     } catch (error) {
       console.error("Error fetching offers:", error);
-      toast.error("Failed to load offers");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load offers"
+      );
     } finally {
       setIsLoading(false);
     }

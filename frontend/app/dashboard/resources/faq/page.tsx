@@ -33,8 +33,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DashboardLoading } from "@/components/ui/loading";
 
 interface FAQItem {
@@ -71,24 +70,17 @@ export default function FAQPage() {
         params.append("search", searchQuery);
       }
 
-      const response = await fetch(
-        `${config.apiUrl}/support/faq?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setFaqs(data.faqs || []);
-        setCategories(data.categories || []);
-      } else {
-        console.error("Failed to fetch FAQs:", response.status);
-        toast.error("Failed to load FAQ items");
-      }
+      const response = await apiClient.get(`/support/faq?${params.toString()}`);
+      const data = response.data;
+      setFaqs(data.faqs || []);
+      setCategories(data.categories || []);
     } catch (error) {
       console.error("Error fetching FAQs:", error);
-      toast.error("Failed to load FAQ items");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load FAQ items"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -101,20 +93,10 @@ export default function FAQPage() {
     }
 
     try {
-      const response = await fetch(
-        `${config.apiUrl}/support/faq/${faqId}/helpful`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ helpful }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success(helpful ? "Marked as helpful" : "Feedback recorded");
-        setVotedItems((prev) => new Set(prev).add(faqId));
-        fetchFAQs(); // Refresh to get updated counts
-      }
+      await apiClient.post(`/support/faq/${faqId}/helpful`, { helpful });
+      toast.success(helpful ? "Marked as helpful" : "Feedback recorded");
+      setVotedItems((prev) => new Set(prev).add(faqId));
+      fetchFAQs(); // Refresh to get updated counts
     } catch (error) {
       console.error("Error voting:", error);
     }

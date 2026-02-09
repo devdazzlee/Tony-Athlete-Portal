@@ -12,8 +12,7 @@ import {
   Info,
   CheckCircle,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DataLoading } from "@/components/ui/loading";
 
 interface Notification {
@@ -38,17 +37,8 @@ export default function NotificationsPage() {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${config.apiUrl}/notifications`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications || []);
-      } else {
-        // Use mock data if API not available
-        setNotifications(getMockNotifications());
-      }
+      const response = await apiClient.get("/notifications");
+      setNotifications(response.data?.notifications || []);
     } catch (error) {
       console.error("Error fetching notifications:", error);
       // Use mock data on error
@@ -112,19 +102,10 @@ export default function NotificationsPage() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/notifications/${notificationId}/read`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-        }
+      await apiClient.patch(`/notifications/${notificationId}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
       );
-
-      if (response.ok) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-        );
-      }
     } catch (error) {
       console.error("Error marking notification as read:", error);
       // Update locally anyway
@@ -136,17 +117,8 @@ export default function NotificationsPage() {
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/notifications/mark-all-read`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      }
+      await apiClient.post("/notifications/mark-all-read");
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (error) {
       console.error("Error marking all as read:", error);
       // Update locally anyway
@@ -156,17 +128,8 @@ export default function NotificationsPage() {
 
   const deleteNotification = async (notificationId: string) => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/notifications/${notificationId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-      }
+      await apiClient.delete(`/notifications/${notificationId}`);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (error) {
       console.error("Error deleting notification:", error);
       // Delete locally anyway

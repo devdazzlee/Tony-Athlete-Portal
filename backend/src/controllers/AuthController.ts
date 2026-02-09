@@ -80,11 +80,12 @@ export class AuthController {
       );
 
       // Set authentication cookies (will skip if cross-domain)
-      setAuthCookies(res, result.token, result.user, req);
+      setAuthCookies(res, result.token, result.refreshToken || null, result.user, req);
 
       res.json({
         message: "Login successful",
         token: result.token,
+        refreshToken: result.refreshToken,
         user: result.user,
       });
     } catch (error: any) {
@@ -94,6 +95,38 @@ export class AuthController {
           .json({ error: "Invalid input data", details: error.errors });
       }
       res.status(401).json({ error: error.message });
+    }
+  }
+
+  async refresh(req: Request, res: Response) {
+    try {
+      const refreshToken =
+        (req.body?.refreshToken as string | undefined) ||
+        (req as any).cookies?.refreshToken;
+
+      if (!refreshToken) {
+        return res.status(400).json({ error: "Refresh token required" });
+      }
+
+      const result = await authService.refresh(
+        refreshToken,
+        req.ip,
+        req.get("User-Agent")
+      );
+
+      setAuthCookies(res, result.token, result.refreshToken || null, result.user, req);
+
+      res.json({
+        message: "Token refreshed",
+        token: result.token,
+        refreshToken: result.refreshToken,
+        user: result.user,
+      });
+    } catch (error: any) {
+      res.status(401).json({ 
+        error: error.message || "Invalid refresh token",
+        code: error.code || "AUTH_ERROR"
+      });
     }
   }
 

@@ -33,8 +33,7 @@ import {
   Package,
   Users,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -108,13 +107,8 @@ export default function ManagerShopifyPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-      }
+      const response = await apiClient.get("/shopify/stores");
+      setStores(response.data?.stores || []);
     } catch (error) {
       console.error("Error fetching stores:", error);
     }
@@ -122,16 +116,16 @@ export default function ManagerShopifyPage() {
 
   const fetchOrders = async () => {
     try {
-      const storeParam = selectedStore !== "all" ? `&storeId=${selectedStore}` : "";
-      const response = await fetch(
-        `${config.apiUrl}/manager/shopify/orders?page=${currentPage}&limit=${ordersPerPage}${storeParam}`,
-        { headers: getAuthHeaders() }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setOrders(data.orders || []);
-        setTotalPages(data.totalPages || 1);
-      }
+      const params: Record<string, any> = {
+        page: currentPage,
+        limit: ordersPerPage,
+      };
+      if (selectedStore !== "all") params.storeId = selectedStore;
+
+      const response = await apiClient.get("/manager/shopify/orders", { params });
+      const data = response.data;
+      setOrders(data?.orders || []);
+      setTotalPages(data?.totalPages || 1);
     } catch (error) {
       console.error("Error fetching orders:", error);
     }
@@ -139,15 +133,11 @@ export default function ManagerShopifyPage() {
 
   const fetchStats = async () => {
     try {
-      const storeParam = selectedStore !== "all" ? `?storeId=${selectedStore}` : "";
-      const response = await fetch(
-        `${config.apiUrl}/manager/shopify/stats${storeParam}`,
-        { headers: getAuthHeaders() }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const params: Record<string, any> = {};
+      if (selectedStore !== "all") params.storeId = selectedStore;
+
+      const response = await apiClient.get("/manager/shopify/stats", { params });
+      setStats(response.data);
     } catch (error) {
       console.error("Error fetching stats:", error);
     }
@@ -156,16 +146,9 @@ export default function ManagerShopifyPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const response = await fetch(`${config.apiUrl}/manager/shopify/sync`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        toast.success("Shopify data synced successfully");
-        await fetchData();
-      } else {
-        toast.error("Failed to sync Shopify data");
-      }
+      await apiClient.post("/manager/shopify/sync");
+      toast.success("Shopify data synced successfully");
+      await fetchData();
     } catch (error) {
       console.error("Error syncing:", error);
       toast.error("Failed to sync Shopify data");

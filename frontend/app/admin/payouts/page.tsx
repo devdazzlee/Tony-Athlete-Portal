@@ -27,8 +27,7 @@ import {
 } from "@/components/ui/table";
 import { CheckCircle, DollarSign, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
 
 interface Payout {
@@ -85,19 +84,8 @@ export default function PayoutsManagementPage() {
         params.append("status", statusFilter.toUpperCase());
       }
 
-      const response = await fetch(
-        `${config.apiUrl}/admin/payouts?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to load payouts");
-      }
-
-      const data = await response.json();
+      const response = await apiClient.get(`/admin/payouts?${params.toString()}`);
+      const data = response.data;
       setPayouts(data.data || []);
       setSummary(data.summary || null);
       setPagination(
@@ -110,7 +98,12 @@ export default function PayoutsManagementPage() {
       );
     } catch (error: any) {
       console.error("Error fetching payouts:", error);
-      toast.error(error.message || "Failed to load payouts");
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error.message ||
+          "Failed to load payouts"
+      );
     } finally {
       setIsInitialLoading(false);
       setIsTableLoading(false);

@@ -56,6 +56,7 @@ export declare class LinksService {
             createdAt: Date;
             updatedAt: Date;
             expiresAt: Date | null;
+            isActive: boolean;
             clicks: number;
             conversions: number;
             affiliateId: string;
@@ -64,7 +65,6 @@ export declare class LinksService {
             shortUrl: string;
             customSlug: string | null;
             earnings: number;
-            isActive: boolean;
         };
         clicks: {
             url: string;
@@ -128,6 +128,7 @@ export declare class LinksService {
         createdAt: Date;
         updatedAt: Date;
         expiresAt: Date | null;
+        isActive: boolean;
         clicks: number;
         conversions: number;
         affiliateId: string;
@@ -136,7 +137,6 @@ export declare class LinksService {
         shortUrl: string;
         customSlug: string | null;
         earnings: number;
-        isActive: boolean;
     }>;
     deleteLink(userId: string, linkId: string): Promise<{
         success: boolean;

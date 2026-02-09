@@ -13,8 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Key, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -47,32 +46,27 @@ export default function ManagerSecurityPage() {
 
     setIsChangingPassword(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/settings/security/change-password`,
+      const response = await apiClient.post(
+        "/settings/security/change-password",
         {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            currentPassword: passwordForm.currentPassword,
-            newPassword: passwordForm.newPassword,
-          }),
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
         }
       );
 
-      if (response.ok) {
-        toast.success("Password changed successfully");
-        setPasswordForm({
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
-        });
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to change password");
-      }
+      toast.success("Password changed successfully");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
     } catch (error) {
       console.error("Error changing password:", error);
-      toast.error("Failed to change password");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to change password"
+      );
     } finally {
       setIsChangingPassword(false);
     }

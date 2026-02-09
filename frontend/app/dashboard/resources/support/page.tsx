@@ -35,8 +35,7 @@ import {
 } from "lucide-react";
 import { SectionLoading } from "@/components/ui/loading";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -149,17 +148,10 @@ export default function ContactSupportPage() {
 
   const fetchTickets = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/support/tickets`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTickets(data.tickets || []);
-        setTicketSummary(data.summary || null);
-      } else {
-        console.error("Failed to fetch tickets:", response.status);
-      }
+      const response = await apiClient.get("/support/tickets");
+      const data = response.data;
+      setTickets(data.tickets || []);
+      setTicketSummary(data.summary || null);
     } catch (error) {
       console.error("Error fetching tickets:", error);
     } finally {
@@ -185,29 +177,23 @@ export default function ContactSupportPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${config.apiUrl}/support/tickets`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
+      const response = await apiClient.post("/support/tickets", formData);
+      const data = response.data;
+      toast.success(data.message || "Ticket created successfully");
+      setFormData({
+        subject: "",
+        category: "",
+        priority: "Medium",
+        message: "",
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Ticket created successfully");
-        setFormData({
-          subject: "",
-          category: "",
-          priority: "Medium",
-          message: "",
-        });
-        fetchTickets(); // Refresh tickets list
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to create ticket");
-      }
+      fetchTickets(); // Refresh tickets list
     } catch (error) {
       console.error("Error creating ticket:", error);
-      toast.error("Failed to create support ticket");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to create support ticket"
+      );
     } finally {
       setIsSubmitting(false);
     }

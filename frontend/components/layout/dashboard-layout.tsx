@@ -38,7 +38,6 @@ import {
   AlertTriangle,
   Tag,
   MessageSquare,
-  ShoppingBag,
   Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -106,11 +105,6 @@ const affiliateNavItems = [
     icon: DollarSign,
   },
   {
-    title: "Products",
-    href: "/dashboard/products",
-    icon: ShoppingBag,
-  },
-  {
     title: "Resources & Support",
     href: "/dashboard/resources",
     icon: BookOpen,
@@ -145,15 +139,6 @@ const managerNavItems = [
       { title: "All Affiliates", href: "/manager/affiliates/all" },
       { title: "Approval Queue", href: "/manager/affiliates/approval" },
       { title: "Performance Review", href: "/manager/affiliates/performance" },
-    ],
-  },
-  {
-    title: "Shopify Orders",
-    href: "/manager/shopify",
-    icon: ShoppingBag,
-    subItems: [
-      { title: "Overview", href: "/manager/shopify" },
-      { title: "All Orders", href: "/manager/shopify/orders" },
     ],
   },
   {
@@ -227,18 +212,6 @@ const adminNavItems = [
     title: "Manage Tiers",
     href: "/admin/tiers",
     icon: Award,
-  },
-  {
-    title: "Shopify",
-    href: "/admin/shopify",
-    icon: ShoppingBag,
-    subItems: [
-      { title: "Overview", href: "/admin/shopify" },
-      { title: "Stores", href: "/admin/shopify/stores" },
-      { title: "Orders", href: "/admin/shopify/orders" },
-      { title: "Discount Sync", href: "/admin/shopify/discounts" },
-      { title: "Settings", href: "/admin/shopify/settings" },
-    ],
   },
   {
     title: "Deliverables",

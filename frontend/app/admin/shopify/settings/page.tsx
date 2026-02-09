@@ -36,7 +36,7 @@ import {
   Plus,
 } from "lucide-react";
 import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -123,15 +123,11 @@ export default function AdminShopifySettingsPage() {
   const fetchSettings = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/settings`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.webhookConfig) setWebhookConfig(data.webhookConfig);
-        if (data.syncSettings) setSyncSettings(data.syncSettings);
-        if (data.webhookStatus) setWebhookStatus(data.webhookStatus);
-      }
+      const response = await apiClient.get("/admin/shopify/settings");
+      const data = response.data;
+      if (data.webhookConfig) setWebhookConfig(data.webhookConfig);
+      if (data.syncSettings) setSyncSettings(data.syncSettings);
+      if (data.webhookStatus) setWebhookStatus(data.webhookStatus);
     } catch (error) {
       console.error("Error fetching settings:", error);
     } finally {
@@ -141,15 +137,11 @@ export default function AdminShopifySettingsPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-        if (data.stores?.length > 0 && !selectedStore) {
-          setSelectedStore(data.stores[0].id);
-        }
+      const response = await apiClient.get("/shopify/stores");
+      const data = response.data;
+      setStores(data.stores || []);
+      if (data.stores?.length > 0 && !selectedStore) {
+        setSelectedStore(data.stores[0].id);
       }
     } catch (error) {
       console.error("Error fetching stores:", error);
@@ -160,13 +152,8 @@ export default function AdminShopifySettingsPage() {
     if (!storeId) return;
     setLoadingWebhooks(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/webhooks/${storeId}`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWebhooks(data.webhooks || []);
-      }
+      const response = await apiClient.get(`/admin/shopify/webhooks/${storeId}`);
+      setWebhooks(response.data?.webhooks || []);
     } catch (error) {
       console.error("Error fetching webhooks:", error);
       toast.error("Failed to fetch webhooks");
@@ -182,24 +169,20 @@ export default function AdminShopifySettingsPage() {
     }
     setRegistering(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/webhooks/${selectedStore}/register`, {
-        method: "POST",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ baseUrl }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        toast.success(`Registered ${data.registered?.length || 0} webhooks`);
-        fetchWebhooks(selectedStore);
-      } else {
-        toast.error(data.error || "Failed to register webhooks");
-      }
+      const response = await apiClient.post(
+        `/admin/shopify/webhooks/${selectedStore}/register`,
+        { baseUrl }
+      );
+      const data = response.data;
+      toast.success(`Registered ${data.registered?.length || 0} webhooks`);
+      fetchWebhooks(selectedStore);
     } catch (error) {
       console.error("Error registering webhooks:", error);
-      toast.error("Failed to register webhooks");
+      const message =
+        (error as any)?.response?.data?.error ||
+        (error as any)?.response?.data?.message ||
+        "Failed to register webhooks";
+      toast.error(message);
     } finally {
       setRegistering(false);
     }
@@ -208,19 +191,9 @@ export default function AdminShopifySettingsPage() {
   const deleteWebhook = async (webhookId: number) => {
     if (!selectedStore) return;
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/shopify/webhooks/${selectedStore}/${webhookId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-      if (response.ok) {
-        toast.success("Webhook deleted");
-        fetchWebhooks(selectedStore);
-      } else {
-        toast.error("Failed to delete webhook");
-      }
+      await apiClient.delete(`/admin/shopify/webhooks/${selectedStore}/${webhookId}`);
+      toast.success("Webhook deleted");
+      fetchWebhooks(selectedStore);
     } catch (error) {
       console.error("Error deleting webhook:", error);
       toast.error("Failed to delete webhook");
@@ -236,20 +209,8 @@ export default function AdminShopifySettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/settings`, {
-        method: "PUT",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ webhookConfig, syncSettings }),
-      });
-
-      if (response.ok) {
-        toast.success("Settings saved successfully");
-      } else {
-        toast.error("Failed to save settings");
-      }
+      await apiClient.put("/admin/shopify/settings", { webhookConfig, syncSettings });
+      toast.success("Settings saved successfully");
     } catch (error) {
       console.error("Error saving settings:", error);
       toast.error("Failed to save settings");
@@ -281,13 +242,8 @@ export default function AdminShopifySettingsPage() {
 
     const fetchSchedulerStatus = async () => {
       try {
-        const response = await fetch(`${config.apiUrl}/admin/shopify/scheduler/status`, {
-          headers: getAuthHeaders(),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setSchedulerStatus(data);
-        }
+        const response = await apiClient.get("/admin/shopify/scheduler/status");
+        setSchedulerStatus(response.data);
       } catch (error) {
         console.error("Error fetching scheduler status:", error);
       } finally {
@@ -297,17 +253,11 @@ export default function AdminShopifySettingsPage() {
 
     const toggleScheduler = async (start: boolean) => {
       try {
-        const response = await fetch(
-          `${config.apiUrl}/admin/shopify/scheduler/${start ? "start" : "stop"}`,
-          {
-            method: "POST",
-            headers: getAuthHeaders(),
-          }
+        await apiClient.post(
+          `/admin/shopify/scheduler/${start ? "start" : "stop"}`
         );
-        if (response.ok) {
-          toast.success(`Scheduler ${start ? "started" : "stopped"}`);
-          fetchSchedulerStatus();
-        }
+        toast.success(`Scheduler ${start ? "started" : "stopped"}`);
+        fetchSchedulerStatus();
       } catch (error) {
         toast.error("Failed to toggle scheduler");
       }
@@ -316,19 +266,18 @@ export default function AdminShopifySettingsPage() {
     const triggerSync = async () => {
       setSyncing(true);
       try {
-        const response = await fetch(`${config.apiUrl}/admin/shopify/scheduler/sync`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-        });
-        const data = await response.json();
-        if (response.ok) {
-          toast.success(`Synced ${data.ordersProcessed} orders from ${data.storesSynced} stores`);
-          fetchSchedulerStatus();
-        } else {
-          toast.error(data.error || "Sync failed");
-        }
+        const response = await apiClient.post("/admin/shopify/scheduler/sync");
+        const data = response.data;
+        toast.success(
+          `Synced ${data.ordersProcessed} orders from ${data.storesSynced} stores`
+        );
+        fetchSchedulerStatus();
       } catch (error) {
-        toast.error("Failed to trigger sync");
+        const message =
+          (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to trigger sync";
+        toast.error(message);
       } finally {
         setSyncing(false);
       }

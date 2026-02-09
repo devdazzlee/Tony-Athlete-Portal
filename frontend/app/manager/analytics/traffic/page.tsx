@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { MousePointer, RefreshCw, TrendingUp, Globe, Users, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTiers } from "@/hooks/useTiers";
@@ -56,29 +55,13 @@ export default function TrafficAnalysisPage() {
   const fetchTrafficData = async () => {
     setIsLoading(true);
     try {
-      // Fetch affiliates data
-      const affiliatesResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        { headers: getAuthHeaders() }
-      );
+      const [affiliatesResponse, statsResponse] = await Promise.all([
+        apiClient.get("/admin/affiliates?limit=500"),
+        apiClient.get("/manager/shopify/stats"),
+      ]);
 
-      // Fetch Shopify stats
-      const statsResponse = await fetch(
-        `${config.apiUrl}/manager/shopify/stats`,
-        { headers: getAuthHeaders() }
-      );
-
-      let affiliates: any[] = [];
-      let stats: any = {};
-
-      if (affiliatesResponse.ok) {
-        const data = await affiliatesResponse.json();
-        affiliates = data.data || [];
-      }
-
-      if (statsResponse.ok) {
-        stats = await statsResponse.json();
-      }
+      const affiliates: any[] = affiliatesResponse.data?.data || [];
+      const stats: any = statsResponse.data || {};
 
       const totalClicks = affiliates.reduce(
         (sum: number, aff: any) => sum + (aff.totalClicks || 0),
@@ -100,7 +83,7 @@ export default function TrafficAnalysisPage() {
           rate: aff.totalClicks > 0 ? ((aff.totalConversions || 0) / aff.totalClicks) * 100 : 0,
           tier: aff.tier || "BRONZE",
         }))
-        .sort((a, b) => b.clicks - a.clicks)
+        .sort((a: any, b: any) => b.clicks - a.clicks)
         .slice(0, 15);
 
       setTrafficData({
@@ -113,7 +96,11 @@ export default function TrafficAnalysisPage() {
       });
     } catch (error) {
       console.error("Error fetching traffic data:", error);
-      toast.error("Failed to load traffic data");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load traffic data"
+      );
     } finally {
       setIsLoading(false);
     }

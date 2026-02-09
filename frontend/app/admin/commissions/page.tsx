@@ -50,8 +50,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
-import { config } from "@/config/config";
+import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
 import { DatePicker } from "@/components/ui/date-picker";
 
@@ -300,19 +299,10 @@ export default function CommissionsPage() {
         params.append("sortOrder", filters.sortOrder);
       }
 
-      const response = await fetch(
-        `${config.apiUrl}/commission-management?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/commission-management?${params.toString()}`
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to load commissions");
-      }
-
-      const data = await response.json();
+      const data = response.data;
       setCommissions(data.data || data.commissions || []);
       setPagination(
         data.pagination || {
@@ -324,7 +314,12 @@ export default function CommissionsPage() {
       );
     } catch (error: any) {
       console.error("Error fetching commissions:", error);
-      toast.error(error.message || "Failed to load commissions");
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error.message ||
+          "Failed to load commissions"
+      );
     } finally {
       setIsInitialLoading(false);
       setIsTableLoading(false);
@@ -333,17 +328,10 @@ export default function CommissionsPage() {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/commission-management/analytics?period=30d`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        "/commission-management/analytics?period=30d"
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAnalytics(data);
-      }
+      setAnalytics(response.data);
     } catch (error) {
       console.error("Error fetching analytics:", error);
     }
@@ -362,33 +350,27 @@ export default function CommissionsPage() {
     });
 
     try {
-      const response = await fetch(
-        `${config.apiUrl}/commission-management/${commissionId}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status, notes }),
-        }
+      await apiClient.patch(
+        `/commission-management/${commissionId}/status`,
+        { status, notes }
       );
-
-      if (response.ok) {
-        toast.success("Commission status updated successfully");
-        // Update the commission in the list immediately for better UX
-        setCommissions((prev) =>
-          prev.map((commission) =>
-            commission.id === commissionId
-              ? { ...commission, status: status as any }
-              : commission
-          )
-        );
-        // Refresh the full list to ensure data consistency
-        fetchCommissions();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update commission status");
-      }
+      toast.success("Commission status updated successfully");
+      // Update the commission in the list immediately for better UX
+      setCommissions((prev) =>
+        prev.map((commission) =>
+          commission.id === commissionId
+            ? { ...commission, status: status as any }
+            : commission
+        )
+      );
+      // Refresh the full list to ensure data consistency
+      fetchCommissions();
     } catch (error) {
-      toast.error("Failed to update commission status");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update commission status"
+      );
     } finally {
       // Clear loading state
       setUpdatingCommissions((prev) => {

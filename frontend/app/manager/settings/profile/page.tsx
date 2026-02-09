@@ -14,9 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, Mail, Phone, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { getInitials } from "@/lib/auth-client";
 
@@ -42,22 +41,16 @@ export default function ManagerProfilePage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch(`${config.apiUrl}/settings/profile`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast.success("Profile updated successfully");
-        refreshUser();
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to update profile");
-      }
+      await apiClient.put("/settings/profile", formData);
+      toast.success("Profile updated successfully");
+      refreshUser();
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update profile"
+      );
     } finally {
       setIsSaving(false);
     }

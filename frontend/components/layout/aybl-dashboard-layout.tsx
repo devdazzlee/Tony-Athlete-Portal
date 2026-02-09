@@ -20,15 +20,12 @@ import {
   LayoutDashboard,
   FileText,
   MessageSquare,
-  ShoppingBag,
-  Store,
   Star,
   Menu,
   LogOut,
   User,
   Settings,
   Bell,
-  ShoppingCart,
   Moon,
   Sun,
   ChevronDown,
@@ -47,8 +44,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getFullName, getInitials } from "@/lib/auth-client";
 import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
-import { CartDrawer } from "@/components/cart/CartDrawer";
+import apiClient from "@/lib/api-client";
 
 interface TCNutritionDashboardLayoutProps {
   children: React.ReactNode;
@@ -88,16 +84,6 @@ const navItems = [
     href: "/dashboard/feedback",
     icon: MessageSquare,
   },
-  {
-    title: "Orders",
-    href: "/dashboard/orders",
-    icon: ShoppingBag,
-  },
-  {
-    title: "Shop",
-    href: "/dashboard/shop",
-    icon: Store,
-  },
 ];
 
 interface Notification {
@@ -132,17 +118,8 @@ export default function TCNutritionDashboardLayout({
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
-      const response = await fetch(`${config.apiUrl}/notifications`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications || []);
-      } else {
-        // Use mock data if API not available
-        setNotifications(getMockNotifications());
-      }
+      const response = await apiClient.get("/notifications");
+      setNotifications(response.data?.notifications || []);
     } catch (error) {
       console.error("Error fetching notifications:", error);
       // Use mock data on error
@@ -186,24 +163,10 @@ export default function TCNutritionDashboardLayout({
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/notifications/${notificationId}/read`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-        }
+      await apiClient.patch(`/notifications/${notificationId}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
       );
-
-      if (response.ok) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-        );
-      } else {
-        // Update locally anyway
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-        );
-      }
     } catch (error) {
       console.error("Error marking notification as read:", error);
       // Update locally anyway
@@ -378,9 +341,6 @@ export default function TCNutritionDashboardLayout({
                 </span>
               </div>
 
-              {/* Shopping Cart */}
-              <CartDrawer />
-
               {/* Notifications */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -479,19 +439,7 @@ export default function TCNutritionDashboardLayout({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Shopping Cart */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-gray-700 hover:bg-gray-100 cursor-pointer"
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push("/dashboard/shop");
-                }}
-              >
-                <ShoppingCart className="h-5 w-5" />
-              </Button>
-
+              
               
               {/* Account Dropdown */}
               <DropdownMenu>

@@ -66,14 +66,14 @@ export interface AuditLog {
 export interface Session {
     id: string;
     userId: string;
-    accountId: string;
     token: string;
     refreshToken: string;
     expiresAt: Date;
-    ipAddress: string;
-    userAgent: string;
-    isActive: boolean;
     createdAt: Date;
+    refreshExpiresAt: Date;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    isActive: boolean;
     lastActivity: Date;
 }
 export interface TwoFactorAuth {

@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -47,17 +46,8 @@ export default function CreateOfferPage() {
 
   const fetchAffiliates = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAffiliates(data.data || []);
-      }
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      setAffiliates(response.data?.data || []);
     } catch (error) {
       console.error("Error fetching affiliates:", error);
     }
@@ -71,29 +61,23 @@ export default function CreateOfferPage() {
 
     setIsCreating(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(newOffer),
+      await apiClient.post("/admin/offers", newOffer);
+      toast.success("Offer created successfully");
+      setNewOffer({
+        name: "",
+        description: "",
+        commissionRate: 10,
+        startDate: new Date().toISOString().split("T")[0],
+        endDate: "",
+        affiliateId: "",
       });
-
-      if (response.ok) {
-        toast.success("Offer created successfully");
-        setNewOffer({
-          name: "",
-          description: "",
-          commissionRate: 10,
-          startDate: new Date().toISOString().split("T")[0],
-          endDate: "",
-          affiliateId: "",
-        });
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to create offer");
-      }
     } catch (error) {
       console.error("Error creating offer:", error);
-      toast.error("Failed to create offer");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to create offer"
+      );
     } finally {
       setIsCreating(false);
     }

@@ -25,8 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import { toast } from "sonner";
+import apiClient from "@/lib/api-client";
 import { DashboardLoading } from "@/components/ui/loading";
 
 interface ReferralAnalytics {
@@ -66,19 +66,17 @@ export default function ReferralAnalyticsPage() {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/referral/analytics?period=${timeRange}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/referral/analytics?period=${timeRange}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAnalytics(data);
-      }
+      setAnalytics(response.data);
     } catch (error) {
       console.error("Error fetching analytics:", error);
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load analytics"
+      );
     } finally {
       setIsLoading(false);
     }

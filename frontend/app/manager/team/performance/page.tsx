@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { BarChart3, RefreshCw, TrendingUp, Users, DollarSign, Target, Award } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTiers } from "@/hooks/useTiers";
@@ -59,28 +58,16 @@ export default function TeamPerformancePage() {
     setIsLoading(true);
     try {
       // Fetch affiliates data
-      const affiliatesResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        { headers: getAuthHeaders() }
-      );
-
-      // Fetch Shopify stats
-      const statsResponse = await fetch(
-        `${config.apiUrl}/manager/shopify/stats`,
-        { headers: getAuthHeaders() }
-      );
-
       let affiliates: any[] = [];
       let stats: any = {};
 
-      if (affiliatesResponse.ok) {
-        const data = await affiliatesResponse.json();
-        affiliates = data.data || [];
-      }
+      const [affiliatesResponse, statsResponse] = await Promise.all([
+        apiClient.get("/admin/affiliates?limit=500"),
+        apiClient.get("/manager/shopify/stats"),
+      ]);
 
-      if (statsResponse.ok) {
-        stats = await statsResponse.json();
-      }
+      affiliates = affiliatesResponse.data?.data || [];
+      stats = statsResponse.data || {};
 
       const activeAffiliates = affiliates.filter((a: any) => a.status === "ACTIVE").length;
       const totalRevenue = stats.totalRevenue || affiliates.reduce(

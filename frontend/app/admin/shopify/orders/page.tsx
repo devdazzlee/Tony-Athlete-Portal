@@ -45,11 +45,9 @@ import {
   XCircle,
   DollarSign,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
 
 interface ShopifyStore {
   id: string;
@@ -119,13 +117,8 @@ export default function AdminShopifyOrdersPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-      }
+      const response = await apiClient.get("/shopify/stores");
+      setStores(response.data?.stores || []);
     } catch (error) {
       console.error("Error fetching stores:", error);
     }
@@ -133,17 +126,18 @@ export default function AdminShopifyOrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      let url = `${config.apiUrl}/manager/shopify/orders?page=${currentPage}&limit=${ordersPerPage}`;
-      if (selectedStore !== "all") url += `&storeId=${selectedStore}`;
-      if (selectedStatus !== "all") url += `&status=${selectedStatus}`;
+      const params: Record<string, any> = {
+        page: currentPage,
+        limit: ordersPerPage,
+      };
+      if (selectedStore !== "all") params.storeId = selectedStore;
+      if (selectedStatus !== "all") params.status = selectedStatus;
 
-      const response = await fetch(url, { headers: getAuthHeaders() });
-      if (response.ok) {
-        const data = await response.json();
-        setOrders(data.orders || []);
-        setTotalPages(data.totalPages || 1);
-        setTotalOrders(data.total || 0);
-      }
+      const response = await apiClient.get("/manager/shopify/orders", { params });
+      const data = response.data;
+      setOrders(data?.orders || []);
+      setTotalPages(data?.totalPages || 1);
+      setTotalOrders(data?.total || 0);
     } catch (error) {
       console.error("Error fetching orders:", error);
     }
@@ -152,10 +146,10 @@ export default function AdminShopifyOrdersPage() {
   const handleSync = async (testMode: boolean = false) => {
     setSyncing(true);
     try {
-      const response = await axios.post(
-        `${config.apiUrl}/shopify/sync`,
+      const response = await apiClient.post(
+        "/shopify/sync",
         { testMode, limit: 100 },
-        { headers: getAuthHeaders(), timeout: 120000 }
+        { timeout: 120000 }
       );
       toast.success(`Synced ${response.data.syncedCount || 0} orders from Shopify`);
       await fetchOrders();
@@ -169,24 +163,24 @@ export default function AdminShopifyOrdersPage() {
 
   const handleExport = async () => {
     try {
-      let url = `${config.apiUrl}/manager/shopify/orders/export?`;
-      if (selectedStore !== "all") url += `storeId=${selectedStore}&`;
-      if (selectedStatus !== "all") url += `status=${selectedStatus}&`;
+      const params: Record<string, any> = {};
+      if (selectedStore !== "all") params.storeId = selectedStore;
+      if (selectedStatus !== "all") params.status = selectedStatus;
 
-      const response = await fetch(url, { headers: getAuthHeaders() });
-      if (response.ok) {
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = `shopify-orders-${new Date().toISOString().split("T")[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        toast.success("Orders exported successfully");
-      } else {
-        toast.error("Failed to export orders");
-      }
+      const response = await apiClient.get("/manager/shopify/orders/export", {
+        params,
+        responseType: "blob",
+      });
+
+      const blob = response.data as Blob;
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `shopify-orders-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("Orders exported successfully");
     } catch (error) {
       console.error("Error exporting:", error);
       toast.error("Failed to export orders");
@@ -195,21 +189,11 @@ export default function AdminShopifyOrdersPage() {
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status: newStatus }),
+      await apiClient.patch(`/admin/shopify/orders/${orderId}/status`, {
+        status: newStatus,
       });
-
-      if (response.ok) {
-        toast.success(`Order status updated to ${newStatus}`);
-        await fetchOrders();
-      } else {
-        toast.error("Failed to update order status");
-      }
+      toast.success(`Order status updated to ${newStatus}`);
+      await fetchOrders();
     } catch (error) {
       console.error("Error updating order:", error);
       toast.error("Failed to update order status");

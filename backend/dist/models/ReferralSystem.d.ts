@@ -54,8 +54,8 @@ export declare class ReferralSystemModel {
         createdAt: Date;
         updatedAt: Date;
         expiresAt: Date;
-        productId: string;
         isActive: boolean;
+        productId: string;
         code: string;
         maxUses: number;
         currentUses: number;

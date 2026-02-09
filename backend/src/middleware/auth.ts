@@ -10,9 +10,14 @@ export const COOKIE_CONFIG = {
   httpOnly: true,
   secure: isVercel || isProduction,
   sameSite: isVercel || isProduction ? ("none" as const) : ("lax" as const),
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  maxAge: 7 * 24 * 60 * 60 * 1000, // default (overridden per-cookie)
   path: "/",
 };
+
+export const ACCESS_COOKIE_MAX_AGE_MS =
+  parseDurationMs(process.env.ACCESS_TOKEN_EXPIRES_IN || "15m");
+export const REFRESH_COOKIE_MAX_AGE_MS =
+  parseDurationMs(process.env.REFRESH_TOKEN_EXPIRES_IN || "30d");
 
 const prisma = new PrismaClient();
 
@@ -49,6 +54,20 @@ export const authenticateToken = async (
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+
+    // Ensure the access token is still part of an active session (allows revocation)
+    const session = await prisma.session.findFirst({
+      where: {
+        token,
+        isActive: true,
+        expiresAt: { gt: new Date() },
+      } as any,
+    } as any);
+
+    if (!session) {
+      return res.status(401).json({ error: "Session expired" });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       include: {
@@ -71,6 +90,14 @@ export const authenticateToken = async (
       affiliateProfile: user.affiliateProfile,
       adminProfile: user.adminProfile,
     };
+
+    // Best-effort update of last activity
+    prisma.session
+      .update({
+        where: { id: session.id },
+        data: { lastActivity: new Date() } as any,
+      } as any)
+      .catch(() => undefined);
 
     next();
   } catch (error) {
@@ -177,6 +204,7 @@ export const optionalAuth = async (
 export const setAuthCookies = (
   res: Response,
   token: string,
+  refreshToken: string | null,
   user: any,
   req?: Request
 ) => {
@@ -193,7 +221,17 @@ export const setAuthCookies = (
   }
 
   // Set access token cookie
-  res.cookie("accessToken", token, COOKIE_CONFIG);
+  res.cookie("accessToken", token, {
+    ...COOKIE_CONFIG,
+    maxAge: ACCESS_COOKIE_MAX_AGE_MS,
+  });
+
+  if (refreshToken) {
+    res.cookie("refreshToken", refreshToken, {
+      ...COOKIE_CONFIG,
+      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+    });
+  }
 
   // Set user data cookie (non-sensitive info only)
   const userData = {
@@ -220,6 +258,32 @@ export const clearAuthCookies = (res: Response) => {
   };
 
   res.clearCookie("accessToken", clearOptions);
+  res.clearCookie("refreshToken", clearOptions);
   res.clearCookie("userData", clearOptions);
   res.clearCookie("token", clearOptions); // Legacy support
 };
+
+function parseDurationMs(input: string): number {
+  const trimmed = String(input || "").trim();
+  const match = trimmed.match(/^(\d+)\s*(ms|s|m|h|d)$/i);
+  if (!match) {
+    // default to 7 days to preserve legacy behavior if misconfigured
+    return 7 * 24 * 60 * 60 * 1000;
+  }
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  switch (unit) {
+    case "ms":
+      return value;
+    case "s":
+      return value * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    case "d":
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 7 * 24 * 60 * 60 * 1000;
+  }
+}

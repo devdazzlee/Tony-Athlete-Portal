@@ -27,8 +27,7 @@ import {
   Shield,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 
 export default function SystemSettingsPage() {
@@ -88,61 +87,61 @@ export default function SystemSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/system/settings`, {
-        headers: getAuthHeaders(),
-        cache: "no-cache", // Prevent caching
+      const response = await apiClient.get("/system/settings", {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Fetched settings data:", data); // Debug log
-        
-        // Commission settings must come from API - no fallback
-        if (!data.commission) {
-          console.error("Commission settings not found in API response");
-          toast.error("Commission settings not found. Please refresh the page.");
-          return;
-        }
-        
-        setSettings({
-          general: data.general || {
-            programName: "Trackdesk",
-            programDescription: "Professional affiliate management platform",
-            timezone: "America/New_York",
-            currency: "USD",
-            language: "en",
-          },
-          commission: data.commission,
-          affiliate: data.affiliate || {
-            autoApprove: false,
-            requireApproval: true,
-            maxAffiliates: 1000,
-            allowSelfReferrals: false,
-            tierBasedCommissions: true,
-          },
-          security: data.security || {
-            twoFactorRequired: false,
-            ipWhitelist: false,
-            sessionTimeout: 30,
-            passwordPolicy: "strong",
-            auditLogging: true,
-          },
-          notifications: data.notifications || {
-            emailNotifications: true,
-            adminAlerts: true,
-            affiliateWelcome: true,
-            payoutNotifications: true,
-            systemMaintenance: true,
-          },
-        });
+      const data = response.data;
+      console.log("Fetched settings data:", data); // Debug log
 
-      } else {
-        console.error("Failed to fetch settings:", response.status);
-        toast.error("Failed to load settings");
+      // Commission settings must come from API - no fallback
+      if (!data.commission) {
+        console.error("Commission settings not found in API response");
+        toast.error("Commission settings not found. Please refresh the page.");
+        return;
       }
+
+      setSettings({
+        general: data.general || {
+          programName: "Trackdesk",
+          programDescription: "Professional affiliate management platform",
+          timezone: "America/New_York",
+          currency: "USD",
+          language: "en",
+        },
+        commission: data.commission,
+        affiliate: data.affiliate || {
+          autoApprove: false,
+          requireApproval: true,
+          maxAffiliates: 1000,
+          allowSelfReferrals: false,
+          tierBasedCommissions: true,
+        },
+        security: data.security || {
+          twoFactorRequired: false,
+          ipWhitelist: false,
+          sessionTimeout: 30,
+          passwordPolicy: "strong",
+          auditLogging: true,
+        },
+        notifications: data.notifications || {
+          emailNotifications: true,
+          adminAlerts: true,
+          affiliateWelcome: true,
+          payoutNotifications: true,
+          systemMaintenance: true,
+        },
+      });
     } catch (error) {
       console.error("Error fetching settings:", error);
-      toast.error("Failed to load settings");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load settings"
+      );
     }
   };
 
@@ -150,27 +149,29 @@ export default function SystemSettingsPage() {
   const handleSaveGeneral = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/system/settings/general`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        cache: "no-cache", // Prevent caching
-        body: JSON.stringify(settings.general),
-      });
+      const response = await apiClient.put(
+        "/system/settings/general",
+        settings.general,
+        {
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        }
+      );
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("General settings update response:", data); // Debug log
-        toast.success(data.message || "General settings updated successfully!");
-        // Force refresh settings after successful update
-        await fetchSettings();
-      } else {
-        const error = await response.json();
-        console.error("General settings update error:", error);
-        toast.error(error.error || "Failed to update general settings");
-      }
+      const data = response.data;
+      console.log("General settings update response:", data); // Debug log
+      toast.success(data.message || "General settings updated successfully!");
+      // Force refresh settings after successful update
+      await fetchSettings();
     } catch (error) {
       console.error("Error updating general settings:", error);
-      toast.error("Failed to update general settings");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update general settings"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -184,68 +185,68 @@ export default function SystemSettingsPage() {
   const saveCommissionSettings = async (updateAffiliates: boolean) => {
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/system/settings/commission`,
+      const response = await apiClient.put(
+        "/system/settings/commission",
         {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          cache: "no-cache",
-          body: JSON.stringify({
-            ...settings.commission,
-            updateAffiliates,
-          }),
+          ...settings.commission,
+          updateAffiliates,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Commission update response:", data);
+      const data = response.data;
+      console.log("Commission update response:", data);
 
-        let message =
-          data.message || "Commission settings updated successfully!";
-        if (data.impact?.updatedAffiliates > 0) {
-          message += ` (${data.impact.updatedAffiliates} affiliates updated)`;
-        }
-
-        toast.success(message);
-        await fetchSettings();
-      } else {
-        const error = await response.json();
-        console.error("Commission update error:", error);
-
-        // Handle validation errors with better messages
-        if (error.details && Array.isArray(error.details)) {
-          const defaultRateError = error.details.find((detail: any) =>
-            detail.path?.includes("defaultRate")
-          );
-
-          if (defaultRateError) {
-            let errorMessage = defaultRateError.message;
-
-            // If no message from backend, create a user-friendly one
-            if (
-              !errorMessage ||
-              errorMessage === "Rate must be between 0 and 100"
-            ) {
-              if (defaultRateError.code === "too_big") {
-                errorMessage = `Commission rate is too large. Please enter a value less than or equal to 100%.`;
-              } else if (defaultRateError.code === "too_small") {
-                errorMessage = `Commission rate is too small. Please enter a value greater than or equal to 0%.`;
-              } else {
-                errorMessage = `Invalid commission rate. Please enter a value between 0 and 100%.`;
-              }
-            }
-
-            toast.error(errorMessage);
-            return;
-          }
-        }
-
-        toast.error(error.error || "Failed to update commission settings");
+      let message = data.message || "Commission settings updated successfully!";
+      if (data.impact?.updatedAffiliates > 0) {
+        message += ` (${data.impact.updatedAffiliates} affiliates updated)`;
       }
+
+      toast.success(message);
+      await fetchSettings();
     } catch (error) {
+      const errorData = (error as any)?.response?.data;
       console.error("Error updating commission settings:", error);
-      toast.error("Failed to update commission settings");
+
+      // Handle validation errors with better messages
+      if (errorData?.details && Array.isArray(errorData.details)) {
+        const defaultRateError = errorData.details.find((detail: any) =>
+          detail.path?.includes("defaultRate")
+        );
+
+        if (defaultRateError) {
+          let errorMessage = defaultRateError.message;
+
+          // If no message from backend, create a user-friendly one
+          if (!errorMessage || errorMessage === "Rate must be between 0 and 100") {
+            if (defaultRateError.code === "too_big") {
+              errorMessage =
+                "Commission rate is too large. Please enter a value less than or equal to 100%.";
+            } else if (defaultRateError.code === "too_small") {
+              errorMessage =
+                "Commission rate is too small. Please enter a value greater than or equal to 0%.";
+            } else {
+              errorMessage =
+                "Invalid commission rate. Please enter a value between 0 and 100%.";
+            }
+          }
+
+          toast.error(errorMessage);
+          return;
+        }
+      }
+
+      toast.error(
+        errorData?.error ||
+          errorData?.message ||
+          (error as any)?.message ||
+          "Failed to update commission settings"
+      );
     } finally {
       setIsLoading(false);
     }

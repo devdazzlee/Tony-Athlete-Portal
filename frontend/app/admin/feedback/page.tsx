@@ -54,8 +54,7 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { AdminLoading } from "@/components/ui/loading";
 
@@ -132,23 +131,15 @@ export default function AdminFeedbackPage() {
         params.append("endDate", endDate.toISOString());
       }
 
-      const response = await fetch(
-        `${config.apiUrl}/admin/feedback?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setFeedback(data.data || []);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || "Failed to load feedback");
-      }
+      const response = await apiClient.get(`/admin/feedback?${params.toString()}`);
+      setFeedback(response.data.data || []);
     } catch (error: any) {
       console.error("Error fetching feedback:", error);
-      toast.error("Failed to load feedback submissions");
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Failed to load feedback submissions"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -156,14 +147,8 @@ export default function AdminFeedbackPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/feedback/stats`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data.stats || null);
-      }
+      const response = await apiClient.get("/admin/feedback/stats");
+      setStats(response.data.stats || null);
     } catch (error) {
       console.error("Error fetching stats:", error);
     }

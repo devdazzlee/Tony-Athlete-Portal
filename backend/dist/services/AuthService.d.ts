@@ -17,8 +17,16 @@ export interface UpdateProfileData {
     language?: string;
 }
 export declare class AuthService {
+    private getAccessTokenExpiresIn;
+    private getRefreshTokenExpiresInMs;
+    private parseDurationMs;
+    private generateRefreshToken;
     register(data: RegisterData): Promise<{
+        message: string;
+    }>;
+    refresh(refreshToken: string, ipAddress?: string, userAgent?: string): Promise<{
         token: string;
+        refreshToken: string;
         user: {
             id: string;
             email: string;
@@ -26,11 +34,45 @@ export declare class AuthService {
             lastName: string;
             role: import(".prisma/client").$Enums.UserRole;
             avatar: string;
+            affiliateProfile: {
+                id: string;
+                status: string;
+                phone: string | null;
+                createdAt: Date;
+                updatedAt: Date;
+                userId: string;
+                companyName: string | null;
+                website: string | null;
+                socialMedia: import("@prisma/client/runtime/library").JsonValue | null;
+                paymentMethod: import(".prisma/client").$Enums.PaymentMethod;
+                paymentEmail: string | null;
+                taxId: string | null;
+                address: import("@prisma/client/runtime/library").JsonValue | null;
+                bankAccount: string | null;
+                kycVerified: boolean;
+                tier: import(".prisma/client").$Enums.AffiliateTier;
+                commissionRate: number;
+                totalEarnings: number;
+                totalClicks: number;
+                totalConversions: number;
+                conversionRate: number;
+                lastActivityAt: Date | null;
+                deliverablesNote: string | null;
+                spendingLimit: number | null;
+            };
+            adminProfile: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                userId: string;
+                permissions: string[];
+                department: string | null;
+            };
         };
-        message: string;
     }>;
     login(data: LoginData, ipAddress?: string, userAgent?: string): Promise<{
         token: string;
+        refreshToken: string;
         user: {
             id: string;
             email: string;

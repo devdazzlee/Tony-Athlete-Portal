@@ -30,8 +30,7 @@ import {
   AlertCircle,
   Store,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -97,13 +96,8 @@ export default function AdminShopifyDiscountsPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-      }
+      const response = await apiClient.get("/shopify/stores");
+      setStores(response.data?.stores || []);
     } catch (error) {
       console.error("Error fetching stores:", error);
     }
@@ -111,14 +105,10 @@ export default function AdminShopifyDiscountsPage() {
 
   const fetchDiscounts = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/discounts`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setDiscounts(data.discounts || []);
-        setStats(data.stats || null);
-      }
+      const response = await apiClient.get("/admin/shopify/discounts");
+      const data = response.data;
+      setDiscounts(data?.discounts || []);
+      setStats(data?.stats || null);
     } catch (error) {
       console.error("Error fetching discounts:", error);
     }
@@ -132,26 +122,21 @@ export default function AdminShopifyDiscountsPage() {
 
     setSyncing(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/discounts/sync-all`, {
-        method: "POST",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ storeId: selectedStore }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(`Synced ${data.syncedCount || 0} discount codes to Shopify`);
-        await fetchDiscounts();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to sync discount codes");
-      }
+      const response = await apiClient.post(
+        "/admin/shopify/discounts/sync-all",
+        { storeId: selectedStore }
+      );
+      toast.success(
+        `Synced ${response.data?.syncedCount || 0} discount codes to Shopify`
+      );
+      await fetchDiscounts();
     } catch (error) {
       console.error("Error syncing:", error);
-      toast.error("Failed to sync discount codes");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to sync discount codes"
+      );
     } finally {
       setSyncing(false);
     }
@@ -165,25 +150,19 @@ export default function AdminShopifyDiscountsPage() {
 
     setSyncingCode(discountId);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/discounts/${discountId}/sync`, {
-        method: "POST",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ storeId }),
+      await apiClient.post(`/admin/shopify/discounts/${discountId}/sync`, {
+        storeId,
       });
 
-      if (response.ok) {
-        toast.success("Discount code synced to Shopify");
-        await fetchDiscounts();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to sync discount code");
-      }
+      toast.success("Discount code synced to Shopify");
+      await fetchDiscounts();
     } catch (error) {
       console.error("Error syncing:", error);
-      toast.error("Failed to sync discount code");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to sync discount code"
+      );
     } finally {
       setSyncingCode(null);
     }

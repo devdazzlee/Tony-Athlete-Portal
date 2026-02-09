@@ -60,10 +60,11 @@ class AuthController {
         try {
             const data = loginSchema.parse(req.body);
             const result = await authService.login(data, req.ip, req.get("User-Agent"));
-            (0, auth_1.setAuthCookies)(res, result.token, result.user, req);
+            (0, auth_1.setAuthCookies)(res, result.token, result.refreshToken || null, result.user, req);
             res.json({
                 message: "Login successful",
                 token: result.token,
+                refreshToken: result.refreshToken,
                 user: result.user,
             });
         }
@@ -74,6 +75,26 @@ class AuthController {
                     .json({ error: "Invalid input data", details: error.errors });
             }
             res.status(401).json({ error: error.message });
+        }
+    }
+    async refresh(req, res) {
+        try {
+            const refreshToken = req.body?.refreshToken ||
+                req.cookies?.refreshToken;
+            if (!refreshToken) {
+                return res.status(400).json({ error: "Refresh token required" });
+            }
+            const result = await authService.refresh(refreshToken, req.ip, req.get("User-Agent"));
+            (0, auth_1.setAuthCookies)(res, result.token, result.refreshToken || null, result.user, req);
+            res.json({
+                message: "Token refreshed",
+                token: result.token,
+                refreshToken: result.refreshToken,
+                user: result.user,
+            });
+        }
+        catch (error) {
+            res.status(401).json({ error: error.message || "Invalid refresh token" });
         }
     }
     async logout(req, res) {

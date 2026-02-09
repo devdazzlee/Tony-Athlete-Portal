@@ -41,11 +41,11 @@ export declare class DashboardService {
         status: string | null;
         createdAt: Date;
         userId: string;
+        ipAddress: string | null;
+        userAgent: string | null;
         action: string;
         resource: string;
         details: import("@prisma/client/runtime/library").JsonValue | null;
-        ipAddress: string | null;
-        userAgent: string | null;
         reviewedBy: string | null;
         reviewedAt: Date | null;
         adminComment: string | null;

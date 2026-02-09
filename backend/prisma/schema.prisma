@@ -52,8 +52,14 @@ model Session {
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique
+  refreshToken String @unique
   expiresAt DateTime
+  refreshExpiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  lastActivity DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

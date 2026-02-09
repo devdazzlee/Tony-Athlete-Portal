@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, DollarSign, RefreshCw, Calendar } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -33,40 +32,34 @@ export default function RevenueReportsPage() {
   const fetchRevenueData = async () => {
     setIsLoading(true);
     try {
-      const affiliatesResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      const data = response.data;
+      const affiliates = data.data || [];
+      
+      const totalRevenue = affiliates.reduce(
+        (sum: number, aff: any) => sum + (aff.totalEarnings || 0),
+        0
+      );
+      const totalCommissions = affiliates.reduce(
+        (sum: number, aff: any) => sum + (aff.totalCommissions || 0),
+        0
       );
 
-      if (affiliatesResponse.ok) {
-        const data = await affiliatesResponse.json();
-        const affiliates = data.data || [];
-        
-        const totalRevenue = affiliates.reduce(
-          (sum: number, aff: any) => sum + (aff.totalEarnings || 0),
-          0
-        );
-        const totalCommissions = affiliates.reduce(
-          (sum: number, aff: any) => sum + (aff.totalCommissions || 0),
-          0
-        );
-
-        setRevenueData({
-          totalRevenue,
-          totalCommissions,
-          affiliateCount: affiliates.length,
-          topAffiliates: affiliates
-            .sort((a: any, b: any) => (b.totalEarnings || 0) - (a.totalEarnings || 0))
-            .slice(0, 10),
-        });
-      } else {
-        toast.error("Failed to load revenue data");
-      }
+      setRevenueData({
+        totalRevenue,
+        totalCommissions,
+        affiliateCount: affiliates.length,
+        topAffiliates: affiliates
+          .sort((a: any, b: any) => (b.totalEarnings || 0) - (a.totalEarnings || 0))
+          .slice(0, 10),
+      });
     } catch (error) {
       console.error("Error fetching revenue data:", error);
-      toast.error("Failed to load revenue data");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load revenue data"
+      );
     } finally {
       setIsLoading(false);
     }

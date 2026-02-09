@@ -60,8 +60,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 import { AdminLoading } from "@/components/ui/loading";
 
@@ -220,18 +219,10 @@ export default function OffersManagementPage() {
   const fetchOffers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setOffers(data.data || []);
-        setSummary(data.summary || summary);
-      } else {
-        console.error("Failed to fetch offers:", response.status);
-        toast.error("Failed to load offers");
-      }
+      const response = await apiClient.get("/admin/offers");
+      const data = response.data;
+      setOffers(data?.data || []);
+      setSummary(data?.summary || summary);
     } catch (error) {
       console.error("Error fetching offers:", error);
       toast.error("Failed to load offers");
@@ -242,16 +233,8 @@ export default function OffersManagementPage() {
 
   const fetchAffiliates = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers/affiliates`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAffiliates(data.affiliates || []);
-      } else {
-        console.error("Failed to fetch affiliates:", response.status);
-      }
+      const response = await apiClient.get("/admin/offers/affiliates");
+      setAffiliates(response.data?.affiliates || []);
     } catch (error) {
       console.error("Error fetching affiliates:", error);
     }
@@ -260,20 +243,8 @@ export default function OffersManagementPage() {
   const fetchOfferCreatives = async (offerId: string) => {
     setIsLoadingCreatives(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${offerId}/creatives`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setOfferCreatives(data.creatives || []);
-      } else {
-        console.error("Failed to fetch creatives:", response.status);
-        toast.error("Failed to load creatives");
-      }
+      const response = await apiClient.get(`/admin/offers/${offerId}/creatives`);
+      setOfferCreatives(response.data?.creatives || []);
     } catch (error) {
       console.error("Error fetching creatives:", error);
       toast.error("Failed to load creatives");
@@ -300,76 +271,30 @@ export default function OffersManagementPage() {
     setIsCreating(true);
 
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(newOffer),
+      const response = await apiClient.post("/admin/offers", newOffer);
+      toast.success(
+        response.data?.message ||
+          "Offer created successfully and assigned to affiliate"
+      );
+      setCreateDialogOpen(false);
+      setNewOffer({
+        name: "",
+        description: "",
+        commissionRate: 10,
+        startDate: new Date().toISOString().split("T")[0],
+        endDate: "",
+        tags: [],
+        affiliateId: "",
+        referralCodeIds: [],
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(
-          data.message || "Offer created successfully and assigned to affiliate"
-        );
-        setCreateDialogOpen(false);
-        setNewOffer({
-          name: "",
-          description: "",
-          commissionRate: 10,
-          startDate: new Date().toISOString().split("T")[0],
-          endDate: "",
-          tags: [],
-          affiliateId: "",
-          referralCodeIds: [],
-        });
-        fetchOffers();
-      } else {
-        let errorMessage = "Failed to create offer";
-        const contentType = response.headers.get("content-type");
-
-        try {
-          if (contentType && contentType.includes("application/json")) {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorData.message || errorMessage;
-
-            // If there are validation details, show them
-            if (errorData.details && Array.isArray(errorData.details)) {
-              const detailsMessage = errorData.details
-                .map((detail: any) => {
-                  const path = Array.isArray(detail.path)
-                    ? detail.path.join(".")
-                    : detail.path;
-                  return detail.message || `${path}: ${detail.message}`;
-                })
-                .join(", ");
-              errorMessage = `${errorMessage}: ${detailsMessage}`;
-            }
-          } else {
-            const textError = await response.text();
-            if (textError) {
-              errorMessage = `Failed to create offer: ${textError}`;
-            } else {
-              errorMessage = `Failed to create offer: ${response.statusText}`;
-            }
-          }
-        } catch (parseError) {
-          console.error("Error parsing error response:", parseError);
-          errorMessage = `Failed to create offer: ${
-            response.statusText || "Unknown error"
-          }`;
-        }
-
-        toast.error(errorMessage);
-        console.error("Error creating offer:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorMessage,
-        });
-      }
+      fetchOffers();
     } catch (error: any) {
       console.error("Error creating offer:", error);
       const errorMessage =
-        error?.message || "Failed to create offer. Please try again.";
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to create offer. Please try again.";
       toast.error(errorMessage);
     } finally {
       setIsCreating(false);
@@ -385,21 +310,10 @@ export default function OffersManagementPage() {
 
     setIsDeletingOffer(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${deleteOfferModal.offerId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Offer deleted successfully");
-        setDeleteOfferModal({ isOpen: false, offerId: null, offerName: null });
-        fetchOffers();
-      } else {
-        toast.error("Failed to delete offer");
-      }
+      await apiClient.delete(`/admin/offers/${deleteOfferModal.offerId}`);
+      toast.success("Offer deleted successfully");
+      setDeleteOfferModal({ isOpen: false, offerId: null, offerName: null });
+      fetchOffers();
     } catch (error) {
       console.error("Error deleting offer:", error);
       toast.error("Failed to delete offer");
@@ -414,36 +328,30 @@ export default function OffersManagementPage() {
       return;
     }
 
+    setIsCreating(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${selectedOfferId}/creatives`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(newCreative),
-        }
+      const response = await apiClient.post(
+        `/admin/offers/${selectedOfferId}/creatives`,
+        newCreative
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Creative added successfully");
-        setNewCreative({
-          name: "",
-          type: "banner",
-          size: "",
-          format: "",
-          url: "",
-          downloadUrl: "",
-        });
+      toast.success(response.data?.message || "Creative created successfully");
+      setCreativesDialogOpen(false);
+      setNewCreative({
+        name: "",
+        type: "banner",
+        size: "",
+        format: "",
+        url: "",
+        downloadUrl: "",
+      });
+      if (selectedOfferId) {
         fetchOfferCreatives(selectedOfferId);
-        fetchOffers(); // Refresh offers to update creative count
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to add creative");
       }
     } catch (error) {
-      console.error("Error adding creative:", error);
-      toast.error("Failed to add creative");
+      console.error("Error creating creative:", error);
+      toast.error("Failed to create creative");
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -463,26 +371,16 @@ export default function OffersManagementPage() {
 
     setIsDeletingCreative(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${selectedOfferId}/creatives/${deleteCreativeModal.creativeId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
+      await apiClient.delete(
+        `/admin/offers/${selectedOfferId}/creatives/${deleteCreativeModal.creativeId}`
       );
-
-      if (response.ok) {
-        toast.success("Creative deleted successfully");
-        setDeleteCreativeModal({
-          isOpen: false,
-          creativeId: null,
-          creativeName: null,
-        });
-        fetchOfferCreatives(selectedOfferId);
-        fetchOffers(); // Refresh offers to update creative count
-      } else {
-        toast.error("Failed to delete creative");
-      }
+      toast.success("Creative deleted successfully");
+      setDeleteCreativeModal({
+        isOpen: false,
+        creativeId: null,
+        creativeName: null,
+      });
+      fetchOfferCreatives(selectedOfferId);
     } catch (error) {
       console.error("Error deleting creative:", error);
       toast.error("Failed to delete creative");
@@ -581,30 +479,15 @@ export default function OffersManagementPage() {
     }
 
     setIsEditing(true);
-
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${editingOffer.id}`,
-        {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            ...editOffer,
-            status: editOffer.status.toUpperCase(), // Convert to uppercase for backend
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Offer updated successfully");
-        setEditDialogOpen(false);
-        setEditingOffer(null);
-        fetchOffers();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update offer");
-      }
+      const response = await apiClient.put(`/admin/offers/${editingOffer.id}`, {
+        ...editOffer,
+        status: editOffer.status.toUpperCase(),
+      });
+      toast.success(response.data?.message || "Offer updated successfully");
+      setEditDialogOpen(false);
+      setEditingOffer(null);
+      fetchOffers();
     } catch (error) {
       console.error("Error updating offer:", error);
       toast.error("Failed to update offer");
@@ -638,27 +521,16 @@ export default function OffersManagementPage() {
     }
 
     setIsEditingCreative(true);
-
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/offers/${selectedOfferId}/creatives/${editingCreative.id}`,
-        {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(editCreative),
-        }
+      const response = await apiClient.put(
+        `/admin/offers/${selectedOfferId}/creatives/${editingCreative.id}`,
+        editCreative
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Creative updated successfully");
-        setEditCreativeDialogOpen(false);
-        setEditingCreative(null);
+      toast.success(response.data?.message || "Creative updated successfully");
+      setEditCreativeDialogOpen(false);
+      setEditingCreative(null);
+      if (selectedOfferId) {
         fetchOfferCreatives(selectedOfferId);
-        fetchOffers(); // Refresh offers to update creative count
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update creative");
       }
     } catch (error) {
       console.error("Error updating creative:", error);

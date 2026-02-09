@@ -19,8 +19,7 @@ import {
   CheckCircle,
   ArrowRight,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -79,13 +78,8 @@ export default function AdminShopifyPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-      }
+      const response = await apiClient.get("/shopify/stores");
+      setStores(response.data?.stores || []);
     } catch (error) {
       console.error("Error fetching stores:", error);
     }
@@ -93,13 +87,8 @@ export default function AdminShopifyPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/manager/shopify/stats`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const response = await apiClient.get("/manager/shopify/stats");
+      setStats(response.data);
     } catch (error) {
       console.error("Error fetching stats:", error);
     }
@@ -107,13 +96,8 @@ export default function AdminShopifyPage() {
 
   const fetchSyncStatus = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/sync-status`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSyncStatus(data);
-      }
+      const response = await apiClient.get("/admin/shopify/sync-status");
+      setSyncStatus(response.data);
     } catch (error) {
       console.error("Error fetching sync status:", error);
     }
@@ -122,16 +106,9 @@ export default function AdminShopifyPage() {
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/sync`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        toast.success("Shopify data synced successfully");
-        await fetchData();
-      } else {
-        toast.error("Failed to sync Shopify data");
-      }
+      await apiClient.post("/shopify/sync");
+      toast.success("Shopify data synced successfully");
+      await fetchData();
     } catch (error) {
       console.error("Error syncing:", error);
       toast.error("Failed to sync Shopify data");

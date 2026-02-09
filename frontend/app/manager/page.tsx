@@ -15,8 +15,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 
 interface DashboardStats {
@@ -46,24 +45,6 @@ export default function ManagerDashboardPage() {
   const fetchDashboardStats = async () => {
     setIsLoadingStats(true);
     try {
-      // Fetch affiliates
-      const affiliatesResponse = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=1000`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      // Fetch offers
-      const offersResponse = await fetch(`${config.apiUrl}/admin/offers`, {
-        headers: getAuthHeaders(),
-      });
-
-      // Fetch payouts
-      const payoutsResponse = await fetch(`${config.apiUrl}/admin/payouts`, {
-        headers: getAuthHeaders(),
-      });
-
       let totalAffiliates = 0;
       let totalRevenue = 0;
       let totalClicks = 0;
@@ -72,55 +53,53 @@ export default function ManagerDashboardPage() {
       let pendingPayouts = 0;
       let totalCommissions = 0;
 
-      if (affiliatesResponse.ok) {
-        const affiliatesData = await affiliatesResponse.json();
-        totalAffiliates = affiliatesData.data?.length || 0;
-        if (affiliatesData.data) {
-          totalRevenue = affiliatesData.data.reduce(
-            (sum: number, aff: any) => sum + (aff.totalEarnings || 0),
-            0
-          );
-          totalClicks = affiliatesData.data.reduce(
-            (sum: number, aff: any) => sum + (aff.totalClicks || 0),
-            0
-          );
-          totalConversions = affiliatesData.data.reduce(
-            (sum: number, aff: any) => sum + (aff.totalConversions || 0),
-            0
-          );
-        }
+      const [affiliatesResponse, offersResponse, payoutsResponse] =
+        await Promise.all([
+          apiClient.get("/admin/affiliates?limit=1000"),
+          apiClient.get("/admin/offers"),
+          apiClient.get("/admin/payouts"),
+        ]);
+
+      const affiliatesData = affiliatesResponse.data;
+      const offersData = offersResponse.data;
+      const payoutsData = payoutsResponse.data;
+
+      totalAffiliates = affiliatesData.data?.length || 0;
+      if (affiliatesData.data) {
+        totalRevenue = affiliatesData.data.reduce(
+          (sum: number, aff: any) => sum + (aff.totalEarnings || 0),
+          0
+        );
+        totalClicks = affiliatesData.data.reduce(
+          (sum: number, aff: any) => sum + (aff.totalClicks || 0),
+          0
+        );
+        totalConversions = affiliatesData.data.reduce(
+          (sum: number, aff: any) => sum + (aff.totalConversions || 0),
+          0
+        );
       }
 
-      if (offersResponse.ok) {
-        const offersData = await offersResponse.json();
-        activeOffers =
-          offersData.data?.filter((o: any) => o.status === "active").length ||
-          0;
-      }
+      activeOffers =
+        offersData.data?.filter((o: any) => o.status === "active").length || 0;
 
-      if (payoutsResponse.ok) {
-        const payoutsData = await payoutsResponse.json();
-        pendingPayouts =
-          payoutsData.data?.filter((p: any) => p.status === "PENDING")
-            .length || 0;
-        totalCommissions = payoutsData.data?.reduce(
+      pendingPayouts =
+        payoutsData.data?.filter((p: any) => p.status === "PENDING").length ||
+        0;
+      totalCommissions =
+        payoutsData.data?.reduce(
           (sum: number, p: any) => sum + (p.amount || 0),
           0
         ) || 0;
-      }
 
       // Fetch Shopify stats
       let shopifyOrders = 0;
       let shopifyRevenue = 0;
       try {
-        const shopifyResponse = await fetch(`${config.apiUrl}/manager/shopify/stats`, {
-          headers: getAuthHeaders(),
-        });
-        if (shopifyResponse.ok) {
-          const shopifyData = await shopifyResponse.json();
-          shopifyOrders = shopifyData.totalOrders || 0;
-          shopifyRevenue = shopifyData.totalRevenue || 0;
-        }
+        const shopifyResponse = await apiClient.get("/manager/shopify/stats");
+        const shopifyData = shopifyResponse.data;
+        shopifyOrders = shopifyData.totalOrders || 0;
+        shopifyRevenue = shopifyData.totalRevenue || 0;
       } catch (e) {
         console.log("Shopify stats not available");
       }

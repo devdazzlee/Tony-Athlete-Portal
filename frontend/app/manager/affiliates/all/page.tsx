@@ -36,8 +36,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -81,22 +80,15 @@ export default function AllAffiliatesPage() {
       if (tierFilter !== "all") params.append("tier", tierFilter.toUpperCase());
       params.append("limit", "500");
 
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAffiliates(data.data || []);
-      } else {
-        toast.error("Failed to load affiliates");
-      }
+      const response = await apiClient.get(`/admin/affiliates?${params.toString()}`);
+      setAffiliates(response.data.data || []);
     } catch (error) {
       console.error("Error fetching affiliates:", error);
-      toast.error("Failed to load affiliates");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load affiliates"
+      );
     } finally {
       setIsLoading(false);
     }

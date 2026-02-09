@@ -22,8 +22,7 @@ import {
 } from "@/components/ui/select";
 import { ClipboardList, RefreshCw, Users, Search, UserPlus, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTiers } from "@/hooks/useTiers";
@@ -65,45 +64,41 @@ export default function TeamAssignmentsPage() {
   const fetchAffiliates = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        { headers: getAuthHeaders() }
-      );
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      const data = response.data;
+      const affiliateList = (data.data || []).map((aff: any) => ({
+        id: aff.id,
+        name: aff.name || "Unknown",
+        email: aff.email || "",
+        tier: aff.tier || "BRONZE",
+        status: aff.status || "PENDING",
+        joinDate: aff.joinDate || new Date().toISOString(),
+        totalEarnings: aff.totalEarnings || 0,
+        lastActivity: aff.lastLogin || "Never",
+      }));
 
-      if (response.ok) {
-        const data = await response.json();
-        const affiliateList = (data.data || []).map((aff: any) => ({
-          id: aff.id,
-          name: aff.name || "Unknown",
-          email: aff.email || "",
-          tier: aff.tier || "BRONZE",
-          status: aff.status || "PENDING",
-          joinDate: aff.joinDate || new Date().toISOString(),
-          totalEarnings: aff.totalEarnings || 0,
-          lastActivity: aff.lastLogin || "Never",
-        }));
+      setAffiliates(affiliateList);
 
-        setAffiliates(affiliateList);
+      // Calculate stats
+      const pending = affiliateList.filter((a: Affiliate) => a.status === "PENDING").length;
+      const active = affiliateList.filter((a: Affiliate) => a.status === "ACTIVE").length;
+      const needsAttention = affiliateList.filter(
+        (a: Affiliate) => a.status === "PENDING" || a.lastActivity === "Never"
+      ).length;
 
-        // Calculate stats
-        const pending = affiliateList.filter((a: Affiliate) => a.status === "PENDING").length;
-        const active = affiliateList.filter((a: Affiliate) => a.status === "ACTIVE").length;
-        const needsAttention = affiliateList.filter(
-          (a: Affiliate) => a.status === "PENDING" || a.lastActivity === "Never"
-        ).length;
-
-        setStats({
-          totalAffiliates: affiliateList.length,
-          pendingApproval: pending,
-          activeAffiliates: active,
-          needsAttention,
-        });
-      } else {
-        toast.error("Failed to load affiliates");
-      }
+      setStats({
+        totalAffiliates: affiliateList.length,
+        pendingApproval: pending,
+        activeAffiliates: active,
+        needsAttention,
+      });
     } catch (error) {
       console.error("Error fetching affiliates:", error);
-      toast.error("Failed to load affiliates");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load affiliates"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -111,27 +106,18 @@ export default function TeamAssignmentsPage() {
 
   const handleStatusChange = async (affiliateId: string, newStatus: string) => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates/${affiliateId}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            ...getAuthHeaders(),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ status: newStatus }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success(`Affiliate status updated to ${newStatus}`);
-        fetchAffiliates();
-      } else {
-        toast.error("Failed to update status");
-      }
+      await apiClient.patch(`/admin/affiliates/${affiliateId}/status`, {
+        status: newStatus,
+      });
+      toast.success(`Affiliate status updated to ${newStatus}`);
+      fetchAffiliates();
     } catch (error) {
       console.error("Error updating status:", error);
-      toast.error("Failed to update status");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update status"
+      );
     }
   };
 

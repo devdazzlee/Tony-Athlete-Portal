@@ -26,8 +26,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 export default function SecuritySettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -82,34 +81,28 @@ export default function SecuritySettingsPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/settings/security/password`,
+      const response = await apiClient.put(
+        "/admin/settings/security/password",
         {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            currentPassword: passwordForm.currentPassword,
-            newPassword: passwordForm.newPassword,
-            confirmPassword: passwordForm.confirmPassword,
-          }),
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+          confirmPassword: passwordForm.confirmPassword,
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Password changed successfully");
-        setPasswordForm({
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
-        });
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to change password");
-      }
+      toast.success(response.data?.message || "Password changed successfully");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
     } catch (error) {
       console.error("Error changing password:", error);
-      toast.error("Failed to change password");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to change password"
+      );
     } finally {
       setIsLoading(false);
     }

@@ -26,8 +26,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -77,13 +76,8 @@ export default function AdminShopifyStoresPage() {
   const fetchStores = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores`, {
-        headers: getAuthHeaders(),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStores(data.stores || []);
-      }
+      const response = await apiClient.get("/shopify/stores");
+      setStores(response.data?.stores || []);
     } catch (error) {
       console.error("Error fetching stores:", error);
       toast.error("Failed to load stores");
@@ -95,12 +89,12 @@ export default function AdminShopifyStoresPage() {
   const handleTestConnection = async (storeId: string) => {
     setTesting(storeId);
     try {
-      const response = await fetch(`${config.apiUrl}/shopify/stores/${storeId}/test`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
+      const response = await apiClient.get(`/shopify/stores/${storeId}/test`);
+      const data = response.data;
       if (data.success) {
-        toast.success(`Connection successful! Shop: ${data.shop?.name || "Connected"}`);
+        toast.success(
+          `Connection successful! Shop: ${data.shop?.name || "Connected"}`
+        );
       } else {
         toast.error(`Connection failed: ${data.error || "Unknown error"}`);
       }
@@ -121,33 +115,24 @@ export default function AdminShopifyStoresPage() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/stores`, {
-        method: "POST",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      await apiClient.post("/admin/shopify/stores", formData);
+      toast.success("Store added successfully");
+      setShowAddDialog(false);
+      setFormData({
+        name: "",
+        shopifyDomain: "",
+        apiKey: "",
+        apiSecret: "",
+        accessToken: "",
       });
-
-      if (response.ok) {
-        toast.success("Store added successfully");
-        setShowAddDialog(false);
-        setFormData({
-          name: "",
-          shopifyDomain: "",
-          apiKey: "",
-          apiSecret: "",
-          accessToken: "",
-        });
-        await fetchStores();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to add store");
-      }
+      await fetchStores();
     } catch (error) {
       console.error("Error adding store:", error);
-      toast.error("Failed to add store");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to add store"
+      );
     } finally {
       setSaving(false);
     }
@@ -158,27 +143,18 @@ export default function AdminShopifyStoresPage() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/stores/${selectedStore.id}`, {
-        method: "PUT",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast.success("Store updated successfully");
-        setShowEditDialog(false);
-        setSelectedStore(null);
-        await fetchStores();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update store");
-      }
+      await apiClient.put(`/admin/shopify/stores/${selectedStore.id}`, formData);
+      toast.success("Store updated successfully");
+      setShowEditDialog(false);
+      setSelectedStore(null);
+      await fetchStores();
     } catch (error) {
       console.error("Error updating store:", error);
-      toast.error("Failed to update store");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update store"
+      );
     } finally {
       setSaving(false);
     }
@@ -190,17 +166,9 @@ export default function AdminShopifyStoresPage() {
     }
 
     try {
-      const response = await fetch(`${config.apiUrl}/admin/shopify/stores/${storeId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        toast.success("Store deleted successfully");
-        await fetchStores();
-      } else {
-        toast.error("Failed to delete store");
-      }
+      await apiClient.delete(`/admin/shopify/stores/${storeId}`);
+      toast.success("Store deleted successfully");
+      await fetchStores();
     } catch (error) {
       console.error("Error deleting store:", error);
       toast.error("Failed to delete store");

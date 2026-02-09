@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { BarChart3, RefreshCw, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -33,19 +32,16 @@ export default function OfferPerformancePage() {
   const fetchOffers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/admin/offers`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setOffers(data.data || []);
-      } else {
-        toast.error("Failed to load offers");
-      }
+      const response = await apiClient.get("/admin/offers");
+      const data = response.data;
+      setOffers(data.data || []);
     } catch (error) {
       console.error("Error fetching offers:", error);
-      toast.error("Failed to load offers");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load offers"
+      );
     } finally {
       setIsLoading(false);
     }

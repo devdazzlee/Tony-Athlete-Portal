@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -44,22 +43,17 @@ export default function ApprovalQueuePage() {
   const fetchPendingAffiliates = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?status=PENDING&limit=500`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        "/admin/affiliates?status=PENDING&limit=500"
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPendingAffiliates(data.data || []);
-      } else {
-        toast.error("Failed to load pending affiliates");
-      }
+      setPendingAffiliates(response.data?.data || []);
     } catch (error) {
       console.error("Error fetching pending affiliates:", error);
-      toast.error("Failed to load pending affiliates");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load pending affiliates"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -68,24 +62,18 @@ export default function ApprovalQueuePage() {
   const handleApprove = async (affiliateId: string) => {
     setProcessingId(affiliateId);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates/${affiliateId}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status: "ACTIVE" }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Affiliate approved successfully");
-        fetchPendingAffiliates();
-      } else {
-        toast.error("Failed to approve affiliate");
-      }
+      await apiClient.patch(`/admin/affiliates/${affiliateId}/status`, {
+        status: "ACTIVE",
+      });
+      toast.success("Affiliate approved successfully");
+      fetchPendingAffiliates();
     } catch (error) {
       console.error("Error approving affiliate:", error);
-      toast.error("Failed to approve affiliate");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to approve affiliate"
+      );
     } finally {
       setProcessingId(null);
     }
@@ -94,24 +82,18 @@ export default function ApprovalQueuePage() {
   const handleReject = async (affiliateId: string) => {
     setProcessingId(affiliateId);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates/${affiliateId}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status: "REJECTED" }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Affiliate rejected");
-        fetchPendingAffiliates();
-      } else {
-        toast.error("Failed to reject affiliate");
-      }
+      await apiClient.patch(`/admin/affiliates/${affiliateId}/status`, {
+        status: "REJECTED",
+      });
+      toast.success("Affiliate rejected");
+      fetchPendingAffiliates();
     } catch (error) {
       console.error("Error rejecting affiliate:", error);
-      toast.error("Failed to reject affiliate");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to reject affiliate"
+      );
     } finally {
       setProcessingId(null);
     }

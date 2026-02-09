@@ -32,8 +32,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 
 interface ClickData {
   id: string;
@@ -146,19 +145,10 @@ export default function StatisticsPage() {
 
   const fetchClicksData = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/statistics/clicks?period=${selectedPeriod}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/statistics/clicks?period=${selectedPeriod}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setClicksData(data.data || []);
-      } else {
-        console.error("Failed to fetch clicks data:", response.status);
-      }
+      setClicksData(response.data?.data || []);
     } catch (error) {
       console.error("Error fetching clicks data:", error);
     }
@@ -166,19 +156,10 @@ export default function StatisticsPage() {
 
   const fetchConversionsData = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/statistics/conversions?period=${selectedPeriod}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/statistics/conversions?period=${selectedPeriod}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setConversionsData(data.data || []);
-      } else {
-        console.error("Failed to fetch conversions data:", response.status);
-      }
+      setConversionsData(response.data?.data || []);
     } catch (error) {
       console.error("Error fetching conversions data:", error);
     }
@@ -186,19 +167,10 @@ export default function StatisticsPage() {
 
   const fetchTrafficData = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/statistics/traffic?period=${selectedPeriod}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/statistics/traffic?period=${selectedPeriod}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setTrafficData(data);
-      } else {
-        console.error("Failed to fetch traffic data:", response.status);
-      }
+      setTrafficData(response.data);
     } catch (error) {
       console.error("Error fetching traffic data:", error);
     }
@@ -206,19 +178,10 @@ export default function StatisticsPage() {
 
   const fetchPerformanceData = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/statistics/performance?period=${selectedPeriod}`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get(
+        `/statistics/performance?period=${selectedPeriod}`
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPerformanceData(data);
-      } else {
-        console.error("Failed to fetch performance data:", response.status);
-      }
+      setPerformanceData(response.data);
     } catch (error) {
       console.error("Error fetching performance data:", error);
     }

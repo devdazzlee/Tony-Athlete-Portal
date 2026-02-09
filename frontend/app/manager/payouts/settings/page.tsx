@@ -16,8 +16,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Settings, DollarSign, Calendar, CreditCard, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -59,17 +58,14 @@ export default function PayoutSettingsPage() {
     setIsLoading(true);
     try {
       // Fetch payout stats
-      const payoutsResponse = await fetch(`${config.apiUrl}/admin/payouts`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (payoutsResponse.ok) {
-        const data = await payoutsResponse.json();
-        const payouts = data.data || [];
-        const pending = payouts.filter((p: any) => p.status === "PENDING");
-        setPendingPayouts(pending.length);
-        setTotalPending(pending.reduce((sum: number, p: any) => sum + (p.amount || 0), 0));
-      }
+      const payoutsResponse = await apiClient.get("/admin/payouts");
+      const data = payoutsResponse.data;
+      const payouts = data.data || [];
+      const pending = payouts.filter((p: any) => p.status === "PENDING");
+      setPendingPayouts(pending.length);
+      setTotalPending(
+        pending.reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
+      );
 
       // In a real app, you'd fetch settings from the backend
       // For now, using default values

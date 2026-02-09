@@ -42,8 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 
 interface AffiliateLink {
@@ -178,20 +177,13 @@ export default function LinksPage() {
 
   const fetchWebsites = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/websites`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const response = await apiClient.get("/websites");
+      const data = response.data;
         // Filter only ACTIVE websites
         const activeWebsites = (data.websites || []).filter(
           (website: Website) => website.status === "ACTIVE"
         );
         setWebsites(activeWebsites);
-      } else {
-        console.error("Failed to fetch websites");
-      }
     } catch (error) {
       console.error("Error fetching websites:", error);
     }
@@ -199,12 +191,8 @@ export default function LinksPage() {
 
   const fetchReferralCodes = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/referral/codes`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const codes = await response.json();
+      const response = await apiClient.get("/referral/codes");
+      const codes = response.data;
         // Filter only active referral codes
         const activeCodes = codes.filter(
           (code: any) =>
@@ -212,9 +200,6 @@ export default function LinksPage() {
             (!code.expiresAt || new Date(code.expiresAt) > new Date())
         );
         setReferralCodes(activeCodes);
-      } else {
-        console.error("Failed to fetch referral codes");
-      }
     } catch (error) {
       console.error("Error fetching referral codes:", error);
     }
@@ -222,16 +207,8 @@ export default function LinksPage() {
 
   const fetchMyLinks = async () => {
     try {
-      console.log("Fetching links from:", `${config.apiUrl}/links/my-links`);
-
-      const response = await fetch(`${config.apiUrl}/links/my-links`, {
-        headers: getAuthHeaders(),
-      });
-
-      console.log("Links fetch response status:", response.status);
-
-      if (response.ok) {
-        const data = await response.json();
+      const response = await apiClient.get("/links/my-links");
+      const data = response.data;
         console.log("Links data received:", data);
         console.log("Number of links:", data.links?.length || 0);
         console.log(
@@ -250,20 +227,6 @@ export default function LinksPage() {
         }));
 
         setMyLinks(formattedLinks);
-      } else {
-        const error = await response.json();
-        console.error("Failed to fetch links:", error.error || response.status);
-        console.error("Full error response:", error);
-
-        // If authentication fails, show empty state
-        if (response.status === 401) {
-          console.log("Authentication failed - showing empty state");
-          setMyLinks([]);
-          toast.error("Please log in to view your links");
-        } else {
-          toast.error(error.error || "Failed to fetch links");
-        }
-      }
     } catch (error) {
       console.error("Error fetching links:", error);
       console.log("Network error - showing empty state");
@@ -274,20 +237,8 @@ export default function LinksPage() {
 
   const fetchMarketingAssets = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/links/assets/banners`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setMarketingAssets(data.banners || []);
-      } else {
-        const error = await response.json();
-        console.error(
-          "Failed to fetch assets:",
-          error.error || response.status
-        );
-      }
+      const response = await apiClient.get("/links/assets/banners");
+      setMarketingAssets(response.data?.banners || []);
     } catch (error) {
       console.error("Error fetching assets:", error);
     }
@@ -295,20 +246,8 @@ export default function LinksPage() {
 
   const fetchCoupons = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/links/coupons/available`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCoupons(data.coupons || []);
-      } else {
-        const error = await response.json();
-        console.error(
-          "Failed to fetch coupons:",
-          error.error || response.status
-        );
-      }
+      const response = await apiClient.get("/links/coupons/available");
+      setCoupons(response.data?.coupons || []);
     } catch (error) {
       console.error("Error fetching coupons:", error);
     }
@@ -364,42 +303,26 @@ export default function LinksPage() {
         campaignName,
       });
 
-      const response = await fetch(`${config.apiUrl}/links/generate`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          url: generatedUrl,
-          websiteId: websiteId,
-          referralCodeId: selectedReferralCode,
-          campaignName: campaignName || undefined,
-        }),
+      const response = await apiClient.post("/links/generate", {
+        url: generatedUrl,
+        websiteId: websiteId,
+        referralCodeId: selectedReferralCode,
+        campaignName: campaignName || undefined,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Affiliate link generated successfully!");
-        setSelectedWebsite("");
-        setSelectedReferralCode("");
-        setCampaignName("");
-        fetchMyLinks(); // Refresh links list
-      } else {
-        const error = await response.json();
-
-        if (response.status === 401) {
-          toast.error("Please log in to generate affiliate links");
-          return;
-        }
-
-        if (error.details && Array.isArray(error.details)) {
-          const messages = error.details.map((d: any) => d.message).join(", ");
-          toast.error(messages);
-        } else {
-          toast.error(error.error || "Failed to generate link");
-        }
-      }
-    } catch (error) {
+      toast.success(
+        response.data?.message || "Affiliate link generated successfully!"
+      );
+      setSelectedWebsite("");
+      setSelectedReferralCode("");
+      setCampaignName("");
+      fetchMyLinks(); // Refresh links list
+    } catch (error: any) {
       console.error("Error generating link:", error);
-      toast.error("Failed to generate affiliate link");
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Failed to generate link"
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -434,22 +357,10 @@ export default function LinksPage() {
 
     setIsDeletingLink(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/links/${deleteLinkModal.linkId}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Link deleted successfully");
-        setDeleteLinkModal({ isOpen: false, linkId: null, linkName: null });
-        fetchMyLinks(); // Refresh links list
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to delete link");
-      }
+      await apiClient.delete(`/links/${deleteLinkModal.linkId}`);
+      toast.success("Link deleted successfully");
+      setDeleteLinkModal({ isOpen: false, linkId: null, linkName: null });
+      fetchMyLinks(); // Refresh links list
     } catch (error) {
       console.error("Error deleting link:", error);
       toast.error("Failed to delete link");
@@ -473,28 +384,11 @@ export default function LinksPage() {
     const newStatus = !isActive;
 
     try {
-      console.log(
-        "Sending PATCH request to:",
-        `${config.apiUrl}/links/${linkId}/status`
+      await apiClient.patch(`/links/${linkId}/status`, { isActive: newStatus });
+      toast.success(
+        `Link ${newStatus ? "activated" : "deactivated"} successfully`
       );
-      const response = await fetch(`${config.apiUrl}/links/${linkId}/status`, {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ isActive: newStatus }),
-      });
-
-      console.log("Toggle response status:", response.status);
-
-      if (response.ok) {
-        toast.success(
-          `Link ${newStatus ? "activated" : "deactivated"} successfully`
-        );
-        fetchMyLinks(); // Refresh links list
-      } else {
-        const error = await response.json();
-        console.error("Toggle error response:", error);
-        toast.error(error.error || "Failed to update link status");
-      }
+      fetchMyLinks(); // Refresh links list
     } catch (error) {
       console.error("Error updating link status:", error);
       toast.error("Failed to update link status");
@@ -508,26 +402,9 @@ export default function LinksPage() {
     setShowStatsModal(true);
 
     try {
-      console.log(
-        "Sending GET request to:",
-        `${config.apiUrl}/links/stats/${linkId}`
-      );
-      const response = await fetch(`${config.apiUrl}/links/stats/${linkId}`, {
-        headers: getAuthHeaders(),
-      });
-
-      console.log("Stats response status:", response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Stats data received:", data);
-        setSelectedLinkStats(data.stats);
-      } else {
-        const error = await response.json();
-        console.error("Stats error response:", error);
-        toast.error(error.error || "Failed to fetch link statistics");
-        setShowStatsModal(false);
-      }
+      const response = await apiClient.get(`/links/stats/${linkId}`);
+      console.log("Stats data received:", response.data);
+      setSelectedLinkStats(response.data?.stats);
     } catch (error) {
       console.error("Error fetching link stats:", error);
       toast.error("Failed to fetch link statistics");
@@ -551,44 +428,25 @@ export default function LinksPage() {
     setIsGeneratingCoupon(true);
 
     try {
-      const response = await fetch(`${config.apiUrl}/links/coupons/generate`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          description: couponDescription,
-          discountType: couponDiscountType,
-          discountValue: parseFloat(couponDiscountValue),
-          minPurchase: couponMinPurchase
-            ? parseFloat(couponMinPurchase)
-            : undefined,
-          maxUsage: couponMaxUsage ? parseInt(couponMaxUsage) : undefined,
-          validDays: 90, // Default 90 days
-        }),
+      const response = await apiClient.post("/links/coupons/generate", {
+        description: couponDescription,
+        discountType: couponDiscountType,
+        discountValue: parseFloat(couponDiscountValue),
+        minPurchase: couponMinPurchase ? parseFloat(couponMinPurchase) : undefined,
+        maxUsage: couponMaxUsage ? parseInt(couponMaxUsage) : undefined,
+        validDays: 90,
       });
+      toast.success(response.data?.message || "Coupon generated successfully!");
 
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(data.message || "Coupon generated successfully!");
+      // Reset form
+      setCouponDescription("");
+      setCouponDiscountValue("");
+      setCouponMinPurchase("");
+      setCouponMaxUsage("");
+      setShowCouponGenerator(false);
 
-        // Reset form
-        setCouponDescription("");
-        setCouponDiscountValue("");
-        setCouponMinPurchase("");
-        setCouponMaxUsage("");
-        setShowCouponGenerator(false);
-
-        // Refresh coupons list
-        fetchCoupons();
-      } else {
-        const error = await response.json();
-
-        if (error.details && Array.isArray(error.details)) {
-          const messages = error.details.map((d: any) => d.message).join(", ");
-          toast.error(messages);
-        } else {
-          toast.error(error.error || "Failed to generate coupon");
-        }
-      }
+      // Refresh coupons list
+      fetchCoupons();
     } catch (error) {
       console.error("Error generating coupon:", error);
       toast.error("Failed to generate coupon");
@@ -609,26 +467,16 @@ export default function LinksPage() {
 
     setIsDeactivatingCoupon(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/links/coupons/${deactivateCouponModal.couponId}/deactivate`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-        }
+      await apiClient.patch(
+        `/links/coupons/${deactivateCouponModal.couponId}/deactivate`
       );
-
-      if (response.ok) {
-        toast.success("Coupon deactivated successfully");
-        setDeactivateCouponModal({
-          isOpen: false,
-          couponId: null,
-          couponCode: null,
-        });
-        fetchCoupons(); // Refresh coupons list
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to deactivate coupon");
-      }
+      toast.success("Coupon deactivated successfully");
+      setDeactivateCouponModal({
+        isOpen: false,
+        couponId: null,
+        couponCode: null,
+      });
+      fetchCoupons(); // Refresh coupons list
     } catch (error) {
       console.error("Error deactivating coupon:", error);
       toast.error("Failed to deactivate coupon");

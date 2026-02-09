@@ -26,9 +26,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 
 interface UserProfile {
@@ -73,25 +72,17 @@ export default function ProfileSettingsPage() {
 
   const fetchProfile = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/settings/profile`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get("/settings/profile");
+      const data = response.data;
+      console.log("🚀 ~ fetchProfile ~ data:", data);
+      setProfile(data);
+      setFormData({
+        firstName: data.user.firstName || "",
+        lastName: data.user.lastName || "",
+        phone: data.user.phone || "",
+        companyName: data.affiliate?.companyName || "",
+        website: data.affiliate?.website || "",
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("🚀 ~ fetchProfile ~ data:", data);
-        setProfile(data);
-        setFormData({
-          firstName: data.user.firstName || "",
-          lastName: data.user.lastName || "",
-          phone: data.user.phone || "",
-          companyName: data.affiliate?.companyName || "",
-          website: data.affiliate?.website || "",
-        });
-      } else {
-        console.error("Failed to fetch profile:", response.status);
-        toast.error("Failed to load profile");
-      }
     } catch (error) {
       console.error("Error fetching profile:", error);
       toast.error("Failed to load profile");
@@ -104,30 +95,24 @@ export default function ProfileSettingsPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${config.apiUrl}/settings/profile`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(formData),
+      await apiClient.put("/settings/profile", formData);
+      toast.success("Profile updated successfully");
+      await fetchProfile(); // Refresh profile data
+
+      // Optimistically update auth context so sidebar/header reflects changes immediately
+      updateUser({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
       });
 
-      if (response.ok) {
-        toast.success("Profile updated successfully");
-        await fetchProfile(); // Refresh profile data
-
-        // Optimistically update auth context so sidebar/header reflects changes immediately
-        updateUser({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-        });
-
-        await refreshUser(); // Ensure context and storage stay in sync
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update profile");
-      }
+      await refreshUser(); // Ensure context and storage stay in sync
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to update profile"
+      );
     } finally {
       setIsSaving(false);
     }
@@ -158,38 +143,26 @@ export default function ProfileSettingsPage() {
       const formData = new FormData();
       formData.append("avatar", file);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
+      const response = await apiClient.post("/upload/avatar", formData);
+      const data = response.data;
+      toast.success("Avatar uploaded successfully!", { id: "avatar-upload" });
 
-      const response = await fetch(`${config.apiUrl}/upload/avatar`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
+      // Refresh profile to show new avatar in this page
+      await fetchProfile();
 
-      if (response.ok) {
-        const data = await response.json();
-        toast.success("Avatar uploaded successfully!", { id: "avatar-upload" });
+      // Update auth context immediately
+      updateUser({ avatar: data.url });
 
-        // Refresh profile to show new avatar in this page
-        await fetchProfile();
-
-        // Update auth context immediately
-        updateUser({ avatar: data.url });
-
-        // Ensure global state/localStorage stay synchronized
-        await refreshUser();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to upload avatar", {
-          id: "avatar-upload",
-        });
-      }
+      // Ensure global state/localStorage stay synchronized
+      await refreshUser();
     } catch (error) {
       console.error("Error uploading avatar:", error);
-      toast.error("Failed to upload avatar", { id: "avatar-upload" });
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to upload avatar",
+        { id: "avatar-upload" }
+      );
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -207,25 +180,19 @@ export default function ProfileSettingsPage() {
     toast.loading("Deleting avatar...", { id: "avatar-delete" });
 
     try {
-      const response = await fetch(`${config.apiUrl}/upload/avatar`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        toast.success("Avatar deleted successfully!", { id: "avatar-delete" });
-        setDeleteAvatarModal(false);
-        fetchProfile(); // Refresh profile
-        await refreshUser(); // Refresh auth context to update navbar/sidebar
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to delete avatar", {
-          id: "avatar-delete",
-        });
-      }
+      await apiClient.delete("/upload/avatar");
+      toast.success("Avatar deleted successfully!", { id: "avatar-delete" });
+      setDeleteAvatarModal(false);
+      fetchProfile(); // Refresh profile
+      await refreshUser(); // Refresh auth context to update navbar/sidebar
     } catch (error) {
       console.error("Error deleting avatar:", error);
-      toast.error("Failed to delete avatar", { id: "avatar-delete" });
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to delete avatar",
+        { id: "avatar-delete" }
+      );
     } finally {
       setIsDeletingAvatar(false);
     }

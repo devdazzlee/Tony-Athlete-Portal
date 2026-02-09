@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { BarChart3, TrendingUp, RefreshCw, Target } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -44,35 +43,31 @@ export default function AffiliatePerformancePage() {
   const fetchAffiliates = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        {
-          headers: getAuthHeaders(),
-        }
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      const data = response.data;
+      const performanceData = (data.data || []).map((aff: any) => ({
+        id: aff.id,
+        name: aff.name,
+        email: aff.email,
+        totalClicks: aff.totalClicks || 0,
+        totalConversions: aff.totalConversions || 0,
+        totalEarnings: aff.totalEarnings || 0,
+        conversionRate:
+          aff.totalClicks > 0
+            ? ((aff.totalConversions || 0) / aff.totalClicks) * 100
+            : 0,
+        lastActivity: aff.lastActivity || aff.joinDate,
+      }));
+      setAffiliates(
+        performanceData.sort((a: any, b: any) => b.totalEarnings - a.totalEarnings)
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        const performanceData = (data.data || []).map((aff: any) => ({
-          id: aff.id,
-          name: aff.name,
-          email: aff.email,
-          totalClicks: aff.totalClicks || 0,
-          totalConversions: aff.totalConversions || 0,
-          totalEarnings: aff.totalEarnings || 0,
-          conversionRate:
-            aff.totalClicks > 0
-              ? ((aff.totalConversions || 0) / aff.totalClicks) * 100
-              : 0,
-          lastActivity: aff.lastActivity || aff.joinDate,
-        }));
-        setAffiliates(performanceData.sort((a: any, b: any) => b.totalEarnings - a.totalEarnings));
-      } else {
-        toast.error("Failed to load affiliate performance");
-      }
     } catch (error) {
       console.error("Error fetching affiliate performance:", error);
-      toast.error("Failed to load affiliate performance");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load affiliate performance"
+      );
     } finally {
       setIsLoading(false);
     }

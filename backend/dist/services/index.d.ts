@@ -57,6 +57,7 @@ export declare class AnalyticsService {
                     createdAt: Date;
                     updatedAt: Date;
                     expiresAt: Date | null;
+                    isActive: boolean;
                     clicks: number;
                     conversions: number;
                     affiliateId: string;
@@ -65,7 +66,6 @@ export declare class AnalyticsService {
                     shortUrl: string;
                     customSlug: string | null;
                     earnings: number;
-                    isActive: boolean;
                 };
             } & {
                 id: string;
@@ -124,6 +124,7 @@ export declare class AnalyticsService {
                 createdAt: Date;
                 updatedAt: Date;
                 expiresAt: Date | null;
+                isActive: boolean;
                 clicks: number;
                 conversions: number;
                 affiliateId: string;
@@ -132,7 +133,6 @@ export declare class AnalyticsService {
                 shortUrl: string;
                 customSlug: string | null;
                 earnings: number;
-                isActive: boolean;
             };
         } & {
             id: string;
@@ -177,6 +177,7 @@ export declare class AnalyticsService {
                 createdAt: Date;
                 updatedAt: Date;
                 expiresAt: Date | null;
+                isActive: boolean;
                 clicks: number;
                 conversions: number;
                 affiliateId: string;
@@ -185,7 +186,6 @@ export declare class AnalyticsService {
                 shortUrl: string;
                 customSlug: string | null;
                 earnings: number;
-                isActive: boolean;
             };
         } & {
             id: string;
@@ -230,6 +230,7 @@ export declare class AnalyticsService {
                 createdAt: Date;
                 updatedAt: Date;
                 expiresAt: Date | null;
+                isActive: boolean;
                 clicks: number;
                 conversions: number;
                 affiliateId: string;
@@ -238,7 +239,6 @@ export declare class AnalyticsService {
                 shortUrl: string;
                 customSlug: string | null;
                 earnings: number;
-                isActive: boolean;
             };
         } & {
             id: string;
@@ -270,11 +270,11 @@ export declare class SecurityService {
         status: string | null;
         createdAt: Date;
         userId: string;
+        ipAddress: string | null;
+        userAgent: string | null;
         action: string;
         resource: string;
         details: import("@prisma/client/runtime/library").JsonValue | null;
-        ipAddress: string | null;
-        userAgent: string | null;
         reviewedBy: string | null;
         reviewedAt: Date | null;
         adminComment: string | null;

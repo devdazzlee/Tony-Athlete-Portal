@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Users, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { config } from "@/config/config";
-import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import apiClient from "@/lib/api-client";
 import { ManagerLoading, AuthRequired } from "@/components/ui/loading";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -33,23 +32,15 @@ export default function TeamOverviewPage() {
   const fetchTeamMembers = async () => {
     setIsLoading(true);
     try {
-      // Fetch affiliates as team members
-      const response = await fetch(
-        `${config.apiUrl}/admin/affiliates?limit=500`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setTeamMembers(data.data || []);
-      } else {
-        toast.error("Failed to load team members");
-      }
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      setTeamMembers(response.data.data || []);
     } catch (error) {
       console.error("Error fetching team members:", error);
-      toast.error("Failed to load team members");
+      toast.error(
+        (error as any)?.response?.data?.error ||
+          (error as any)?.response?.data?.message ||
+          "Failed to load team members"
+      );
     } finally {
       setIsLoading(false);
     }
