@@ -18,6 +18,7 @@ const payoutQuerySchema = z.object({
   status: z
     .enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
     .optional(),
+  affiliateId: z.string().optional(),
 });
 
 // Get all payouts with real data
@@ -44,7 +45,7 @@ router.get(
         throw error;
       }
 
-      const { page, limit, status } = validatedQuery;
+      const { page, limit, status, affiliateId } = validatedQuery;
 
       // Helper function to format payment method
       const formatPaymentMethod = (method: string): string => {
@@ -63,12 +64,16 @@ router.get(
       if (status) {
         where.status = status;
       }
+      if (affiliateId) {
+        where.affiliateId = affiliateId;
+      }
 
       // Fetch both payouts and paid commissions
       // Get individual paid commissions (not grouped by affiliate)
       const paidCommissionsData = await prisma.affiliateOrder.findMany({
         where: {
           status: "PAID",
+          ...(affiliateId ? { affiliateId } : {}),
         },
         select: {
           id: true,
@@ -149,7 +154,7 @@ router.get(
       });
 
       // Combine both sources
-      const allPayouts = [
+      const allAffiliatePayouts = [
         ...commissionBasedPayouts,
         ...actualPayouts.map((payout) => ({
           id: payout.id,
@@ -172,9 +177,9 @@ router.get(
       ];
 
       // Apply status filter if provided
-      let filteredPayouts = allPayouts;
+      let filteredPayouts = allAffiliatePayouts;
       if (status) {
-        filteredPayouts = allPayouts.filter(
+        filteredPayouts = allAffiliatePayouts.filter(
           (p) => p.status === status.toLowerCase()
         );
       }
@@ -194,11 +199,11 @@ router.get(
       const formattedPayouts = paginatedPayouts;
 
       // Calculate summary statistics from all payouts (both sources)
-      const pendingPayouts = allPayouts.filter((p) => p.status === "pending");
-      const processingPayouts = allPayouts.filter(
+      const pendingPayouts = allAffiliatePayouts.filter((p) => p.status === "pending");
+      const processingPayouts = allAffiliatePayouts.filter(
         (p) => p.status === "processing"
       );
-      const completedPayouts = allPayouts.filter(
+      const completedPayouts = allAffiliatePayouts.filter(
         (p) => p.status === "completed"
       );
 

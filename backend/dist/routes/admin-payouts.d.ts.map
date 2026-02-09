@@ -1,1 +1,1 @@
-{"version":3,"file":"admin-payouts.d.ts","sourceRoot":"","sources":["../../src/routes/admin-payouts.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAK1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AA0YxC,eAAe,MAAM,CAAC"}
+{"version":3,"file":"admin-payouts.d.ts","sourceRoot":"","sources":["../../src/routes/admin-payouts.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAK1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AA+YxC,eAAe,MAAM,CAAC"}

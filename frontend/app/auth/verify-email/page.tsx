@@ -16,7 +16,7 @@ import { CheckCircle, XCircle, Loader2, Mail } from "lucide-react";
 function VerifyEmailForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token");
+  const token = searchParams?.get("token") || null;
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     "loading"
@@ -198,7 +198,7 @@ export default function VerifyEmailPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-teal-50">
+        <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading...</p>

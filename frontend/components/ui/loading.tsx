@@ -114,7 +114,7 @@ export function StandardPageLoading({
   showBackground = false
 }: PageLoadingProps) {
   const backgroundClass = showBackground 
-    ? "bg-gradient-to-br from-blue-50 via-white to-teal-50" 
+    ? "" 
     : "bg-gray-100";
     
   return (

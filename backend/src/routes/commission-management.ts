@@ -71,6 +71,10 @@ const commissionQuerySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
 });
 
+const affiliateTotalsQuerySchema = z.object({
+  affiliateId: z.string(),
+});
+
 // Get all commissions with filtering
 router.get("/", authenticateToken, async (req: any, res) => {
   try {
@@ -116,86 +120,39 @@ router.get("/", authenticateToken, async (req: any, res) => {
       where.status = status;
     }
 
-    // Affiliate ID filter - also filter by discount codes
+    // Affiliate ID filter
     if (affiliateId) {
-      // Get affiliate's discount codes
-      const affiliateCoupons = await prisma.coupon.findMany({
-        where: {
-          affiliateId: affiliateId,
-          status: "ACTIVE",
-        },
-      });
-      const affiliateCodes = affiliateCoupons.map(c => c.code);
-      
-      if (affiliateCodes.length > 0) {
-        where.affiliateId = affiliateId;
-        where.referralCode = { in: affiliateCodes };
-      } else {
-        // No discount codes, return empty result
-        where.affiliateId = affiliateId;
-        where.referralCode = { in: [] };
-      }
+      where.affiliateId = affiliateId;
     }
 
     // Affiliate search filter (by name or email)
     if (affiliateSearch) {
       const searchTerm = affiliateSearch.trim();
       if (searchTerm) {
-        // Find affiliates matching the search term
-        const matchingAffiliates = await prisma.affiliateProfile.findMany({
-          where: {
+        where.affiliate = {
+          user: {
             OR: [
               {
-                user: {
-                  OR: [
-                    {
-                      firstName: {
-                        contains: searchTerm,
-                        mode: "insensitive",
-                      },
-                    },
-                    {
-                      lastName: {
-                        contains: searchTerm,
-                        mode: "insensitive",
-                      },
-                    },
-                    {
-                      email: {
-                        contains: searchTerm,
-                        mode: "insensitive",
-                      },
-                    },
-                  ],
+                firstName: {
+                  contains: searchTerm,
+                  mode: "insensitive",
+                },
+              },
+              {
+                lastName: {
+                  contains: searchTerm,
+                  mode: "insensitive",
+                },
+              },
+              {
+                email: {
+                  contains: searchTerm,
+                  mode: "insensitive",
                 },
               },
             ],
           },
-          select: { id: true },
-        });
-
-        const affiliateIds = matchingAffiliates.map((a) => a.id);
-        if (affiliateIds.length > 0) {
-          // Get discount codes for all matching affiliates
-          const allCoupons = await prisma.coupon.findMany({
-            where: {
-              affiliateId: { in: affiliateIds },
-              status: "ACTIVE",
-            },
-          });
-          const allCodes = allCoupons.map(c => c.code);
-          
-          if (allCodes.length > 0) {
-            where.affiliateId = { in: affiliateIds };
-            where.referralCode = { in: allCodes };
-          } else {
-            where.affiliateId = { in: affiliateIds };
-            where.referralCode = { in: [] };
-          }
-        } else {
-          // No matching affiliates found, return empty result
-          where.affiliateId = { in: [] };
-        }
+        };
       }
     }
 
@@ -298,6 +255,7 @@ router.get("/", authenticateToken, async (req: any, res) => {
 
         return {
           id: order.id,
+          orderId: order.orderId,
           amount: order.commissionAmount,
           rate: order.commissionRate,
           status: order.status,
@@ -362,6 +320,92 @@ router.get("/", authenticateToken, async (req: any, res) => {
   } catch (error) {
     console.error("Error fetching commissions:", error);
     res.status(500).json({ error: "Failed to fetch commissions" });
+  }
+});
+
+// Get totals for an affiliate (commissions + payouts)
+router.get("/affiliate-totals", authenticateToken, async (req: any, res) => {
+  try {
+    if (req.user.role !== "ADMIN") {
+      return res
+        .status(403)
+        .json({ error: "Only admins can access affiliate totals" });
+    }
+
+    const { affiliateId } = affiliateTotalsQuerySchema.parse(req.query);
+
+    const [
+      pendingCommissions,
+      approvedCommissions,
+      paidCommissions,
+      paidPayouts,
+      pendingPayouts,
+    ] = await Promise.all([
+      prisma.affiliateOrder.aggregate({
+        where: {
+          affiliateId,
+          status: "PENDING",
+        },
+        _sum: { commissionAmount: true },
+        _count: { id: true },
+      }),
+      prisma.affiliateOrder.aggregate({
+        where: {
+          affiliateId,
+          status: "APPROVED",
+        },
+        _sum: { commissionAmount: true },
+        _count: { id: true },
+      }),
+      prisma.affiliateOrder.aggregate({
+        where: {
+          affiliateId,
+          status: "PAID",
+        },
+        _sum: { commissionAmount: true },
+        _count: { id: true },
+      }),
+      prisma.payout.aggregate({
+        where: {
+          affiliateId,
+          status: "COMPLETED",
+        },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      prisma.payout.aggregate({
+        where: {
+          affiliateId,
+          status: { in: ["PENDING", "PROCESSING"] },
+        },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    return res.json({
+      affiliateId,
+      commissions: {
+        pendingCount: pendingCommissions._count.id || 0,
+        pendingAmount: pendingCommissions._sum.commissionAmount || 0,
+        approvedCount: approvedCommissions._count.id || 0,
+        approvedAmount: approvedCommissions._sum.commissionAmount || 0,
+        paidCount: paidCommissions._count.id || 0,
+        paidAmount: paidCommissions._sum.commissionAmount || 0,
+      },
+      payouts: {
+        paidCount: paidPayouts._count.id || 0,
+        paidAmount: paidPayouts._sum.amount || 0,
+        pendingCount: pendingPayouts._count.id || 0,
+        pendingAmount: pendingPayouts._sum.amount || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching affiliate totals:", error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid query parameters" });
+    }
+    return res.status(500).json({ error: "Failed to fetch affiliate totals" });
   }
 });
 
@@ -519,10 +563,6 @@ router.patch("/bulk-status", authenticateToken, async (req: any, res) => {
       updatedAt: new Date(),
     };
 
-    if (status === "PAID") {
-      updateData.payoutDate = new Date();
-    }
-
     const result = await prisma.affiliateOrder.updateMany({
       where: {
         id: { in: commissionIds },
@@ -630,8 +670,11 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
 
     const { period = "30d" } = req.query;
 
-    let dateFrom: Date;
+    let dateFrom: Date | null;
     switch (period) {
+      case "all":
+        dateFrom = null;
+        break;
       case "7d":
         dateFrom = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         break;
@@ -645,6 +688,8 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
         dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
+    const whereCreatedAt = dateFrom ? { createdAt: { gte: dateFrom } } : {};
+
     const [
       totalCommissions,
       totalAmount,
@@ -653,21 +698,21 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
       dailyStats,
     ] = await Promise.all([
       prisma.affiliateOrder.count({
-        where: { createdAt: { gte: dateFrom } },
+        where: whereCreatedAt,
       }),
       prisma.affiliateOrder.aggregate({
-        where: { createdAt: { gte: dateFrom } },
+        where: whereCreatedAt,
         _sum: { commissionAmount: true },
       }),
       prisma.affiliateOrder.groupBy({
         by: ["status"],
-        where: { createdAt: { gte: dateFrom } },
+        where: whereCreatedAt,
         _sum: { commissionAmount: true },
         _count: { id: true },
       }),
       prisma.affiliateOrder.groupBy({
         by: ["affiliateId"],
-        where: { createdAt: { gte: dateFrom } },
+        where: whereCreatedAt,
         _sum: { commissionAmount: true },
         _count: { id: true },
         orderBy: { _sum: { commissionAmount: "desc" } },
@@ -675,7 +720,7 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
       }),
       prisma.affiliateOrder.groupBy({
         by: ["createdAt"],
-        where: { createdAt: { gte: dateFrom } },
+        where: whereCreatedAt,
         _sum: { commissionAmount: true },
         _count: { id: true },
         orderBy: { createdAt: "asc" },

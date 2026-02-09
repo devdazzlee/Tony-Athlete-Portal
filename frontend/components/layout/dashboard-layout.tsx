@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -45,6 +45,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getFullName, getInitials } from "@/lib/auth-client";
 import { config } from "@/config/config";
+import { AuthLoading } from "@/components/ui/loading";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -89,15 +90,6 @@ const affiliateNavItems = [
     title: "My Links & Assets",
     href: "/dashboard/links",
     icon: LinkIcon,
-  },
-  {
-    title: "Referral System",
-    href: "/dashboard/referrals",
-    icon: Users,
-    subItems: [
-      { title: "My Referral Codes", href: "/dashboard/referrals" },
-      { title: "Referral Analytics", href: "/dashboard/referrals/analytics" },
-    ],
   },
   {
     title: "Commissions & Payouts",
@@ -259,7 +251,26 @@ export default function DashboardLayout({
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading, isAuthenticated, hasToken } = useAuth();
+
+  useEffect(() => {
+    // Only redirect to login when we're completely done loading AND
+    // there's no token left (meaning refresh failed or user never logged in)
+    if (isLoading) return;
+    if (!isAuthenticated && !hasToken) {
+      router.replace("/auth/login");
+    }
+  }, [isLoading, isAuthenticated, hasToken, router]);
+
+  // Show loading while auth state is being determined (initial load or token refresh)
+  if (isLoading || (hasToken && !isAuthenticated)) {
+    return <AuthLoading message="Authenticating..." />;
+  }
+
+  // No token and not authenticated — show loading while redirect happens
+  if (!isAuthenticated) {
+    return <AuthLoading message="Redirecting to login..." />;
+  }
 
   const navItems =
     userType === "admin"
@@ -277,6 +288,7 @@ export default function DashboardLayout({
   };
 
   const isActive = (href: string) => {
+    if (!pathname) return false;
     if (href === "/dashboard" || href === "/admin") {
       return pathname === href;
     }

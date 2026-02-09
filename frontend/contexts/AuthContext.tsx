@@ -5,6 +5,8 @@ import React, {
   useContext,
   useEffect,
   useState,
+  useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { authClient, User, AuthResponse } from "@/lib/auth-client";
@@ -14,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  hasToken: boolean;
   login: (
     email: string,
     password: string,
@@ -38,23 +41,113 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
+  // Pre-load user from localStorage synchronously to avoid flash
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== "undefined") {
+      return authClient.getUser();
+    }
+    return null;
+  });
   const [isLoading, setIsLoading] = useState(true);
+  // Track if we're currently refreshing auth to prevent premature logout
+  const isRefreshingRef = useRef(false);
+  const sessionExpiredHandled = useRef(false);
+
+  // Listen for definitive session expiry from the API interceptor
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      // Only handle once to prevent loops
+      if (sessionExpiredHandled.current) return;
+      // Don't handle if we're in the middle of initialization/refresh
+      if (isRefreshingRef.current) return;
+
+      sessionExpiredHandled.current = true;
+      console.log("Session expired event received — logging out");
+      setUser(null);
+      authClient.clearAuth();
+      setIsLoading(false);
+
+      // Give React a tick to update state before navigating
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth/login";
+        }
+      }, 100);
+    };
+
+    window.addEventListener("auth:session-expired", handleSessionExpired);
+    return () => {
+      window.removeEventListener("auth:session-expired", handleSessionExpired);
+    };
+  }, []);
 
   useEffect(() => {
-    // Initialize auth state from cookies
+    // Initialize auth state
     const initializeAuth = async () => {
       try {
         const currentUser = authClient.getUser();
+        const token = authClient.getToken();
+
         if (currentUser) {
+          // Set user from localStorage immediately (already set via useState init,
+          // but ensure it's current)
           setUser(currentUser);
-        } else {
-          // Try to refresh user data from server
-          await refreshUser();
+        }
+
+        if (token) {
+          // Mark that we're refreshing — prevents session-expired handler
+          // from triggering during the interceptor's token refresh
+          isRefreshingRef.current = true;
+          sessionExpiredHandled.current = false;
+
+          try {
+            const userData = await authClient.getProfile();
+
+            // Validate required fields
+            if (
+              userData?.id &&
+              userData?.email &&
+              userData?.firstName &&
+              userData?.lastName
+            ) {
+              setUser(userData);
+            } else if (currentUser) {
+              // Profile returned incomplete data — keep localStorage user
+              console.warn("Profile returned incomplete data, keeping cached user");
+              setUser(currentUser);
+            }
+          } catch (error) {
+            console.error("Profile refresh during init failed:", error);
+
+            const status = (error as any)?.response?.status as number | undefined;
+
+            if (status === 401 || status === 403) {
+              // The interceptor already tried to refresh the token and failed.
+              // This is a definitive auth failure — clear everything.
+              console.log("Session definitively invalid during init, clearing auth");
+              setUser(null);
+              authClient.clearAuth();
+            } else {
+              // Network error or server error — keep the cached user so the
+              // user isn't kicked out due to a transient issue.
+              if (currentUser) {
+                console.log("Keeping cached user after non-auth error during init");
+                setUser(currentUser);
+              }
+            }
+          } finally {
+            isRefreshingRef.current = false;
+          }
+        } else if (!currentUser) {
+          setUser(null);
         }
       } catch (error) {
         console.error("Auth initialization error:", error);
-        setUser(null);
+        // Only clear user if we don't have a cached one
+        const cachedUser = authClient.getUser();
+        if (!cachedUser) {
+          setUser(null);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -69,6 +162,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     rememberMe: boolean = false
   ): Promise<AuthResponse> => {
     setIsLoading(true);
+    sessionExpiredHandled.current = false;
     try {
       const response = await authClient.login(email, password, rememberMe);
       setUser(response.user);
@@ -117,14 +211,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const refreshUser = async (): Promise<void> => {
+  const refreshUser = useCallback(async (): Promise<void> => {
     try {
+      isRefreshingRef.current = true;
       const userData = await authClient.getProfile();
-      console.log("✅ AuthContext.refreshUser - Received user data:", {
-        id: userData.id,
-        email: userData.email,
-        avatar: userData.avatar,
-      });
 
       // Validate that we received the required user fields
       if (
@@ -140,33 +230,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Update state - token is already in localStorage from getProfile
       setUser(userData);
-      console.log(
-        "🔄 AuthContext.refreshUser - State updated with avatar:",
-        userData.avatar
-      );
     } catch (error) {
       console.error("Refresh user error:", error);
 
-      // Try to load from localStorage as fallback
-      const existingUser = authClient.getUser();
-      if (existingUser && !user) {
-        console.log("Loading user from localStorage after refresh error");
-        setUser(existingUser);
-      }
+      const status = (error as any)?.response?.status as number | undefined;
 
-      // Only clear if we're certain the session is invalid (401/403 error)
-      if (
-        error instanceof Error &&
-        (error.message.includes("authentication") ||
-          error.message.includes("401") ||
-          error.message.includes("403"))
-      ) {
-        console.log("Session invalid, clearing user");
+      // If request failed due to auth (and interceptor couldn't refresh),
+      // clear auth state
+      if (status === 401 || status === 403) {
+        console.log("Session invalid during refresh, clearing user");
         setUser(null);
         authClient.clearAuth();
+        return;
       }
+
+      // For non-auth errors (network, server errors), keep the existing user
+      // from localStorage so the user isn't unexpectedly logged out
+      const existingUser = authClient.getUser();
+      if (existingUser) {
+        setUser(existingUser);
+      }
+    } finally {
+      isRefreshingRef.current = false;
     }
-  };
+  }, []);
 
   const updateUser = (userData: Partial<User>): void => {
     if (user) {
@@ -180,7 +267,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextType = {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && !!authClient.getToken(),
+    hasToken: !!authClient.getToken(),
     login,
     register,
     logout,

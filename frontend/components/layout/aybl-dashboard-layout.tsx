@@ -45,6 +45,7 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getFullName, getInitials } from "@/lib/auth-client";
 import { config } from "@/config/config";
 import apiClient from "@/lib/api-client";
+import { AuthLoading } from "@/components/ui/loading";
 
 interface TCNutritionDashboardLayoutProps {
   children: React.ReactNode;
@@ -105,17 +106,19 @@ export default function TCNutritionDashboardLayout({
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading, isAuthenticated, hasToken } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    fetchNotifications();
-    // Refresh notifications every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    // Only redirect to login when we're completely done loading AND
+    // there's no token left (meaning refresh failed or user never logged in)
+    if (isLoading) return;
+    if (!isAuthenticated && !hasToken) {
+      router.replace("/auth/login");
+    }
+  }, [isLoading, isAuthenticated, hasToken, router]);
 
-  const fetchNotifications = async () => {
+  async function fetchNotifications() {
     try {
       setNotificationsLoading(true);
       const response = await apiClient.get("/notifications");
@@ -127,7 +130,25 @@ export default function TCNutritionDashboardLayout({
     } finally {
       setNotificationsLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    fetchNotifications();
+    // Refresh notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [isLoading, isAuthenticated]);
+
+  // Show loading while auth state is being determined (initial load or token refresh)
+  if (isLoading || (hasToken && !isAuthenticated)) {
+    return <AuthLoading message="Authenticating..." />;
+  }
+
+  // No token and not authenticated — show loading while redirect happens
+  if (!isAuthenticated) {
+    return <AuthLoading message="Redirecting to login..." />;
+  }
 
   const getMockNotifications = (): Notification[] => {
     return [
@@ -211,6 +232,7 @@ export default function TCNutritionDashboardLayout({
   const recentNotifications = notifications.slice(0, 5);
 
   const isActive = (href: string) => {
+    if (!pathname) return false;
     if (href === "/dashboard") {
       return pathname === href;
     }

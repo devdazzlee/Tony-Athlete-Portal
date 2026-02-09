@@ -11,6 +11,91 @@ const SystemSettingsService_1 = require("../services/SystemSettingsService");
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 const ACCOUNT_ID = "default";
+router.get("/public", auth_1.authenticateToken, async (req, res) => {
+    try {
+        let settings = await prisma.systemSettings.findUnique({
+            where: { accountId: ACCOUNT_ID },
+        });
+        if (!settings) {
+            settings = await prisma.systemSettings.create({
+                data: {
+                    accountId: ACCOUNT_ID,
+                    general: {
+                        programName: "TC Nutrition Athlete Portal",
+                        programDescription: "Professional affiliate management platform",
+                        timezone: "America/New_York",
+                        currency: "USD",
+                        language: "en",
+                        commissionSettings: {
+                            defaultRate: 15,
+                            minimumPayout: 50.0,
+                            payoutFrequency: "Monthly",
+                            approvalPeriod: 30,
+                            cookieDuration: 30,
+                        },
+                    },
+                    security: {
+                        twoFactorRequired: false,
+                        ipWhitelist: false,
+                        sessionTimeout: 30,
+                        passwordPolicy: "strong",
+                        auditLogging: true,
+                    },
+                    currencies: {
+                        defaultCurrency: "USD",
+                        supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+                    },
+                    notifications: {
+                        emailNotifications: true,
+                        adminAlerts: true,
+                        affiliateWelcome: true,
+                        payoutNotifications: true,
+                        systemMaintenance: true,
+                    },
+                    integrations: {},
+                    performance: {},
+                    compliance: {},
+                },
+            });
+        }
+        let commissionSettings = null;
+        if (settings.general &&
+            typeof settings.general === "object" &&
+            "commissionSettings" in settings.general) {
+            commissionSettings = settings.general.commissionSettings;
+        }
+        if (!commissionSettings) {
+            const existingGeneral = settings.general && typeof settings.general === "object"
+                ? settings.general
+                : {};
+            settings = await prisma.systemSettings.update({
+                where: { accountId: ACCOUNT_ID },
+                data: {
+                    general: {
+                        ...existingGeneral,
+                        commissionSettings: {
+                            defaultRate: 15,
+                            minimumPayout: 50.0,
+                            payoutFrequency: "Monthly",
+                            approvalPeriod: 30,
+                            cookieDuration: 30,
+                        },
+                    },
+                },
+            });
+            commissionSettings = settings.general.commissionSettings;
+        }
+        return res.json({
+            commission: {
+                defaultRate: commissionSettings?.defaultRate ?? 15,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Error fetching public system settings:", error);
+        return res.status(500).json({ error: "Failed to fetch system settings" });
+    }
+});
 router.get("/", auth_1.authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== "ADMIN") {

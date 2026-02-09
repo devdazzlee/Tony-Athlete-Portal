@@ -1,5 +1,7 @@
 // Client-side authentication utilities
 // Types
+import apiClient from "@/lib/api-client";
+
 export interface User {
   id: string;
   email: string;
@@ -204,31 +206,21 @@ export class AuthClient {
 
   public async getProfile(): Promise<User> {
     try {
-      const token = this.getToken();
+      const tokenBefore = this.getToken();
 
-      if (!token) {
+      if (!tokenBefore) {
         throw new Error("No authentication token found");
       }
 
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await apiClient.get("/auth/me");
+      const data = response.data;
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Failed to fetch profile" }));
-        console.error("Get profile failed:", response.status, errorData);
-        throw new Error(errorData.error || "Failed to fetch profile");
-      }
+      // IMPORTANT: Use the CURRENT token from localStorage, not the one captured
+      // before the API call. The interceptor may have refreshed it during the request.
+      const currentToken = this.getToken() || tokenBefore;
 
-      const data = await response.json();
-
-      // Update user in localStorage
-      this.setAuth(token, {
+      // Update user in localStorage with the current (possibly refreshed) token
+      this.setAuth(currentToken, {
         id: data.id,
         email: data.email,
         firstName: data.firstName,

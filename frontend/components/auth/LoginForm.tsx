@@ -25,6 +25,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
+import { StandardPageLoading } from "@/components/ui/loading";
 
 interface LoginFormProps {
   showBackButton?: boolean;
@@ -43,6 +44,7 @@ export function LoginForm({
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -79,20 +81,17 @@ export function LoginForm({
     setIsLoading(true);
 
     try {
-      await login(email, password, rememberMe);
+      const response = await login(email, password, rememberMe);
       toast.success("Login successful! Welcome back.");
+      setIsRedirecting(true);
       
       if (onSuccess) {
         onSuccess();
       } else {
         // Default redirect behavior
-        if (user?.role === "ADMIN") {
-          router.push("/admin");
-        } else if (user?.role === "MANAGER") {
-          router.push("/manager");
-        } else {
-          router.push("/dashboard");
-        }
+        if (response.user?.role === "ADMIN") router.replace("/admin");
+        else if (response.user?.role === "MANAGER") router.replace("/manager");
+        else router.replace("/dashboard");
       }
     } catch (error: any) {
       setError(error.message || "Login failed. Please try again.");
@@ -101,6 +100,10 @@ export function LoginForm({
       setIsLoading(false);
     }
   };
+
+  if (isRedirecting) {
+    return <StandardPageLoading message="Signing you in..." showBackground={true} />;
+  }
 
   return (
     <div className="w-full max-w-md space-y-6">

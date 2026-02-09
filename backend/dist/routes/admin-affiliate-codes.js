@@ -32,12 +32,16 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
 const crypto = __importStar(require("crypto"));
 const auth_1 = require("../middleware/auth");
+const ShopifyService_1 = __importDefault(require("../services/ShopifyService"));
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
@@ -147,11 +151,13 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
     try {
         const generateSchema = zod_1.z.object({
             affiliateId: zod_1.z.string(),
+            customCode: zod_1.z.string().min(1).max(50).optional(),
             allowanceAmount: zod_1.z.number().min(0),
             discountType: zod_1.z.enum(["percentage", "fixed_amount"]).default("fixed_amount"),
             discountValue: zod_1.z.number().min(0).default(0),
             freeShipping: zod_1.z.boolean().default(false),
             description: zod_1.z.string().optional(),
+            syncToShopify: zod_1.z.boolean().default(true),
         });
         const data = generateSchema.parse(req.body);
         const affiliate = await prisma.affiliateProfile.findUnique({
@@ -170,18 +176,31 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
             return res.status(404).json({ error: "Affiliate not found" });
         }
         let code;
-        let attempts = 0;
-        const existingCodes = new Set((await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code));
-        do {
-            const randomPart = crypto
-                .randomBytes(4)
-                .toString("hex")
-                .toUpperCase();
-            code = `AFFILIATE-${randomPart}`;
-            attempts++;
-        } while (existingCodes.has(code) && attempts < 10);
-        if (attempts >= 10) {
-            return res.status(400).json({ error: "Unable to generate unique code" });
+        if (data.customCode) {
+            code = data.customCode.trim().toUpperCase().replace(/\s+/g, "-");
+            const existingCode = await prisma.coupon.findFirst({
+                where: { code },
+            });
+            if (existingCode) {
+                return res.status(400).json({
+                    error: `The code "${code}" already exists. Please choose a different code.`,
+                });
+            }
+        }
+        else {
+            let attempts = 0;
+            const existingCodes = new Set((await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code));
+            do {
+                const randomPart = crypto
+                    .randomBytes(4)
+                    .toString("hex")
+                    .toUpperCase();
+                code = `AFFILIATE-${randomPart}`;
+                attempts++;
+            } while (existingCodes.has(code) && attempts < 10);
+            if (attempts >= 10) {
+                return res.status(400).json({ error: "Unable to generate unique code" });
+            }
         }
         const now = new Date();
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -195,6 +214,38 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 : "No Discount";
         const description = data.description ||
             `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText} - Expires ${endOfMonth.toLocaleDateString()}`;
+        let syncedToShopify = false;
+        let shopifyPriceRuleIds = {};
+        let shopifyDiscountIds = {};
+        let syncedStores = [];
+        const shopifyErrors = [];
+        if (data.syncToShopify) {
+            const stores = ShopifyService_1.default.getAllStores();
+            for (const store of stores) {
+                try {
+                    const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${code}`,
+                        valueType: data.discountType,
+                        value: shopifyValue,
+                        startsAt: new Date().toISOString(),
+                        endsAt: endOfMonth.toISOString(),
+                        usageLimit: 1,
+                        oncePerCustomer: true,
+                    });
+                    const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discountCode.id;
+                    syncedStores.push(store.id);
+                    console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to sync code "${code}" to ${store.name}:`, err.message);
+                    shopifyErrors.push(`${store.name}: ${err.message}`);
+                }
+            }
+            syncedToShopify = syncedStores.length > 0;
+        }
         const affiliateCode = await prisma.coupon.create({
             data: {
                 code,
@@ -207,6 +258,10 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 status: "ACTIVE",
                 freeShipping: data.freeShipping,
                 isAffiliate: true,
+                syncedToShopify,
+                shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+                shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+                syncedStores,
             },
             include: {
                 affiliate: {
@@ -223,9 +278,19 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 },
             },
         });
+        const responseMessage = shopifyErrors.length > 0
+            ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+            : syncedToShopify
+                ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+                : "Affiliate code generated successfully";
         res.status(201).json({
-            message: "Affiliate code generated successfully",
+            message: responseMessage,
             code: affiliateCode,
+            shopifySync: {
+                synced: syncedToShopify,
+                stores: syncedStores,
+                errors: shopifyErrors,
+            },
         });
     }
     catch (error) {

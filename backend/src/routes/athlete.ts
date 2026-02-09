@@ -120,6 +120,69 @@ router.get("/profile", async (req: any, res) => {
   }
 });
 
+// Update athlete social media handles
+router.put("/profile/social", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+
+    const schema = z.object({
+      instagram: z.string().trim().optional().nullable(),
+      tiktok: z.string().trim().optional().nullable(),
+    });
+
+    const data = schema.parse(req.body);
+
+    const affiliate = await prisma.affiliateProfile.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        socialMedia: true,
+      },
+    });
+
+    if (!affiliate) {
+      return res.status(404).json({ error: "Affiliate profile not found" });
+    }
+
+    const currentSocial = (affiliate.socialMedia as any) || {};
+
+    const normalizedInstagram =
+      data.instagram == null || data.instagram === "" ? null : data.instagram;
+    const normalizedTiktok =
+      data.tiktok == null || data.tiktok === "" ? null : data.tiktok;
+
+    const updated = await prisma.affiliateProfile.update({
+      where: { id: affiliate.id },
+      data: {
+        socialMedia: {
+          ...(currentSocial || {}),
+          instagram: normalizedInstagram,
+          tiktok: normalizedTiktok,
+        } as any,
+      },
+      select: {
+        socialMedia: true,
+      },
+    });
+
+    const updatedSocial = (updated.socialMedia as any) || {};
+
+    return res.json({
+      success: true,
+      instagram: updatedSocial.instagram || null,
+      tiktok: updatedSocial.tiktok || null,
+    });
+  } catch (error) {
+    console.error("Error updating athlete social media:", error);
+    if (error instanceof z.ZodError) {
+      return res
+        .status(400)
+        .json({ error: "Invalid input data", details: error.errors });
+    }
+    return res.status(500).json({ error: "Failed to update social media" });
+  }
+});
+
 // Get athlete's discount codes/coupons
 router.get("/coupons", async (req: any, res) => {
   try {

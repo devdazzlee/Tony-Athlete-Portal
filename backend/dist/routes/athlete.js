@@ -105,6 +105,57 @@ router.get("/profile", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch profile" });
     }
 });
+router.put("/profile/social", async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const schema = zod_1.z.object({
+            instagram: zod_1.z.string().trim().optional().nullable(),
+            tiktok: zod_1.z.string().trim().optional().nullable(),
+        });
+        const data = schema.parse(req.body);
+        const affiliate = await prisma.affiliateProfile.findFirst({
+            where: { userId },
+            select: {
+                id: true,
+                socialMedia: true,
+            },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate profile not found" });
+        }
+        const currentSocial = affiliate.socialMedia || {};
+        const normalizedInstagram = data.instagram == null || data.instagram === "" ? null : data.instagram;
+        const normalizedTiktok = data.tiktok == null || data.tiktok === "" ? null : data.tiktok;
+        const updated = await prisma.affiliateProfile.update({
+            where: { id: affiliate.id },
+            data: {
+                socialMedia: {
+                    ...(currentSocial || {}),
+                    instagram: normalizedInstagram,
+                    tiktok: normalizedTiktok,
+                },
+            },
+            select: {
+                socialMedia: true,
+            },
+        });
+        const updatedSocial = updated.socialMedia || {};
+        return res.json({
+            success: true,
+            instagram: updatedSocial.instagram || null,
+            tiktok: updatedSocial.tiktok || null,
+        });
+    }
+    catch (error) {
+        console.error("Error updating athlete social media:", error);
+        if (error instanceof zod_1.z.ZodError) {
+            return res
+                .status(400)
+                .json({ error: "Invalid input data", details: error.errors });
+        }
+        return res.status(500).json({ error: "Failed to update social media" });
+    }
+});
 router.get("/coupons", async (req, res) => {
     try {
         const userId = req.user.id;

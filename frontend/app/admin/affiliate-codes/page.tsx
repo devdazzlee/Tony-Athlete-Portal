@@ -64,6 +64,8 @@ interface AffiliateCode {
   isExpired: boolean;
   isUsed: boolean;
   remainingUses: number;
+  syncedToShopify: boolean;
+  syncedStores: string[];
   affiliate: {
     id: string;
     companyName: string;
@@ -98,10 +100,12 @@ export default function AffiliateCodesPage() {
   
   // Form state
   const [selectedAffiliate, setSelectedAffiliate] = useState("");
+  const [customCode, setCustomCode] = useState("");
   const [allowanceAmount, setAllowanceAmount] = useState("");
   const [discountType, setDiscountType] = useState<"percentage" | "fixed_amount">("fixed_amount");
   const [discountValue, setDiscountValue] = useState("");
   const [freeShipping, setFreeShipping] = useState(false);
+  const [syncToShopify, setSyncToShopify] = useState(true);
   const [customDescription, setCustomDescription] = useState("");
   const [generating, setGenerating] = useState(false);
 
@@ -193,14 +197,23 @@ export default function AffiliateCodesPage() {
       setGenerating(true);
       const response = await api.post("/admin/affiliate-codes/generate", {
         affiliateId: selectedAffiliate,
+        customCode: customCode.trim() || undefined,
         allowanceAmount: parseFloat(allowanceAmount),
         discountType,
         discountValue: parseFloat(discountValue || "0"),
         freeShipping,
+        syncToShopify,
         description: customDescription || undefined,
       });
 
-      toast.success("Affiliate code generated successfully!");
+      const { shopifySync, message } = response.data;
+
+      if (shopifySync?.errors?.length > 0) {
+        toast.warning(message);
+      } else {
+        toast.success(message || "Affiliate code generated successfully!");
+      }
+
       setShowGenerateModal(false);
       resetForm();
       fetchCodes();
@@ -268,10 +281,12 @@ export default function AffiliateCodesPage() {
 
   const resetForm = () => {
     setSelectedAffiliate("");
+    setCustomCode("");
     setAllowanceAmount("");
     setDiscountType("fixed_amount");
     setDiscountValue("");
     setFreeShipping(false);
+    setSyncToShopify(true);
     setCustomDescription("");
   };
 
@@ -554,8 +569,21 @@ export default function AffiliateCodesPage() {
                         </div>
                       </div>
 
-                      <div>
+                      <div className="flex items-center gap-2 flex-wrap">
                         {getStatusBadge(code)}
+                        {code.syncedToShopify ? (
+                          <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                            <CheckCircle size={12} />
+                            Shopify {(code.syncedStores || []).map((s: string) => 
+                              s === "store-usa" ? "🇺🇸" : s === "store-canada" ? "🇨🇦" : ""
+                            ).join("")}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-full">
+                            <XCircle size={12} />
+                            Not in Shopify
+                          </span>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -582,6 +610,9 @@ export default function AffiliateCodesPage() {
                   </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     Usage
+                  </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Shopify
                   </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                     Status
@@ -646,6 +677,26 @@ export default function AffiliateCodesPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {code.usage} / {code.maxUsage || "∞"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {code.syncedToShopify ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-md w-fit">
+                            <CheckCircle size={12} />
+                            Synced
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {(code.syncedStores || []).map((s: string) => 
+                              s === "store-usa" ? "🇺🇸 USA" : s === "store-canada" ? "🇨🇦 CA" : s
+                            ).join(", ")}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-md w-fit">
+                          <XCircle size={12} />
+                          Not synced
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(code)}
@@ -724,6 +775,22 @@ export default function AffiliateCodesPage() {
                     ⚠️ No affiliates found. Please create affiliates in the "Manage Affiliates" page first.
                   </p>
                 )}
+              </div>
+
+              {/* Custom Code */}
+              <div>
+                <Label htmlFor="custom-code">Discount Code</Label>
+                <input
+                  id="custom-code"
+                  type="text"
+                  value={customCode}
+                  onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. TONY20, SUMMER2026 (leave blank to auto-generate)"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mt-2 font-mono uppercase"
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Set your own code or leave blank to auto-generate one. This is the code customers will enter at checkout.
+                </p>
               </div>
 
               {/* Allowance Amount */}
@@ -822,7 +889,28 @@ export default function AffiliateCodesPage() {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Shopify Sync Toggle */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="syncToShopify"
+                    checked={syncToShopify}
+                    onChange={(e) => setSyncToShopify(e.target.checked)}
+                    className="w-5 h-5 text-green-700 border-gray-300 rounded focus:ring-green-600 mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <Label htmlFor="syncToShopify" className="cursor-pointer">
+                      Sync to Shopify (USA &amp; Canada)
+                    </Label>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Automatically create this discount code in both Shopify stores so it works at checkout
+                    </p>
+                  </div>
                 </div>
+              </div>
               </div>
 
               {/* Custom Description (Optional) */}
@@ -889,6 +977,21 @@ export default function AffiliateCodesPage() {
                         <span className="text-gray-600"><em>No discount or shipping benefits added</em></span>
                     </li>
                   )}
+                    {customCode.trim() && (
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-600 font-bold">→</span>
+                        <span><strong>Code:</strong> <code className="bg-white/60 px-1 py-0.5 rounded font-mono">{customCode.trim().toUpperCase()}</code></span>
+                      </li>
+                    )}
+                    <li className="flex items-start gap-2">
+                      <span className={syncToShopify ? "text-green-600 font-bold" : "text-gray-400 font-bold"}>
+                        {syncToShopify ? "✓" : "○"}
+                      </span>
+                      <span>
+                        <strong>Shopify Sync:</strong>{" "}
+                        {syncToShopify ? "Will create in USA & Canada stores" : "Not syncing to Shopify"}
+                      </span>
+                    </li>
                 </ul>
                 </div>
               </div>

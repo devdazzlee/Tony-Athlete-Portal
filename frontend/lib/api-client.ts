@@ -24,7 +24,6 @@ const apiClient = axios.create({
 });
 
 let refreshPromise: Promise<RefreshResponse> | null = null;
-let isLoggingOut = false;
 
 async function refreshTokens(): Promise<RefreshResponse> {
   if (typeof window === "undefined") {
@@ -85,19 +84,31 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError<ApiErrorResponse>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    let refreshAttemptedAndFailed = false;
     
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response;
 
-      // Attempt token refresh once on 401 + TOKEN_EXPIRED
-      if (status === 401 && data?.code === "TOKEN_EXPIRED" && typeof window !== "undefined") {
+      const hasRefreshToken =
+        typeof window !== "undefined" && !!localStorage.getItem("refreshToken");
+
+      // Attempt token refresh once on ANY 401 when we have a refresh token
+      // (don't restrict to TOKEN_EXPIRED — server may return different codes)
+      if (
+        status === 401 &&
+        typeof window !== "undefined" &&
+        hasRefreshToken
+      ) {
         const isRefreshCall =
           typeof originalRequest?.url === "string" &&
           originalRequest.url.includes("/auth/refresh");
+        const isLoginCall =
+          typeof originalRequest?.url === "string" &&
+          originalRequest.url.includes("/auth/login");
         const alreadyRetried = !!originalRequest?._retry;
 
-        if (!isRefreshCall && !alreadyRetried) {
+        if (!isRefreshCall && !isLoginCall && !alreadyRetried) {
           originalRequest._retry = true;
 
           try {
@@ -111,7 +122,8 @@ apiClient.interceptors.response.use(
             originalRequest.headers.Authorization = `Bearer ${refreshed.token}`;
             return apiClient(originalRequest);
           } catch (e) {
-            // Refresh failed - fall through to logout
+            // Refresh failed - fall through to error handling
+            refreshAttemptedAndFailed = true;
           }
         }
       }
@@ -119,17 +131,14 @@ apiClient.interceptors.response.use(
       // Handle specific error cases
       switch (status) {
         case 401:
-          // Unauthorized - redirect to login if not already logging out
-          if (typeof window !== "undefined" && !isLoggingOut) {
-            isLoggingOut = true;
-            toast.error("Session expired. Please log in again.");
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
-            localStorage.removeItem("userData");
-            
-            setTimeout(() => {
-              window.location.href = "/auth/login";
-            }, 2000);
+          // Don't redirect from here — let AuthContext handle navigation.
+          // Only dispatch an event so AuthContext can react appropriately.
+          if (
+            typeof window !== "undefined" &&
+            (refreshAttemptedAndFailed || !hasRefreshToken)
+          ) {
+            // Dispatch a custom event for AuthContext to handle
+            window.dispatchEvent(new CustomEvent("auth:session-expired"));
           }
           break;
         case 403:

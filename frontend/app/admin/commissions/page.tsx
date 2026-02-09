@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -54,8 +55,15 @@ import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
 import { DatePicker } from "@/components/ui/date-picker";
 
+interface AffiliateOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
 interface Commission {
   id: string;
+  orderId?: string | null;
   amount: number;
   rate: number;
   status: "PENDING" | "APPROVED" | "PAID" | "CANCELLED";
@@ -76,6 +84,23 @@ interface Commission {
       name: string;
       description: string;
     };
+  };
+}
+
+interface AffiliateTotals {
+  commissions: {
+    pendingCount: number;
+    pendingAmount: number;
+    approvedCount: number;
+    approvedAmount: number;
+    paidCount: number;
+    paidAmount: number;
+  };
+  payouts: {
+    paidCount: number;
+    paidAmount: number;
+    pendingCount: number;
+    pendingAmount: number;
   };
 }
 
@@ -139,9 +164,18 @@ export default function CommissionsPage() {
   const [analytics, setAnalytics] = useState<CommissionAnalytics | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true); // For initial page load
   const [isTableLoading, setIsTableLoading] = useState(false); // For table filtering/loading
+  const [isExporting, setIsExporting] = useState(false);
   const [updatingCommissions, setUpdatingCommissions] = useState<
     Map<string, string>
   >(new Map()); // Track which commission is being updated and the action type
+  const [selectedCommissionIds, setSelectedCommissionIds] = useState<
+    Set<string>
+  >(new Set());
+  const [affiliates, setAffiliates] = useState<AffiliateOption[]>([]);
+  const [isAffiliatesLoading, setIsAffiliatesLoading] = useState(false);
+  const [affiliateTotals, setAffiliateTotals] = useState<AffiliateTotals | null>(
+    null
+  );
   const [filters, setFilters] = useState<FiltersState>({
     status: "all",
     affiliateId: "",
@@ -166,6 +200,8 @@ export default function CommissionsPage() {
     affiliateName: "",
     bankDetails: null,
   });
+
+  const [topAffiliatesModalOpen, setTopAffiliatesModalOpen] = useState(false);
 
   const formatMethodLabel = (method?: string | null) => {
     if (!method) return "Not Set";
@@ -215,10 +251,192 @@ export default function CommissionsPage() {
     setBankDetailsModal((prev) => ({ ...prev, isOpen: false }));
   };
 
+  const applyStatusFilter = (
+    status: "all" | "PENDING" | "APPROVED" | "PAID"
+  ) => {
+    setFilters((prev) => ({ ...prev, status }));
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const fetchAffiliates = async () => {
+    setIsAffiliatesLoading(true);
+    try {
+      const response = await apiClient.get("/admin/affiliates?limit=500");
+      const data = response.data;
+      const list = (data?.data || []).map((aff: any) => ({
+        id: aff.id,
+        name: aff.name || "Unknown",
+        email: aff.email || "",
+      }));
+      setAffiliates(list);
+    } catch (error) {
+      console.error("Error fetching affiliates:", error);
+      setAffiliates([]);
+    } finally {
+      setIsAffiliatesLoading(false);
+    }
+  };
+
+  const fetchAffiliateTotals = async (affiliateId: string) => {
+    try {
+      const response = await apiClient.get(
+        `/commission-management/affiliate-totals?affiliateId=${affiliateId}`
+      );
+      setAffiliateTotals(response.data);
+    } catch (error) {
+      console.error("Error fetching affiliate totals:", error);
+      setAffiliateTotals(null);
+    }
+  };
+
+  const buildCommissionQueryParams = (override?: {
+    page?: number;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams();
+    params.append("page", String(override?.page ?? pagination.page));
+    params.append("limit", String(override?.limit ?? pagination.limit));
+
+    if (filters.status && filters.status !== "all") {
+      params.append("status", filters.status);
+    }
+    if (filters.affiliateId) {
+      params.append("affiliateId", filters.affiliateId);
+    }
+    if (filters.affiliateSearch) {
+      params.append("affiliateSearch", filters.affiliateSearch);
+    }
+    if (filters.dateFrom) {
+      const from = new Date(filters.dateFrom);
+      from.setHours(0, 0, 0, 0);
+      params.append("dateFrom", from.toISOString());
+    }
+    if (filters.dateTo) {
+      const to = new Date(filters.dateTo);
+      to.setHours(23, 59, 59, 999);
+      params.append("dateTo", to.toISOString());
+    }
+    if (filters.sortBy) {
+      params.append("sortBy", filters.sortBy);
+    }
+    if (filters.sortOrder) {
+      params.append("sortOrder", filters.sortOrder);
+    }
+
+    return params;
+  };
+
+  const handleBulkStatusUpdate = async (status: "APPROVED" | "PAID") => {
+    const ids = Array.from(selectedCommissionIds);
+    if (ids.length === 0) {
+      toast.error("Select at least one commission");
+      return;
+    }
+
+    try {
+      setIsTableLoading(true);
+      await apiClient.patch("/commission-management/bulk-status", {
+        commissionIds: ids,
+        status,
+      });
+      toast.success(
+        status === "APPROVED"
+          ? "Selected commissions approved"
+          : "Selected commissions marked as paid"
+      );
+      await fetchCommissions();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Bulk update failed"
+      );
+    } finally {
+      setIsTableLoading(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    try {
+      setIsExporting(true);
+      const params = buildCommissionQueryParams({ page: 1, limit: 5000 });
+      const response = await apiClient.get(
+        `/commission-management?${params.toString()}`
+      );
+      const rows: Commission[] = response.data?.data || [];
+
+      const header = [
+        "commission_id",
+        "order_id",
+        "affiliate_name",
+        "affiliate_email",
+        "amount",
+        "rate",
+        "status",
+        "created_at",
+      ];
+
+      const csvLines = [
+        header.join(","),
+        ...rows.map((c) => {
+          const affiliateName = `${c.affiliate.user.firstName} ${c.affiliate.user.lastName}`;
+          const values = [
+            c.id,
+            c.orderId || "",
+            affiliateName,
+            c.affiliate.user.email,
+            String(c.amount ?? ""),
+            String(c.rate ?? ""),
+            c.status,
+            c.createdAt,
+          ];
+          return values
+            .map((v) => {
+              const safe = String(v ?? "").replace(/\r?\n/g, " ");
+              const escaped = safe.replace(/"/g, '""');
+              return `"${escaped}"`;
+            })
+            .join(",");
+        }),
+      ].join("\n");
+
+      const blob = new Blob([csvLines], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `commissions_export_${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success("Export downloaded");
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Export failed"
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Fetch analytics on mount and when filters change
   useEffect(() => {
     fetchAnalytics();
+    fetchAffiliates();
   }, []);
+
+  useEffect(() => {
+    if (filters.affiliateId) {
+      fetchAffiliateTotals(filters.affiliateId);
+    } else {
+      setAffiliateTotals(null);
+    }
+  }, [filters.affiliateId]);
 
   // Debounce affiliate search to avoid too many API calls
   useEffect(() => {
@@ -304,6 +522,7 @@ export default function CommissionsPage() {
       );
       const data = response.data;
       setCommissions(data.data || data.commissions || []);
+      setSelectedCommissionIds(new Set());
       setPagination(
         data.pagination || {
           page: 1,
@@ -329,7 +548,7 @@ export default function CommissionsPage() {
   const fetchAnalytics = async () => {
     try {
       const response = await apiClient.get(
-        "/commission-management/analytics?period=30d"
+        "/commission-management/analytics?period=all"
       );
       setAnalytics(response.data);
     } catch (error) {
@@ -413,6 +632,64 @@ export default function CommissionsPage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
+      <Dialog
+        open={topAffiliatesModalOpen}
+        onOpenChange={(open) => setTopAffiliatesModalOpen(open)}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Top Affiliates</DialogTitle>
+            <DialogDescription>
+              Click an affiliate to filter the commissions table.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            {(analytics?.topAffiliates || []).length === 0 ? (
+              <div className="text-sm text-muted-foreground">No data</div>
+            ) : (
+              <div className="space-y-2">
+                {analytics!.topAffiliates.map((a) => (
+                  <button
+                    key={a.affiliateId}
+                    type="button"
+                    className="w-full text-left rounded-lg border p-3 hover:bg-muted/40 transition-colors"
+                    onClick={() => {
+                      setFilters((prev) => ({
+                        ...prev,
+                        affiliateId: a.affiliateId,
+                        affiliateSearch: "",
+                      }));
+                      setPagination((prev) => ({ ...prev, page: 1 }));
+                      setTopAffiliatesModalOpen(false);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {a.affiliateName}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {a.affiliateEmail}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-semibold">
+                          ${(a._sum.commissionAmount || 0).toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {a._count.id} commissions
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -427,83 +704,146 @@ export default function CommissionsPage() {
           <Button
             variant="outline"
             className="w-full sm:w-auto"
-            disabled={isTableLoading}
+            disabled={isTableLoading || isExporting}
+            onClick={exportCsv}
           >
             <Download className="w-4 h-4 mr-2" />
-            Export
+            {isExporting ? "Exporting..." : "Export"}
           </Button>
         </div>
       </div>
 
       {/* Analytics Cards */}
       {analytics && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Commissions
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analytics.totalCommissions}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => applyStatusFilter("all")}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-muted-foreground">
+                    Total Commissions
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {analytics.totalCommissions}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    ${analytics.totalAmount.toFixed(2)} total value
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                  <DollarSign className="h-5 w-5 text-emerald-700" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                ${analytics.totalAmount.toFixed(2)} total value
-              </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Paid Commissions
-              </CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analytics.statusBreakdown.find((s) => s.status === "PAID")
-                  ?._count.id || 0}
+
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => applyStatusFilter("PAID")}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-muted-foreground">
+                    Paid
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {analytics.statusBreakdown.find((s) => s.status === "PAID")
+                      ?._count.id || 0}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    $
+                    {analytics.statusBreakdown
+                      .find((s) => s.status === "PAID")
+                      ?._sum.commissionAmount.toFixed(2) || "0.00"}
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                  <CheckCircle className="h-5 w-5 text-blue-700" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                $
-                {analytics.statusBreakdown
-                  .find((s) => s.status === "PAID")
-                  ?._sum.commissionAmount.toFixed(2) || "0.00"}
-              </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analytics.statusBreakdown.find((s) => s.status === "PENDING")
-                  ?._count.id || 0}
+
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => applyStatusFilter("PENDING")}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-muted-foreground">
+                    Pending
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {analytics.statusBreakdown.find((s) => s.status === "PENDING")
+                      ?._count.id || 0}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    $
+                    {analytics.statusBreakdown
+                      .find((s) => s.status === "PENDING")
+                      ?._sum.commissionAmount.toFixed(2) || "0.00"}
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                  <Clock className="h-5 w-5 text-amber-700" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                $
-                {analytics.statusBreakdown
-                  .find((s) => s.status === "PENDING")
-                  ?._sum.commissionAmount.toFixed(2) || "0.00"}
-              </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Top Affiliates
-              </CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analytics.topAffiliates.length}
+
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => applyStatusFilter("APPROVED")}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-muted-foreground">
+                    Approved
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {analytics.statusBreakdown.find((s) => s.status === "APPROVED")
+                      ?._count.id || 0}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    $
+                    {analytics.statusBreakdown
+                      .find((s) => s.status === "APPROVED")
+                      ?._sum.commissionAmount.toFixed(2) || "0.00"}
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
+                  <Users className="h-5 w-5 text-purple-700" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Active performers</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => setTopAffiliatesModalOpen(true)}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-muted-foreground">
+                    Top Affiliates
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">
+                    {analytics.topAffiliates.length}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    View and filter
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-5 w-5 text-slate-700" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -512,13 +852,17 @@ export default function CommissionsPage() {
       {/* Filters */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            Filters
-          </CardTitle>
-          <CardDescription className="text-sm text-muted-foreground">
-            Refine the commissions list by status, affiliate, date range, and sort order.
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                Filters
+              </CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">
+                Search, filter, and sort commissions.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -537,6 +881,38 @@ export default function CommissionsPage() {
                 }}
                 className="h-11 rounded-lg"
               />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Affiliate</Label>
+              <Select
+                value={filters.affiliateId || "all"}
+                onValueChange={(value) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    affiliateId: value === "all" ? "" : value,
+                  }));
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-lg">
+                  <SelectValue
+                    placeholder={
+                      isAffiliatesLoading
+                        ? "Loading affiliates..."
+                        : "All affiliates"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All affiliates</SelectItem>
+                  {affiliates.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} {a.email ? `(${a.email})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>From Date</Label>
@@ -657,16 +1033,103 @@ export default function CommissionsPage() {
               </Button>
             </div>
           </div>
+
+          {filters.affiliateId && affiliateTotals && (
+            <div className="mt-4 rounded-xl border bg-white p-4">
+              <div className="text-sm font-semibold text-gray-900 mb-3">
+                Affiliate Totals
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Pending (Not Approved)</div>
+                  <div className="text-sm font-semibold">
+                    ${affiliateTotals.commissions.pendingAmount.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {affiliateTotals.commissions.pendingCount} commissions
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Approved (Not Paid)</div>
+                  <div className="text-sm font-semibold">
+                    ${affiliateTotals.commissions.approvedAmount.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {affiliateTotals.commissions.approvedCount} commissions
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Paid Commissions</div>
+                  <div className="text-sm font-semibold">
+                    ${affiliateTotals.commissions.paidAmount.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {affiliateTotals.commissions.paidCount} commissions
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Paid Payouts</div>
+                  <div className="text-sm font-semibold">
+                    ${affiliateTotals.payouts.paidAmount.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {affiliateTotals.payouts.paidCount} payouts
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Pending Payouts</div>
+                  <div className="text-sm font-semibold">
+                    ${affiliateTotals.payouts.pendingAmount.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {affiliateTotals.payouts.pendingCount} payouts
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Commissions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Commissions</CardTitle>
-          <CardDescription>
-            Manage and track affiliate commission payments
-          </CardDescription>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div>
+                <CardTitle>Commissions</CardTitle>
+                <CardDescription>
+                  Review transactions, approve, and mark as paid.
+                </CardDescription>
+              </div>
+
+              {selectedCommissionIds.size > 0 && (
+                <div className="flex flex-col sm:items-end gap-2">
+                  <div className="text-sm font-medium">
+                    {selectedCommissionIds.size} selected
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isTableLoading}
+                      onClick={() => handleBulkStatusUpdate("APPROVED")}
+                    >
+                      Bulk Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isTableLoading}
+                      onClick={() => handleBulkStatusUpdate("PAID")}
+                    >
+                      Bulk Mark Paid
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="relative rounded-md border overflow-x-auto">
@@ -680,7 +1143,25 @@ export default function CommissionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        commissions.length > 0 &&
+                        selectedCommissionIds.size === commissions.length
+                      }
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedCommissionIds(
+                            new Set(commissions.map((c) => c.id))
+                          );
+                        } else {
+                          setSelectedCommissionIds(new Set());
+                        }
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>Affiliate</TableHead>
+                  <TableHead>Order #</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
@@ -693,7 +1174,7 @@ export default function CommissionsPage() {
                 {!isTableLoading && commissions.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={9}
                       className="text-center py-8 text-muted-foreground"
                     >
                       No commissions found. Create some referral codes to
@@ -704,6 +1185,19 @@ export default function CommissionsPage() {
                   commissions.map((commission) => (
                     <TableRow key={commission.id}>
                       <TableCell>
+                        <Checkbox
+                          checked={selectedCommissionIds.has(commission.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedCommissionIds((prev) => {
+                              const next = new Set(prev);
+                              if (checked) next.add(commission.id);
+                              else next.delete(commission.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
                         <div>
                           <div className="font-medium">
                             {commission.affiliate.user.firstName}{" "}
@@ -713,6 +1207,9 @@ export default function CommissionsPage() {
                             {commission.affiliate.user.email}
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {commission.orderId || "-"}
                       </TableCell>
                       <TableCell className="font-medium">
                         ${commission.amount.toFixed(2)}

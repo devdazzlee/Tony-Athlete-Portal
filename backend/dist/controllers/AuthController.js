@@ -94,7 +94,10 @@ class AuthController {
             });
         }
         catch (error) {
-            res.status(401).json({ error: error.message || "Invalid refresh token" });
+            res.status(401).json({
+                error: error.message || "Invalid refresh token",
+                code: error.code || "AUTH_ERROR"
+            });
         }
     }
     async logout(req, res) {

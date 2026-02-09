@@ -53,7 +53,15 @@ export const authenticateToken = async (
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    } catch (err: any) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ error: "Access token expired", code: "TOKEN_EXPIRED" });
+      }
+      return res.status(401).json({ error: "Invalid access token" });
+    }
 
     // Ensure the access token is still part of an active session (allows revocation)
     const session = await prisma.session.findFirst({
@@ -65,7 +73,7 @@ export const authenticateToken = async (
     } as any);
 
     if (!session) {
-      return res.status(401).json({ error: "Session expired" });
+      return res.status(401).json({ error: "Session expired", code: "TOKEN_EXPIRED" });
     }
 
     const user = await prisma.user.findUnique({
@@ -101,7 +109,7 @@ export const authenticateToken = async (
 
     next();
   } catch (error) {
-    return res.status(403).json({ error: "Invalid token" });
+    return res.status(401).json({ error: "Invalid token" });
   }
 };
 

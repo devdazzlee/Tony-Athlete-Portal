@@ -148,7 +148,9 @@ class AuthService {
             },
         });
         if (!session) {
-            throw new Error("Invalid or expired refresh token");
+            const error = new Error("Invalid or expired refresh token");
+            error.code = "TOKEN_EXPIRED";
+            throw error;
         }
         const user = await prisma.user.findUnique({
             where: { id: session.userId },

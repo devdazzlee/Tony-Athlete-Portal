@@ -20,6 +20,7 @@ const payoutQuerySchema = zod_1.z.object({
     status: zod_1.z
         .enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
         .optional(),
+    affiliateId: zod_1.z.string().optional(),
 });
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
@@ -39,7 +40,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
             }
             throw error;
         }
-        const { page, limit, status } = validatedQuery;
+        const { page, limit, status, affiliateId } = validatedQuery;
         const formatPaymentMethod = (method) => {
             const methodMap = {
                 PAYPAL: "PayPal",
@@ -54,9 +55,13 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
         if (status) {
             where.status = status;
         }
+        if (affiliateId) {
+            where.affiliateId = affiliateId;
+        }
         const paidCommissionsData = await prisma_1.prisma.affiliateOrder.findMany({
             where: {
                 status: "PAID",
+                ...(affiliateId ? { affiliateId } : {}),
             },
             select: {
                 id: true,
@@ -124,7 +129,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                 createdAt: "desc",
             },
         });
-        const allPayouts = [
+        const allAffiliatePayouts = [
             ...commissionBasedPayouts,
             ...actualPayouts.map((payout) => ({
                 id: payout.id,
@@ -145,18 +150,18 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
                 source: "payout",
             })),
         ];
-        let filteredPayouts = allPayouts;
+        let filteredPayouts = allAffiliatePayouts;
         if (status) {
-            filteredPayouts = allPayouts.filter((p) => p.status === status.toLowerCase());
+            filteredPayouts = allAffiliatePayouts.filter((p) => p.status === status.toLowerCase());
         }
         filteredPayouts.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
         const total = filteredPayouts.length;
         const skip = (page - 1) * limit;
         const paginatedPayouts = filteredPayouts.slice(skip, skip + limit);
         const formattedPayouts = paginatedPayouts;
-        const pendingPayouts = allPayouts.filter((p) => p.status === "pending");
-        const processingPayouts = allPayouts.filter((p) => p.status === "processing");
-        const completedPayouts = allPayouts.filter((p) => p.status === "completed");
+        const pendingPayouts = allAffiliatePayouts.filter((p) => p.status === "pending");
+        const processingPayouts = allAffiliatePayouts.filter((p) => p.status === "processing");
+        const completedPayouts = allAffiliatePayouts.filter((p) => p.status === "completed");
         const pendingCount = pendingPayouts.length;
         const processingCount = processingPayouts.length;
         const completedCount = completedPayouts.length;

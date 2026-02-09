@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import * as crypto from "crypto";
 import { authenticateToken, requireRole } from "../middleware/auth";
+import shopifyService from "../services/ShopifyService";
 
 const router: Router = Router();
 const prisma = new PrismaClient();
@@ -131,16 +132,18 @@ router.get("/:id", authenticateToken, requireRole(["ADMIN"]), async (req: Reques
   }
 });
 
-// Generate new affiliate code
+// Generate new affiliate code (with optional custom code + auto-sync to Shopify)
 router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
   try {
     const generateSchema = z.object({
       affiliateId: z.string(),
+      customCode: z.string().min(1).max(50).optional(), // Admin can set their own code
       allowanceAmount: z.number().min(0), // Dollar amount (e.g., 150)
       discountType: z.enum(["percentage", "fixed_amount"]).default("fixed_amount"),
       discountValue: z.number().min(0).default(0),
       freeShipping: z.boolean().default(false),
       description: z.string().optional(),
+      syncToShopify: z.boolean().default(true), // Auto-sync to Shopify by default
     });
 
     const data = generateSchema.parse(req.body);
@@ -163,24 +166,41 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       return res.status(404).json({ error: "Affiliate not found" });
     }
 
-    // Generate unique code
+    // Determine the code to use
     let code: string;
-    let attempts = 0;
-    const existingCodes = new Set(
-      (await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code)
-    );
 
-    do {
-      const randomPart = crypto
-        .randomBytes(4)
-        .toString("hex")
-        .toUpperCase();
-      code = `AFFILIATE-${randomPart}`;
-      attempts++;
-    } while (existingCodes.has(code) && attempts < 10);
+    if (data.customCode) {
+      // Admin provided a custom code — clean it up and check uniqueness
+      code = data.customCode.trim().toUpperCase().replace(/\s+/g, "-");
 
-    if (attempts >= 10) {
-      return res.status(400).json({ error: "Unable to generate unique code" });
+      const existingCode = await prisma.coupon.findFirst({
+        where: { code },
+      });
+
+      if (existingCode) {
+        return res.status(400).json({
+          error: `The code "${code}" already exists. Please choose a different code.`,
+        });
+      }
+    } else {
+      // Auto-generate unique code
+      let attempts = 0;
+      const existingCodes = new Set(
+        (await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code)
+      );
+
+      do {
+        const randomPart = crypto
+          .randomBytes(4)
+          .toString("hex")
+          .toUpperCase();
+        code = `AFFILIATE-${randomPart}`;
+        attempts++;
+      } while (existingCodes.has(code) && attempts < 10);
+
+      if (attempts >= 10) {
+        return res.status(400).json({ error: "Unable to generate unique code" });
+      }
     }
 
     // Calculate end of current month
@@ -200,7 +220,54 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
     const description = data.description || 
       `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText} - Expires ${endOfMonth.toLocaleDateString()}`;
 
-    // Create the affiliate code
+    // ----- Sync to Shopify (both USA and Canada stores) -----
+    let syncedToShopify = false;
+    let shopifyPriceRuleIds: Record<string, number> = {};
+    let shopifyDiscountIds: Record<string, number> = {};
+    let syncedStores: string[] = [];
+    const shopifyErrors: string[] = [];
+
+    if (data.syncToShopify) {
+      const stores = shopifyService.getAllStores();
+
+      for (const store of stores) {
+        try {
+          // Determine the discount value for Shopify (must be negative)
+          const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01; // Shopify requires a value
+
+          // Create price rule
+          const priceRule = await shopifyService.createPriceRule(store.id, {
+            title: `Affiliate Code: ${code}`,
+            valueType: data.discountType,
+            value: shopifyValue,
+            startsAt: new Date().toISOString(),
+            endsAt: endOfMonth.toISOString(),
+            usageLimit: 1, // One-time use
+            oncePerCustomer: true,
+          });
+
+          // Create the discount code under that price rule
+          const discountCode = await shopifyService.createDiscountCode(
+            store.id,
+            priceRule.id,
+            code
+          );
+
+          shopifyPriceRuleIds[store.id] = priceRule.id;
+          shopifyDiscountIds[store.id] = discountCode.id;
+          syncedStores.push(store.id);
+
+          console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+        } catch (err: any) {
+          console.error(`❌ Failed to sync code "${code}" to ${store.name}:`, err.message);
+          shopifyErrors.push(`${store.name}: ${err.message}`);
+        }
+      }
+
+      syncedToShopify = syncedStores.length > 0;
+    }
+
+    // Create the affiliate code in our database
     const affiliateCode = await prisma.coupon.create({
       data: {
         code,
@@ -213,6 +280,10 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
         status: "ACTIVE",
         freeShipping: data.freeShipping,
         isAffiliate: true,
+        syncedToShopify,
+        shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+        shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+        syncedStores,
       },
       include: {
         affiliate: {
@@ -230,9 +301,20 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       },
     });
 
+    const responseMessage = shopifyErrors.length > 0
+      ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+      : syncedToShopify
+        ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+        : "Affiliate code generated successfully";
+
     res.status(201).json({
-      message: "Affiliate code generated successfully",
+      message: responseMessage,
       code: affiliateCode,
+      shopifySync: {
+        synced: syncedToShopify,
+        stores: syncedStores,
+        errors: shopifyErrors,
+      },
     });
   } catch (error) {
     console.error("Error generating affiliate code:", error);

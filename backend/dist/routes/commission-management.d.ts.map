@@ -1,1 +1,1 @@
-{"version":3,"file":"commission-management.d.ts","sourceRoot":"","sources":["../../src/routes/commission-management.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAM1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AAywBxC,eAAe,MAAM,CAAC"}
+{"version":3,"file":"commission-management.d.ts","sourceRoot":"","sources":["../../src/routes/commission-management.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAM1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AAszBxC,eAAe,MAAM,CAAC"}
