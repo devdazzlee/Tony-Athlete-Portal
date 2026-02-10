@@ -435,6 +435,9 @@ class ShopifyService {
 
   /**
    * Create a price rule (required before creating discount code)
+   * 
+   * For free shipping: set targetType to 'shipping_line', valueType to 'percentage', value to -100
+   * For product discounts: targetType defaults to 'line_item'
    */
   async createPriceRule(
     storeId: string,
@@ -446,16 +449,19 @@ class ShopifyService {
       endsAt?: string;
       usageLimit?: number;
       oncePerCustomer?: boolean;
+      targetType?: 'line_item' | 'shipping_line'; // 'shipping_line' for free shipping
     }
   ): Promise<ShopifyPriceRule> {
+    const isShippingDiscount = options.targetType === 'shipping_line';
+
     const priceRule = {
       price_rule: {
         title: options.title,
-        target_type: 'line_item',
+        target_type: options.targetType || 'line_item',
         target_selection: 'all',
-        allocation_method: 'across',
-        value_type: options.valueType,
-        value: options.value.toString(),
+        allocation_method: isShippingDiscount ? 'each' : 'across',
+        value_type: isShippingDiscount ? 'percentage' : options.valueType,
+        value: isShippingDiscount ? '-100.0' : options.value.toString(),
         customer_selection: 'all',
         starts_at: options.startsAt || new Date().toISOString(),
         ends_at: options.endsAt || null,

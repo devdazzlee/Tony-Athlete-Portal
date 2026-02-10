@@ -442,13 +442,14 @@ router.delete(
       for (const coupon of syncedCoupons) {
         if (coupon.shopifyPriceRuleIds) {
           const priceRuleIds = coupon.shopifyPriceRuleIds as Record<string, number>;
-          for (const [storeId, priceRuleId] of Object.entries(priceRuleIds)) {
+          for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+            const actualStoreId = key.replace(/-shipping$/, "");
             try {
-              await shopifyService.deletePriceRule(storeId, priceRuleId);
-              console.log(`✅ Deleted Shopify price rule for "${coupon.code}" from store ${storeId}`);
+              await shopifyService.deletePriceRule(actualStoreId, priceRuleId);
+              console.log(`✅ Deleted Shopify price rule for "${coupon.code}" from store ${actualStoreId}`);
             } catch (err: any) {
-              console.error(`❌ Failed to delete Shopify price rule for "${coupon.code}" from ${storeId}:`, err.message);
-              shopifyErrors.push(`${coupon.code} on ${storeId}: ${err.message}`);
+              console.error(`❌ Failed to delete Shopify price rule for "${coupon.code}" from ${actualStoreId}:`, err.message);
+              shopifyErrors.push(`${coupon.code} on ${actualStoreId}: ${err.message}`);
             }
           }
         }
@@ -566,7 +567,7 @@ router.post(
   async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { code, discount, description, expiresAt, maxUsage } = req.body;
+      const { code, discount, description, expiresAt, maxUsage, freeShipping } = req.body;
 
       // Validate input
       const schema = z.object({
@@ -575,6 +576,7 @@ router.post(
         description: z.string().optional(),
         expiresAt: z.string().optional(),
         maxUsage: z.number().min(1).optional(),
+        freeShipping: z.boolean().default(false),
       });
 
       const validatedData = schema.parse({
@@ -583,6 +585,7 @@ router.post(
         description,
         expiresAt,
         maxUsage,
+        freeShipping,
       });
 
       // Normalize code to uppercase
@@ -648,35 +651,107 @@ router.post(
       const shopifyErrors: string[] = [];
 
       const stores = shopifyService.getAllStores();
+      const hasFreeShipping = validatedData.freeShipping === true;
 
       for (const store of stores) {
         try {
-          // Shopify requires negative value for discounts
-          const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+          if (hasFreeShipping && discountValue <= 0) {
+            // FREE SHIPPING ONLY — create shipping_line price rule
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${normalizedCode} (Free Shipping)`,
+              valueType: "percentage",
+              value: -100,
+              targetType: "shipping_line",
+              startsAt: new Date().toISOString(),
+              endsAt: validUntil.toISOString(),
+              usageLimit: validatedData.maxUsage || undefined,
+              oncePerCustomer: true,
+            });
 
-          // Create price rule
-          const priceRule = await shopifyService.createPriceRule(store.id, {
-            title: `Affiliate Code: ${normalizedCode}`,
-            valueType: discountType,
-            value: shopifyValue,
-            startsAt: new Date().toISOString(),
-            endsAt: validUntil.toISOString(),
-            usageLimit: validatedData.maxUsage || undefined,
-            oncePerCustomer: true,
-          });
+            const discCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              normalizedCode
+            );
 
-          // Create the discount code under that price rule
-          const discountCode = await shopifyService.createDiscountCode(
-            store.id,
-            priceRule.id,
-            normalizedCode
-          );
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discCode.id;
+            syncedStores.push(store.id);
 
-          shopifyPriceRuleIds[store.id] = priceRule.id;
-          shopifyDiscountIds[store.id] = discountCode.id;
-          syncedStores.push(store.id);
+            console.log(`✅ Synced free shipping code "${normalizedCode}" to ${store.name}`);
+          } else if (hasFreeShipping && discountValue > 0) {
+            // DISCOUNT + FREE SHIPPING — need two price rules on Shopify
+            const shopifyValue = -discountValue;
 
-          console.log(`✅ Synced discount code "${normalizedCode}" to ${store.name} (${store.country})`);
+            // 1. Create product discount code
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${normalizedCode}`,
+              valueType: discountType,
+              value: shopifyValue,
+              startsAt: new Date().toISOString(),
+              endsAt: validUntil.toISOString(),
+              usageLimit: validatedData.maxUsage || undefined,
+              oncePerCustomer: true,
+            });
+
+            const discCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              normalizedCode
+            );
+
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discCode.id;
+
+            // 2. Create AUTOMATIC free shipping rule (no code — Shopify auto-applies at checkout)
+            try {
+              const shippingRule = await shopifyService.createPriceRule(store.id, {
+                title: `Auto Free Shipping (Affiliate: ${normalizedCode})`,
+                valueType: "percentage",
+                value: -100,
+                targetType: "shipping_line",
+                startsAt: new Date().toISOString(),
+                endsAt: validUntil.toISOString(),
+                // No usageLimit — auto-applies to all orders during the period
+                oncePerCustomer: false,
+              });
+
+              // Do NOT create a discount code — this is an automatic discount
+              shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+
+              console.log(`✅ Synced discount "${normalizedCode}" + automatic free shipping to ${store.name}`);
+            } catch (fsErr: any) {
+              console.warn(`⚠️ Discount synced but auto free shipping failed for ${store.name}:`, fsErr.message);
+              shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
+            }
+
+            syncedStores.push(store.id);
+          } else {
+            // DISCOUNT ONLY (no free shipping)
+            const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${normalizedCode}`,
+              valueType: discountType,
+              value: shopifyValue,
+              startsAt: new Date().toISOString(),
+              endsAt: validUntil.toISOString(),
+              usageLimit: validatedData.maxUsage || undefined,
+              oncePerCustomer: true,
+            });
+
+            const discCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              normalizedCode
+            );
+
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discCode.id;
+            syncedStores.push(store.id);
+
+            console.log(`✅ Synced discount code "${normalizedCode}" to ${store.name} (${store.country})`);
+          }
         } catch (err: any) {
           console.error(`❌ Failed to sync code "${normalizedCode}" to ${store.name}:`, err.message);
           shopifyErrors.push(`${store.name}: ${err.message}`);
@@ -696,7 +771,7 @@ router.post(
           maxUsage: validatedData.maxUsage,
           status: "ACTIVE",
           isAffiliate: true,
-          freeShipping: false,
+          freeShipping: validatedData.freeShipping,
           syncedToShopify,
           shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
           shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,

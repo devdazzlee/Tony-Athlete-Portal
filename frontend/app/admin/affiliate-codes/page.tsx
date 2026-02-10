@@ -155,24 +155,41 @@ export default function AffiliateCodesPage() {
     try {
       setLoadingAffiliates(true);
       const response = await api.get("/admin/affiliates?limit=1000");
-      console.log("Affiliates API response:", response.data);
       
       // Handle different response formats
-      const affiliatesList = response.data.affiliates || response.data.data || response.data || [];
-      console.log("Parsed affiliates list:", affiliatesList);
-      console.log("Number of affiliates:", affiliatesList.length);
+      const rawList = response.data.affiliates || response.data.data || response.data || [];
+      
+      // Map flat API response to expected Affiliate interface
+      // API returns: { id, name, email, ... } (flat)
+      // We need:    { id, user: { firstName, lastName, email } }
+      const affiliatesList = rawList.map((item: any) => {
+        // If item already has nested user object, use it directly
+        if (item.user?.firstName || item.user?.email) {
+          return item;
+        }
+        // Otherwise map flat fields (name, email) to nested structure
+        const nameParts = (item.name || "").split(" ");
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || "";
+        return {
+          ...item,
+          user: {
+            firstName,
+            lastName,
+            email: item.email || "",
+          },
+        };
+      });
       
       setAffiliates(affiliatesList);
       
       if (affiliatesList.length === 0) {
-        console.warn("No affiliates found in response");
         toast.error("No affiliates found. Please create affiliates first in 'Manage Affiliates' page.");
       }
     } catch (error: any) {
       console.error("Error fetching affiliates:", error);
-      console.error("Error details:", error.response);
       toast.error("Failed to fetch affiliates: " + (error.response?.data?.error || error.message));
-      setAffiliates([]); // Set empty array on error
+      setAffiliates([]);
     } finally {
       setLoadingAffiliates(false);
     }

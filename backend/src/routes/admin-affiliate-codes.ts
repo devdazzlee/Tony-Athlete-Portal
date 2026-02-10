@@ -184,22 +184,22 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       }
     } else {
       // Auto-generate unique code
-      let attempts = 0;
-      const existingCodes = new Set(
-        (await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code)
-      );
+    let attempts = 0;
+    const existingCodes = new Set(
+      (await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code)
+    );
 
-      do {
-        const randomPart = crypto
-          .randomBytes(4)
-          .toString("hex")
-          .toUpperCase();
-        code = `AFFILIATE-${randomPart}`;
-        attempts++;
-      } while (existingCodes.has(code) && attempts < 10);
+    do {
+      const randomPart = crypto
+        .randomBytes(4)
+        .toString("hex")
+        .toUpperCase();
+      code = `AFFILIATE-${randomPart}`;
+      attempts++;
+    } while (existingCodes.has(code) && attempts < 10);
 
-      if (attempts >= 10) {
-        return res.status(400).json({ error: "Unable to generate unique code" });
+    if (attempts >= 10) {
+      return res.status(400).json({ error: "Unable to generate unique code" });
       }
     }
 
@@ -229,35 +229,111 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
 
     if (data.syncToShopify) {
       const stores = shopifyService.getAllStores();
+      const hasFreeShipping = data.freeShipping === true;
+      const hasDiscount = data.discountValue > 0;
 
       for (const store of stores) {
         try {
-          // Determine the discount value for Shopify (must be negative)
-          const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01; // Shopify requires a value
+          if (hasFreeShipping && !hasDiscount) {
+            // FREE SHIPPING ONLY — create a shipping_line price rule
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${code} (Free Shipping)`,
+              valueType: "percentage",
+              value: -100,
+              targetType: "shipping_line",
+              startsAt: new Date().toISOString(),
+              endsAt: endOfMonth.toISOString(),
+              usageLimit: 1,
+              oncePerCustomer: true,
+            });
 
-          // Create price rule
-          const priceRule = await shopifyService.createPriceRule(store.id, {
-            title: `Affiliate Code: ${code}`,
-            valueType: data.discountType,
-            value: shopifyValue,
-            startsAt: new Date().toISOString(),
-            endsAt: endOfMonth.toISOString(),
-            usageLimit: 1, // One-time use
-            oncePerCustomer: true,
-          });
+            const discountCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              code
+            );
 
-          // Create the discount code under that price rule
-          const discountCode = await shopifyService.createDiscountCode(
-            store.id,
-            priceRule.id,
-            code
-          );
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discountCode.id;
+            syncedStores.push(store.id);
 
-          shopifyPriceRuleIds[store.id] = priceRule.id;
-          shopifyDiscountIds[store.id] = discountCode.id;
-          syncedStores.push(store.id);
+            console.log(`✅ Synced free shipping code "${code}" to ${store.name}`);
+          } else if (hasFreeShipping && hasDiscount) {
+            // DISCOUNT + FREE SHIPPING
+            // Shopify REST API can't combine both in one price rule/code.
+            // Strategy: Create the discount CODE + an AUTOMATIC free shipping rule (no code needed, auto-applies at checkout)
+            const shopifyValue = -data.discountValue;
 
-          console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+            // 1. Create the product discount code (customer enters this)
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${code}`,
+              valueType: data.discountType,
+              value: shopifyValue,
+              startsAt: new Date().toISOString(),
+              endsAt: endOfMonth.toISOString(),
+              usageLimit: 1,
+              oncePerCustomer: true,
+            });
+
+            const discountCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              code
+            );
+
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discountCode.id;
+
+            // 2. Create an AUTOMATIC free shipping rule (no discount code — Shopify auto-applies it at checkout)
+            try {
+              const shippingRule = await shopifyService.createPriceRule(store.id, {
+                title: `Auto Free Shipping (Affiliate: ${code})`,
+                valueType: "percentage",
+                value: -100,
+                targetType: "shipping_line",
+                startsAt: new Date().toISOString(),
+                endsAt: endOfMonth.toISOString(),
+                // No usageLimit — auto-applies to all orders during the period
+                oncePerCustomer: false,
+              });
+
+              // Do NOT create a discount code for this rule — it's automatic
+              // Store the shipping rule ID for cleanup (keyed with -shipping suffix)
+              shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+
+              console.log(`✅ Synced discount "${code}" + automatic free shipping to ${store.name}`);
+            } catch (fsErr: any) {
+              console.warn(`⚠️ Discount code synced but auto free shipping rule failed for ${store.name}:`, fsErr.message);
+              shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
+            }
+
+            syncedStores.push(store.id);
+          } else {
+            // DISCOUNT ONLY (no free shipping)
+            const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
+
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${code}`,
+              valueType: data.discountType,
+              value: shopifyValue,
+              startsAt: new Date().toISOString(),
+              endsAt: endOfMonth.toISOString(),
+              usageLimit: 1,
+              oncePerCustomer: true,
+            });
+
+            const discountCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              code
+            );
+
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discountCode.id;
+            syncedStores.push(store.id);
+
+            console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+          }
         } catch (err: any) {
           console.error(`❌ Failed to sync code "${code}" to ${store.name}:`, err.message);
           shopifyErrors.push(`${store.name}: ${err.message}`);
@@ -301,10 +377,17 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       },
     });
 
+    const hasFreeShippingSync = data.freeShipping && syncedToShopify;
+    const freeShippingNote = hasFreeShippingSync
+      ? data.discountValue > 0
+        ? `. Free shipping enabled as automatic discount on Shopify.`
+        : `. Free shipping code synced.`
+      : "";
+
     const responseMessage = shopifyErrors.length > 0
       ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
       : syncedToShopify
-        ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+        ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})${freeShippingNote}`
         : "Affiliate code generated successfully";
 
     res.status(201).json({
@@ -314,6 +397,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
         synced: syncedToShopify,
         stores: syncedStores,
         errors: shopifyErrors,
+        freeShippingAutoApplied: hasFreeShippingSync && data.discountValue > 0,
       },
     });
   } catch (error) {
@@ -338,17 +422,19 @@ router.delete("/:id", authenticateToken, requireRole(["ADMIN"]), async (req: Req
       return res.status(404).json({ error: "Affiliate code not found" });
     }
 
-    // Delete from Shopify first (if synced)
+    // Delete from Shopify first (if synced) — handles both discount and free shipping rules
     const shopifyErrors: string[] = [];
     if (code.syncedToShopify && code.shopifyPriceRuleIds) {
       const priceRuleIds = code.shopifyPriceRuleIds as Record<string, number>;
-      for (const [storeId, priceRuleId] of Object.entries(priceRuleIds)) {
+      for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+        // Keys may be "store-usa" or "store-usa-shipping" (for free shipping rules)
+        const actualStoreId = key.replace(/-shipping$/, "");
         try {
-          await shopifyService.deletePriceRule(storeId, priceRuleId);
-          console.log(`✅ Deleted price rule ${priceRuleId} from Shopify store ${storeId}`);
+          await shopifyService.deletePriceRule(actualStoreId, priceRuleId);
+          console.log(`✅ Deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
         } catch (err: any) {
-          console.error(`❌ Failed to delete price rule ${priceRuleId} from ${storeId}:`, err.message);
-          shopifyErrors.push(`${storeId}: ${err.message}`);
+          console.error(`❌ Failed to delete price rule ${priceRuleId} from ${actualStoreId}:`, err.message);
+          shopifyErrors.push(`${actualStoreId}: ${err.message}`);
         }
       }
     }
@@ -392,15 +478,16 @@ router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (re
     const shopifyErrors: string[] = [];
 
     if (status === "INACTIVE" && code.syncedToShopify && code.shopifyPriceRuleIds) {
-      // DEACTIVATING: Delete price rules from Shopify so the code stops working on the store
+      // DEACTIVATING: Delete price rules from Shopify (both discount and free shipping rules)
       const priceRuleIds = code.shopifyPriceRuleIds as Record<string, number>;
-      for (const [storeId, priceRuleId] of Object.entries(priceRuleIds)) {
+      for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+        const actualStoreId = key.replace(/-shipping$/, "");
         try {
-          await shopifyService.deletePriceRule(storeId, priceRuleId);
-          console.log(`✅ Deactivated: deleted price rule ${priceRuleId} from Shopify store ${storeId}`);
+          await shopifyService.deletePriceRule(actualStoreId, priceRuleId);
+          console.log(`✅ Deactivated: deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
         } catch (err: any) {
-          console.error(`❌ Failed to deactivate code on ${storeId}:`, err.message);
-          shopifyErrors.push(`${storeId}: ${err.message}`);
+          console.error(`❌ Failed to deactivate code on ${actualStoreId}:`, err.message);
+          shopifyErrors.push(`${actualStoreId}: ${err.message}`);
         }
       }
 
