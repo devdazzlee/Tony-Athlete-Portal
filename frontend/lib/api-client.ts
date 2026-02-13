@@ -70,6 +70,15 @@ apiClient.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
+
+    // When sending FormData (file uploads), remove the Content-Type header
+    // so axios/browser can automatically set it to multipart/form-data with
+    // the correct boundary. Without this, the hardcoded "application/json"
+    // default prevents multer from parsing the file on the backend.
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+    }
+
     return config;
   },
   (error: AxiosError) => {
