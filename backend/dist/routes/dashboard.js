@@ -26,16 +26,7 @@ router.get("/overview", auth_1.authenticateToken, async (req, res) => {
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
         }
-        const affiliateCodes = affiliate.coupons.map(c => c.code);
-        const ordersWhere = affiliateCodes.length > 0
-            ? {
-                affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes },
-            }
-            : {
-                affiliateId: affiliate.id,
-                referralCode: { in: [] },
-            };
+        const ordersWhere = { affiliateId: affiliate.id };
         const [totalClicks, totalConversions, totalCommissions, recentActivity] = await Promise.all([
             prisma.affiliateClick.count({
                 where: {
@@ -185,16 +176,7 @@ router.get("/real-time-stats", auth_1.authenticateToken, async (req, res) => {
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
         }
-        const affiliateCodes = affiliate.coupons.map(c => c.code);
-        const ordersWhere = affiliateCodes.length > 0
-            ? {
-                affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes },
-            }
-            : {
-                affiliateId: affiliate.id,
-                referralCode: { in: [] },
-            };
+        const ordersWhere = { affiliateId: affiliate.id };
         const [activeUsers, liveClicks, liveConversions, liveRevenue] = await Promise.all([
             prisma.affiliateClick
                 .groupBy({

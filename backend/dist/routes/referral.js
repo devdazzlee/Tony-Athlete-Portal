@@ -44,6 +44,8 @@ router.get("/codes", auth_1.authenticateToken, async (req, res) => {
             type: "COUPON",
             description: coupon.description,
             freeShipping: coupon.freeShipping,
+            syncedToShopify: coupon.syncedToShopify || false,
+            syncedStores: coupon.syncedStores || [],
         }));
         const allCodes = [...referralCodes, ...couponCodesFormatted];
         res.json(allCodes);

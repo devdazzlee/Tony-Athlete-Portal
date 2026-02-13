@@ -216,7 +216,10 @@ router.get("/stats/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(
         const pendingSubmissions = await prisma.activity.count({
             where: {
                 action: "deliverable_submitted",
-                status: "PENDING",
+                OR: [
+                    { status: "PENDING" },
+                    { status: null },
+                ],
             },
         });
         const approvedSubmissions = await prisma.activity.count({

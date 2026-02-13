@@ -221,23 +221,77 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
         const shopifyErrors = [];
         if (data.syncToShopify) {
             const stores = ShopifyService_1.default.getAllStores();
+            const hasFreeShipping = data.freeShipping === true;
+            const hasDiscount = data.discountValue > 0;
             for (const store of stores) {
                 try {
-                    const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
-                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
-                        title: `Affiliate Code: ${code}`,
-                        valueType: data.discountType,
-                        value: shopifyValue,
-                        startsAt: new Date().toISOString(),
-                        endsAt: endOfMonth.toISOString(),
-                        usageLimit: 1,
-                        oncePerCustomer: true,
-                    });
-                    const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
-                    shopifyPriceRuleIds[store.id] = priceRule.id;
-                    shopifyDiscountIds[store.id] = discountCode.id;
-                    syncedStores.push(store.id);
-                    console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+                    if (hasFreeShipping && !hasDiscount) {
+                        const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                            title: `Affiliate Code: ${code} (Free Shipping)`,
+                            valueType: "percentage",
+                            value: -100,
+                            targetType: "shipping_line",
+                            startsAt: new Date().toISOString(),
+                            endsAt: endOfMonth.toISOString(),
+                            usageLimit: 1,
+                            oncePerCustomer: true,
+                        });
+                        const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
+                        shopifyPriceRuleIds[store.id] = priceRule.id;
+                        shopifyDiscountIds[store.id] = discountCode.id;
+                        syncedStores.push(store.id);
+                        console.log(`✅ Synced free shipping code "${code}" to ${store.name}`);
+                    }
+                    else if (hasFreeShipping && hasDiscount) {
+                        const shopifyValue = -data.discountValue;
+                        const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                            title: `Affiliate Code: ${code}`,
+                            valueType: data.discountType,
+                            value: shopifyValue,
+                            startsAt: new Date().toISOString(),
+                            endsAt: endOfMonth.toISOString(),
+                            usageLimit: 1,
+                            oncePerCustomer: true,
+                        });
+                        const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
+                        shopifyPriceRuleIds[store.id] = priceRule.id;
+                        shopifyDiscountIds[store.id] = discountCode.id;
+                        try {
+                            const shippingRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                                title: `Auto Free Shipping (Affiliate: ${code})`,
+                                valueType: "percentage",
+                                value: -100,
+                                targetType: "shipping_line",
+                                startsAt: new Date().toISOString(),
+                                endsAt: endOfMonth.toISOString(),
+                                oncePerCustomer: false,
+                            });
+                            shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+                            console.log(`✅ Synced discount "${code}" + automatic free shipping to ${store.name}`);
+                        }
+                        catch (fsErr) {
+                            console.warn(`⚠️ Discount code synced but auto free shipping rule failed for ${store.name}:`, fsErr.message);
+                            shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
+                        }
+                        syncedStores.push(store.id);
+                    }
+                    else {
+                        const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
+                        const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                            title: `Affiliate Code: ${code}`,
+                            valueType: data.discountType,
+                            value: shopifyValue,
+                            startsAt: new Date().toISOString(),
+                            endsAt: endOfMonth.toISOString(),
+                            usageLimit: 1,
+                            oncePerCustomer: true,
+                        });
+                        const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
+                        shopifyPriceRuleIds[store.id] = priceRule.id;
+                        shopifyDiscountIds[store.id] = discountCode.id;
+                        syncedStores.push(store.id);
+                        console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+                    }
                 }
                 catch (err) {
                     console.error(`❌ Failed to sync code "${code}" to ${store.name}:`, err.message);
@@ -278,10 +332,16 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 },
             },
         });
+        const hasFreeShippingSync = data.freeShipping && syncedToShopify;
+        const freeShippingNote = hasFreeShippingSync
+            ? data.discountValue > 0
+                ? `. Free shipping enabled as automatic discount on Shopify.`
+                : `. Free shipping code synced.`
+            : "";
         const responseMessage = shopifyErrors.length > 0
             ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
             : syncedToShopify
-                ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+                ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})${freeShippingNote}`
                 : "Affiliate code generated successfully";
         res.status(201).json({
             message: responseMessage,
@@ -290,6 +350,7 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 synced: syncedToShopify,
                 stores: syncedStores,
                 errors: shopifyErrors,
+                freeShippingAutoApplied: hasFreeShippingSync && data.discountValue > 0,
             },
         });
     }
@@ -310,10 +371,30 @@ router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"
         if (!code || !code.isAffiliate) {
             return res.status(404).json({ error: "Affiliate code not found" });
         }
+        const shopifyErrors = [];
+        if (code.syncedToShopify && code.shopifyPriceRuleIds) {
+            const priceRuleIds = code.shopifyPriceRuleIds;
+            for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+                const actualStoreId = key.replace(/-shipping$/, "");
+                try {
+                    await ShopifyService_1.default.deletePriceRule(actualStoreId, priceRuleId);
+                    console.log(`✅ Deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to delete price rule ${priceRuleId} from ${actualStoreId}:`, err.message);
+                    shopifyErrors.push(`${actualStoreId}: ${err.message}`);
+                }
+            }
+        }
         await prisma.coupon.delete({
             where: { id },
         });
-        res.json({ message: "Affiliate code deleted successfully" });
+        const message = shopifyErrors.length > 0
+            ? `Code deleted from database but failed to remove from some Shopify stores: ${shopifyErrors.join("; ")}`
+            : code.syncedToShopify
+                ? "Affiliate code deleted from database and Shopify"
+                : "Affiliate code deleted successfully";
+        res.json({ message, shopifyErrors });
     }
     catch (error) {
         console.error("Error deleting affiliate code:", error);
@@ -333,6 +414,101 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
         if (!code || !code.isAffiliate) {
             return res.status(404).json({ error: "Affiliate code not found" });
         }
+        const shopifyErrors = [];
+        if (status === "INACTIVE" && code.syncedToShopify && code.shopifyPriceRuleIds) {
+            const priceRuleIds = code.shopifyPriceRuleIds;
+            for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+                const actualStoreId = key.replace(/-shipping$/, "");
+                try {
+                    await ShopifyService_1.default.deletePriceRule(actualStoreId, priceRuleId);
+                    console.log(`✅ Deactivated: deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to deactivate code on ${actualStoreId}:`, err.message);
+                    shopifyErrors.push(`${actualStoreId}: ${err.message}`);
+                }
+            }
+            const updatedCode = await prisma.coupon.update({
+                where: { id },
+                data: {
+                    status,
+                    syncedToShopify: false,
+                    shopifyPriceRuleIds: undefined,
+                    shopifyDiscountIds: undefined,
+                    syncedStores: [],
+                },
+                include: {
+                    affiliate: {
+                        include: {
+                            user: {
+                                select: { id: true, email: true, firstName: true, lastName: true },
+                            },
+                        },
+                    },
+                },
+            });
+            const message = shopifyErrors.length > 0
+                ? `Code deactivated in database but failed to remove from some Shopify stores: ${shopifyErrors.join("; ")}`
+                : "Code deactivated and removed from Shopify";
+            return res.json({ message, code: updatedCode, shopifyErrors });
+        }
+        if (status === "ACTIVE" && !code.syncedToShopify) {
+            const shopifyPriceRuleIds = {};
+            const shopifyDiscountIds = {};
+            const syncedStores = [];
+            const stores = ShopifyService_1.default.getAllStores();
+            const discountValue = parseFloat(code.discount.replace(/[^0-9.]/g, "")) || 0;
+            const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+            const valueType = code.discount.includes("$") ? "fixed_amount" : "percentage";
+            for (const store of stores) {
+                try {
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${code.code}`,
+                        valueType,
+                        value: shopifyValue,
+                        startsAt: new Date().toISOString(),
+                        endsAt: code.validUntil.toISOString(),
+                        usageLimit: code.maxUsage || undefined,
+                        oncePerCustomer: true,
+                    });
+                    const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code.code);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discountCode.id;
+                    syncedStores.push(store.id);
+                    console.log(`✅ Reactivated: synced code "${code.code}" to ${store.name}`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to re-sync code "${code.code}" to ${store.name}:`, err.message);
+                    shopifyErrors.push(`${store.name}: ${err.message}`);
+                }
+            }
+            const syncedToShopify = syncedStores.length > 0;
+            const updatedCode = await prisma.coupon.update({
+                where: { id },
+                data: {
+                    status,
+                    syncedToShopify,
+                    shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+                    shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+                    syncedStores,
+                },
+                include: {
+                    affiliate: {
+                        include: {
+                            user: {
+                                select: { id: true, email: true, firstName: true, lastName: true },
+                            },
+                        },
+                    },
+                },
+            });
+            const message = shopifyErrors.length > 0
+                ? `Code reactivated but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+                : syncedToShopify
+                    ? `Code reactivated and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+                    : "Code reactivated in database (Shopify sync unavailable)";
+            return res.json({ message, code: updatedCode, shopifyErrors });
+        }
         const updatedCode = await prisma.coupon.update({
             where: { id },
             data: { status },
@@ -340,12 +516,7 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
                 affiliate: {
                     include: {
                         user: {
-                            select: {
-                                id: true,
-                                email: true,
-                                firstName: true,
-                                lastName: true,
-                            },
+                            select: { id: true, email: true, firstName: true, lastName: true },
                         },
                     },
                 },

@@ -39,6 +39,7 @@ import {
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { formatLastActivity } from "@/lib/date-utils";
+import { EditModal } from "@/components/modals/edit-modal";
 
 
 const payoutColumns = [
@@ -143,6 +144,8 @@ export default function AdminDashboardPage() {
   const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(
     null
   );
+  const [selectedPayout, setSelectedPayout] = useState<any | null>(null);
+  const [isUpdatingPayout, setIsUpdatingPayout] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState("7d");
@@ -193,6 +196,35 @@ export default function AdminDashboardPage() {
     toast.success("Dashboard data refreshed");
   };
 
+  const handleUpdatePayoutStatus = async (data: Record<string, any>) => {
+    const payoutId = selectedPayout?.id;
+    if (!payoutId) return;
+
+    const status = String(data.status || "").toUpperCase();
+    if (!status) {
+      toast.error("Status is required");
+      return;
+    }
+
+    setIsUpdatingPayout(true);
+    try {
+      await apiClient.patch(`/admin/payouts/${payoutId}/status`, { status });
+      toast.success(`Payout status updated to ${status}`);
+      setSelectedPayout(null);
+      await fetchDashboardData();
+    } catch (error: any) {
+      console.error("Error updating payout status:", error);
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to update payout"
+      );
+    } finally {
+      setIsUpdatingPayout(false);
+    }
+  };
+
   if (isLoading || isDataLoading || isDateRangeLoading) {
     return <AdminLoading message="Loading admin dashboard..." />;
   }
@@ -227,6 +259,36 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+      <EditModal
+        isOpen={!!selectedPayout}
+        onClose={() => {
+          if (isUpdatingPayout) return;
+          setSelectedPayout(null);
+        }}
+        onSave={handleUpdatePayoutStatus}
+        title="Payout Action"
+        data={{
+          status: selectedPayout?.status
+            ? String(selectedPayout.status).toUpperCase()
+            : "PENDING",
+        }}
+        fields={[
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            required: true,
+            options: [
+              { value: "PENDING", label: "Pending" },
+              { value: "PROCESSING", label: "Processing" },
+              { value: "COMPLETED", label: "Completed" },
+              { value: "FAILED", label: "Failed" },
+              { value: "CANCELLED", label: "Cancelled" },
+            ],
+          },
+        ]}
+      />
+
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-blue-600 to-teal-600 rounded-lg p-6 text-white">
         <div className="flex items-center justify-between">
@@ -470,6 +532,7 @@ export default function AdminDashboardPage() {
           exportable={true}
           pagination={true}
           pageSize={5}
+          onEdit={(row) => setSelectedPayout(row)}
         />
 
       {/* System Alerts */}

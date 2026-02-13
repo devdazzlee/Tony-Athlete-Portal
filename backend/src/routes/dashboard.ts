@@ -96,11 +96,6 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
           },
         });
 
-        // Only include this referral code if it's in the affiliate's active codes
-        if (!affiliateCodes.includes(code.code)) {
-          return null;
-        }
-
         const conversions = await prisma.affiliateOrder.count({
           where: {
             affiliateId: affiliate.id,

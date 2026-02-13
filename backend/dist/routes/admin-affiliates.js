@@ -41,6 +41,7 @@ const auth_1 = require("../middleware/auth");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const ShopifyService_1 = __importDefault(require("../services/ShopifyService"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
@@ -70,22 +71,7 @@ router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MAN
         });
         const total = await prisma.affiliateProfile.count({ where });
         const affiliatesWithStats = await Promise.all(affiliates.map(async (affiliate) => {
-            const affiliateCoupons = await prisma.coupon.findMany({
-                where: {
-                    affiliateId: affiliate.id,
-                    status: "ACTIVE",
-                },
-            });
-            const affiliateCodes = affiliateCoupons.map(c => c.code);
-            const ordersWhere = affiliateCodes.length > 0
-                ? {
-                    affiliateId: affiliate.id,
-                    referralCode: { in: affiliateCodes },
-                }
-                : {
-                    affiliateId: affiliate.id,
-                    referralCode: { in: [] },
-                };
+            const ordersWhere = { affiliateId: affiliate.id };
             const [earnings, conversions, clicks] = await Promise.all([
                 prisma.affiliateOrder.aggregate({
                     where: ordersWhere,
@@ -170,22 +156,7 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate not found" });
         }
-        const affiliateCoupons = await prisma.coupon.findMany({
-            where: {
-                affiliateId: affiliate.id,
-                status: "ACTIVE",
-            },
-        });
-        const affiliateCodes = affiliateCoupons.map(c => c.code);
-        const ordersWhere = affiliateCodes.length > 0
-            ? {
-                affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes },
-            }
-            : {
-                affiliateId: affiliate.id,
-                referralCode: { in: [] },
-            };
+        const ordersWhere = { affiliateId: affiliate.id };
         const [earnings, conversions, clicks] = await Promise.all([
             prisma.affiliateOrder.aggregate({
                 where: ordersWhere,
@@ -355,12 +326,41 @@ router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate not found" });
         }
+        const shopifyErrors = [];
+        const syncedCoupons = await prisma.coupon.findMany({
+            where: {
+                affiliateId: id,
+                syncedToShopify: true,
+            },
+        });
+        for (const coupon of syncedCoupons) {
+            if (coupon.shopifyPriceRuleIds) {
+                const priceRuleIds = coupon.shopifyPriceRuleIds;
+                for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+                    const actualStoreId = key.replace(/-shipping$/, "");
+                    try {
+                        await ShopifyService_1.default.deletePriceRule(actualStoreId, priceRuleId);
+                        console.log(`✅ Deleted Shopify price rule for "${coupon.code}" from store ${actualStoreId}`);
+                    }
+                    catch (err) {
+                        console.error(`❌ Failed to delete Shopify price rule for "${coupon.code}" from ${actualStoreId}:`, err.message);
+                        shopifyErrors.push(`${coupon.code} on ${actualStoreId}: ${err.message}`);
+                    }
+                }
+            }
+        }
         await prisma.affiliateProfile.delete({
             where: { id },
         });
+        const message = shopifyErrors.length > 0
+            ? `Affiliate deleted but some Shopify codes could not be removed: ${shopifyErrors.join("; ")}`
+            : syncedCoupons.length > 0
+                ? `Affiliate deleted and ${syncedCoupons.length} discount code${syncedCoupons.length > 1 ? "s" : ""} removed from Shopify`
+                : "Affiliate deleted successfully";
         res.json({
             success: true,
-            message: "Affiliate deleted successfully",
+            message,
+            shopifyErrors: shopifyErrors.length > 0 ? shopifyErrors : undefined,
         });
     }
     catch (error) {
@@ -431,13 +431,14 @@ router.patch("/:id/spending-limit", auth_1.authenticateToken, (0, auth_1.require
 router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
-        const { code, discount, description, expiresAt, maxUsage } = req.body;
+        const { code, discount, description, expiresAt, maxUsage, freeShipping } = req.body;
         const schema = zod_1.z.object({
             code: zod_1.z.string().min(3, "Code must be at least 3 characters"),
             discount: zod_1.z.string().min(1, "Discount value is required"),
             description: zod_1.z.string().optional(),
             expiresAt: zod_1.z.string().optional(),
             maxUsage: zod_1.z.number().min(1).optional(),
+            freeShipping: zod_1.z.boolean().default(false),
         });
         const validatedData = schema.parse({
             code,
@@ -445,36 +446,163 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
             description,
             expiresAt,
             maxUsage,
+            freeShipping,
         });
+        const normalizedCode = validatedData.code.trim().toUpperCase().replace(/\s+/g, "-");
         const affiliate = await prisma.affiliateProfile.findUnique({
             where: { id },
+            include: {
+                user: {
+                    select: { firstName: true, lastName: true },
+                },
+            },
         });
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate not found" });
         }
-        const existingCoupon = await prisma.coupon.findUnique({
-            where: { code: validatedData.code },
+        const existingCoupon = await prisma.coupon.findFirst({
+            where: { code: normalizedCode },
         });
         if (existingCoupon) {
-            return res.status(400).json({ error: "Coupon code already exists" });
+            return res.status(400).json({ error: `The code "${normalizedCode}" already exists. Please choose a different code.` });
         }
+        const discountStr = validatedData.discount.trim();
+        let discountType = "percentage";
+        let discountValue = 0;
+        if (discountStr.endsWith("%")) {
+            discountType = "percentage";
+            discountValue = parseFloat(discountStr.replace("%", ""));
+        }
+        else if (discountStr.startsWith("$")) {
+            discountType = "fixed_amount";
+            discountValue = parseFloat(discountStr.replace("$", ""));
+        }
+        else {
+            discountType = "percentage";
+            discountValue = parseFloat(discountStr);
+        }
+        if (isNaN(discountValue) || discountValue <= 0) {
+            return res.status(400).json({ error: "Invalid discount value. Use formats like '10%' or '$10'." });
+        }
+        const validUntil = validatedData.expiresAt
+            ? new Date(validatedData.expiresAt)
+            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        const affiliateName = `${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() || "Unknown";
+        const codeDescription = validatedData.description || `Discount code for ${affiliateName} - ${discountStr}`;
+        let syncedToShopify = false;
+        let shopifyPriceRuleIds = {};
+        let shopifyDiscountIds = {};
+        let syncedStores = [];
+        const shopifyErrors = [];
+        const stores = ShopifyService_1.default.getAllStores();
+        const hasFreeShipping = validatedData.freeShipping === true;
+        for (const store of stores) {
+            try {
+                if (hasFreeShipping && discountValue <= 0) {
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${normalizedCode} (Free Shipping)`,
+                        valueType: "percentage",
+                        value: -100,
+                        targetType: "shipping_line",
+                        startsAt: new Date().toISOString(),
+                        endsAt: validUntil.toISOString(),
+                        usageLimit: validatedData.maxUsage || undefined,
+                        oncePerCustomer: true,
+                    });
+                    const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discCode.id;
+                    syncedStores.push(store.id);
+                    console.log(`✅ Synced free shipping code "${normalizedCode}" to ${store.name}`);
+                }
+                else if (hasFreeShipping && discountValue > 0) {
+                    const shopifyValue = -discountValue;
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${normalizedCode}`,
+                        valueType: discountType,
+                        value: shopifyValue,
+                        startsAt: new Date().toISOString(),
+                        endsAt: validUntil.toISOString(),
+                        usageLimit: validatedData.maxUsage || undefined,
+                        oncePerCustomer: true,
+                    });
+                    const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discCode.id;
+                    try {
+                        const shippingRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                            title: `Auto Free Shipping (Affiliate: ${normalizedCode})`,
+                            valueType: "percentage",
+                            value: -100,
+                            targetType: "shipping_line",
+                            startsAt: new Date().toISOString(),
+                            endsAt: validUntil.toISOString(),
+                            oncePerCustomer: false,
+                        });
+                        shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+                        console.log(`✅ Synced discount "${normalizedCode}" + automatic free shipping to ${store.name}`);
+                    }
+                    catch (fsErr) {
+                        console.warn(`⚠️ Discount synced but auto free shipping failed for ${store.name}:`, fsErr.message);
+                        shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
+                    }
+                    syncedStores.push(store.id);
+                }
+                else {
+                    const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${normalizedCode}`,
+                        valueType: discountType,
+                        value: shopifyValue,
+                        startsAt: new Date().toISOString(),
+                        endsAt: validUntil.toISOString(),
+                        usageLimit: validatedData.maxUsage || undefined,
+                        oncePerCustomer: true,
+                    });
+                    const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discCode.id;
+                    syncedStores.push(store.id);
+                    console.log(`✅ Synced discount code "${normalizedCode}" to ${store.name} (${store.country})`);
+                }
+            }
+            catch (err) {
+                console.error(`❌ Failed to sync code "${normalizedCode}" to ${store.name}:`, err.message);
+                shopifyErrors.push(`${store.name}: ${err.message}`);
+            }
+        }
+        syncedToShopify = syncedStores.length > 0;
         const coupon = await prisma.coupon.create({
             data: {
-                code: validatedData.code,
-                description: validatedData.description || "",
+                code: normalizedCode,
+                description: codeDescription,
                 discount: validatedData.discount,
                 affiliateId: id,
-                validUntil: validatedData.expiresAt
-                    ? new Date(validatedData.expiresAt)
-                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                validUntil,
                 maxUsage: validatedData.maxUsage,
                 status: "ACTIVE",
+                isAffiliate: true,
+                freeShipping: validatedData.freeShipping,
+                syncedToShopify,
+                shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+                shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+                syncedStores,
             },
         });
+        const responseMessage = shopifyErrors.length > 0
+            ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+            : syncedToShopify
+                ? `Code "${normalizedCode}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
+                : `Code "${normalizedCode}" created in database (Shopify sync unavailable)`;
         res.json({
             success: true,
-            message: "Discount code assigned successfully",
+            message: responseMessage,
             coupon,
+            shopifySync: {
+                synced: syncedToShopify,
+                stores: syncedStores,
+                errors: shopifyErrors,
+            },
         });
     }
     catch (error) {
@@ -697,12 +825,14 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     },
                 });
             }
+            let createdCouponId = null;
             if (data.discountCode && data.discountValue !== undefined) {
+                const normalizedCode = data.discountCode.trim().toUpperCase().replace(/\s+/g, "-");
                 const validUntil = new Date();
                 validUntil.setFullYear(validUntil.getFullYear() + 1);
-                await tx.coupon.create({
+                const coupon = await tx.coupon.create({
                     data: {
-                        code: data.discountCode.toUpperCase(),
+                        code: normalizedCode,
                         discount: data.discountValue.toString(),
                         affiliateId: affiliate.id,
                         status: "ACTIVE",
@@ -712,20 +842,77 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                         validUntil: validUntil,
                     },
                 });
+                createdCouponId = coupon.id;
             }
-            return { user, affiliate };
+            return { user, affiliate, createdCouponId };
         });
+        let shopifySyncResult = {
+            synced: false, stores: [], errors: [],
+        };
+        if (result.createdCouponId && data.discountCode && data.discountValue !== undefined) {
+            const normalizedCode = data.discountCode.trim().toUpperCase().replace(/\s+/g, "-");
+            const validUntil = new Date();
+            validUntil.setFullYear(validUntil.getFullYear() + 1);
+            const shopifyPriceRuleIds = {};
+            const shopifyDiscountIds = {};
+            const syncedStores = [];
+            const shopifyErrors = [];
+            const stores = ShopifyService_1.default.getAllStores();
+            for (const store of stores) {
+                try {
+                    const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
+                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        title: `Affiliate Code: ${normalizedCode}`,
+                        valueType: "percentage",
+                        value: shopifyValue,
+                        startsAt: new Date().toISOString(),
+                        endsAt: validUntil.toISOString(),
+                        oncePerCustomer: true,
+                    });
+                    const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
+                    shopifyPriceRuleIds[store.id] = priceRule.id;
+                    shopifyDiscountIds[store.id] = discountCode.id;
+                    syncedStores.push(store.id);
+                    console.log(`✅ Synced new affiliate code "${normalizedCode}" to ${store.name}`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to sync code "${normalizedCode}" to ${store.name}:`, err.message);
+                    shopifyErrors.push(`${store.name}: ${err.message}`);
+                }
+            }
+            if (syncedStores.length > 0) {
+                await prisma.coupon.update({
+                    where: { id: result.createdCouponId },
+                    data: {
+                        syncedToShopify: true,
+                        shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
+                        shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
+                        syncedStores,
+                    },
+                });
+            }
+            shopifySyncResult = {
+                synced: syncedStores.length > 0,
+                stores: syncedStores,
+                errors: shopifyErrors,
+            };
+        }
+        const message = shopifySyncResult.errors.length > 0
+            ? `Affiliate created but some Shopify stores failed to sync: ${shopifySyncResult.errors.join("; ")}`
+            : shopifySyncResult.synced
+                ? "Affiliate created and discount code synced to Shopify"
+                : "Affiliate created successfully";
         res.json({
             success: true,
-            message: "Affiliate created successfully",
+            message,
             affiliate: {
                 id: result.affiliate.id,
                 email: result.user.email,
                 name: `${result.user.firstName} ${result.user.lastName}`,
                 status: result.affiliate.status,
-                tier: result.affiliate.tier,
                 commissionRate: result.affiliate.commissionRate,
             },
+            shopifySync: shopifySyncResult,
         });
     }
     catch (error) {

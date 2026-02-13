@@ -1,1 +1,1 @@
-{"version":3,"file":"admin-affiliates.d.ts","sourceRoot":"","sources":["../../src/routes/admin-affiliates.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAM1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AAm5BxC,eAAe,MAAM,CAAC"}
+{"version":3,"file":"admin-affiliates.d.ts","sourceRoot":"","sources":["../../src/routes/admin-affiliates.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAO1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AAyoCxC,eAAe,MAAM,CAAC"}

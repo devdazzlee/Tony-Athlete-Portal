@@ -176,21 +176,10 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
                 },
                 select: { code: true },
             });
-            const affiliateCodes = [
-                ...affiliateCoupons.map(c => c.code.toUpperCase()),
-                ...affiliateReferralCodes.map(r => r.code.toUpperCase()),
-            ];
-            const ordersWhere = affiliateCodes.length > 0
-                ? {
-                    affiliateId: affiliate.id,
-                    referralCode: { in: affiliateCodes },
-                    ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-                }
-                : {
-                    affiliateId: affiliate.id,
-                    referralCode: { in: [] },
-                    ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-                };
+            const ordersWhere = {
+                affiliateId: affiliate.id,
+                ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
+            };
             const [earnings, conversions, clicks, lastLoginActivity] = await Promise.all([
                 prisma.affiliateOrder.aggregate({
                     where: ordersWhere,
