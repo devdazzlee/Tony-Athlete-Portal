@@ -231,7 +231,7 @@ router.get(
       // Get top performing affiliates using correct tables
       const topAffiliates = await Promise.all(
         affiliates.slice(0, 10).map(async (affiliate) => {
-          // Get affiliate's discount codes (both coupons and referral codes)
+          // Get affiliate's discount codes for display purposes
           const affiliateCoupons = await prisma.coupon.findMany({
             where: {
               affiliateId: affiliate.id,
@@ -246,31 +246,13 @@ router.get(
             },
             select: { code: true },
           });
-          // Combine all codes and normalize for case-insensitive matching
-          const rawCodes = [
-            ...affiliateCoupons.map(c => c.code),
-            ...affiliateReferralCodes.map(r => r.code),
-          ];
-          const affiliateCodes = [
-            ...new Set([
-              ...rawCodes,
-              ...rawCodes.map(c => c.toUpperCase()),
-              ...rawCodes.map(c => c.toLowerCase()),
-            ])
-          ];
-          
-          // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes (case-insensitive)
-          const ordersWhere = rawCodes.length > 0 
-            ? {
-                affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes, mode: "insensitive" as const },
-                ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-              }
-            : {
-                affiliateId: affiliate.id,
-                referralCode: { in: [] as string[] },
-                ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-              };
+
+          // Query orders by affiliateId only — the affiliateId on each order already
+          // correctly links it to the right affiliate. No need to cross-check referralCode.
+          const ordersWhere = {
+            affiliateId: affiliate.id,
+            ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
+          };
 
           const [earnings, conversions, clicks, lastLoginActivity] =
             await Promise.all([

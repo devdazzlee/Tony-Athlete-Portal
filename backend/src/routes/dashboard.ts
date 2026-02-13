@@ -28,26 +28,9 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes (normalize for case-insensitive matching)
-    const affiliateCodesRaw = affiliate.coupons.map(c => c.code);
-    const affiliateCodes = [
-      ...new Set([
-        ...affiliateCodesRaw,
-        ...affiliateCodesRaw.map(c => c.toUpperCase()),
-        ...affiliateCodesRaw.map(c => c.toLowerCase()),
-      ])
-    ];
-    
-    // Build where clause for orders - must match affiliateId AND referralCode must be in affiliate's codes
-    const ordersWhere = affiliateCodes.length > 0 
-      ? {
-          affiliateId: affiliate.id,
-          referralCode: { in: affiliateCodes, mode: "insensitive" as const },
-        }
-      : {
-          affiliateId: affiliate.id,
-          referralCode: { in: [] as string[] },
-        };
+    // Query orders by affiliateId only — the affiliateId on each order already
+    // correctly links it to the right affiliate. No need to cross-check referralCode.
+    const ordersWhere = { affiliateId: affiliate.id };
 
     // Get affiliate clicks and orders (conversions) from the correct tables
     const [totalClicks, totalConversions, totalCommissions, recentActivity] =
@@ -235,24 +218,8 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes (normalize for case-insensitive matching)
-    const affiliateCodesRaw = affiliate.coupons.map(c => c.code);
-    const affiliateCodes = [
-      ...new Set([
-        ...affiliateCodesRaw,
-        ...affiliateCodesRaw.map(c => c.toUpperCase()),
-        ...affiliateCodesRaw.map(c => c.toLowerCase()),
-      ])
-    ];
-    const ordersWhere = affiliateCodes.length > 0 
-      ? {
-          affiliateId: affiliate.id,
-          referralCode: { in: affiliateCodes, mode: "insensitive" as const },
-        }
-      : {
-          affiliateId: affiliate.id,
-          referralCode: { in: [] as string[] },
-        };
+    // Query orders by affiliateId only
+    const ordersWhere = { affiliateId: affiliate.id };
 
     // Get real-time metrics
     const [activeUsers, liveClicks, liveConversions, liveRevenue] =

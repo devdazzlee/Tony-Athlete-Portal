@@ -47,42 +47,18 @@ router.get(
       // Get performance data for each affiliate using correct tables
       const affiliatesWithStats = await Promise.all(
         affiliates.map(async (affiliate) => {
-          // Get affiliate's discount codes (normalize to uppercase for case-insensitive matching)
-          const affiliateCoupons = await prisma.coupon.findMany({
-            where: {
-              affiliateId: affiliate.id,
-              status: "ACTIVE",
-            },
-          });
-          // Include both original and uppercase variants for case-insensitive matching
-          const affiliateCodesRaw = affiliateCoupons.map(c => c.code);
-          const affiliateCodes = [
-            ...new Set([
-              ...affiliateCodesRaw,
-              ...affiliateCodesRaw.map(c => c.toUpperCase()),
-              ...affiliateCodesRaw.map(c => c.toLowerCase()),
-            ])
-          ];
-          
-          // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
-          const ordersWhere = affiliateCodes.length > 0 
-            ? {
-                affiliateId: affiliate.id,
-                referralCode: { in: affiliateCodes, mode: "insensitive" as const },
-              }
-            : {
-                affiliateId: affiliate.id,
-                referralCode: { in: [] as string[] },
-              };
+          // Query orders by affiliateId only — the affiliateId on each order already
+          // correctly links it to the right affiliate. No need to cross-check referralCode.
+          const ordersWhere = { affiliateId: affiliate.id };
 
           const [earnings, conversions, clicks] = await Promise.all([
-            // Get earnings from AffiliateOrder table - only orders with matching discount codes
+            // Get earnings from AffiliateOrder table
             prisma.affiliateOrder.aggregate({
               where: ordersWhere,
               _sum: { commissionAmount: true },
             }),
 
-            // Get conversions from AffiliateOrder table - only orders with matching discount codes
+            // Get conversions from AffiliateOrder table
             prisma.affiliateOrder.count({
               where: ordersWhere,
             }),
@@ -180,41 +156,18 @@ router.get(
         return res.status(404).json({ error: "Affiliate not found" });
       }
 
-      // Get affiliate's discount codes (normalize for case-insensitive matching)
-      const affiliateCoupons = await prisma.coupon.findMany({
-        where: {
-          affiliateId: affiliate.id,
-          status: "ACTIVE",
-        },
-      });
-      const affiliateCodesRaw = affiliateCoupons.map(c => c.code);
-      const affiliateCodes = [
-        ...new Set([
-          ...affiliateCodesRaw,
-          ...affiliateCodesRaw.map(c => c.toUpperCase()),
-          ...affiliateCodesRaw.map(c => c.toLowerCase()),
-        ])
-      ];
-      
-      // Build where clause - must match affiliateId AND referralCode must be in affiliate's codes
-      const ordersWhere = affiliateCodes.length > 0 
-        ? {
-            affiliateId: affiliate.id,
-            referralCode: { in: affiliateCodes, mode: "insensitive" as const },
-          }
-        : {
-            affiliateId: affiliate.id,
-            referralCode: { in: [] as string[] },
-          };
+      // Query orders by affiliateId only — the affiliateId on each order already
+      // correctly links it to the right affiliate. No need to cross-check referralCode.
+      const ordersWhere = { affiliateId: affiliate.id };
 
       const [earnings, conversions, clicks] = await Promise.all([
-        // Get earnings from AffiliateOrder table - only orders with matching discount codes
+        // Get earnings from AffiliateOrder table
         prisma.affiliateOrder.aggregate({
           where: ordersWhere,
           _sum: { commissionAmount: true },
         }),
 
-        // Get conversions from AffiliateOrder table - only orders with matching discount codes
+        // Get conversions from AffiliateOrder table
         prisma.affiliateOrder.count({
           where: ordersWhere,
         }),
