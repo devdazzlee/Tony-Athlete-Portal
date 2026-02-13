@@ -409,7 +409,87 @@ export default function ReferralsPage() {
         </div>
       </div>
 
-      {/* ===== PERFORMANCE METRICS SECTION (moved from dashboard) ===== */}
+      {/* ===== REFERRAL STATS SECTION ===== */}
+      <div>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Referral Overview</h2>
+
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Total Referrals
+                </CardTitle>
+                <Users className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.totalReferrals}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.conversionRate.toFixed(1)}% conversion rate
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Total Earnings
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  ${stats.totalCommissions.toFixed(2)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  ${stats.pendingCommissions.toFixed(2)} pending
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Conversion Rate
+                </CardTitle>
+                <Target className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.conversionRate.toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground">Last 30 days</p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-900">
+                  Active Tracking Codes
+                </CardTitle>
+                <TrendingUp className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-900">
+                  {
+                    referralCodes.filter(
+                      (c) =>
+                        c.type !== "COUPON" &&
+                        c.isActive &&
+                        (!c.expiresAt || new Date(c.expiresAt) > new Date())
+                    ).length
+                  }
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {referralCodes.filter((c) => c.type !== "COUPON").length} total tracking codes
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ===== PERFORMANCE METRICS SECTION ===== */}
       <div>
         <div className="flex flex-col gap-4 mb-4 sm:mb-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Performance Metrics</h2>
@@ -527,182 +607,6 @@ export default function ReferralsPage() {
               </p>
             </CardContent>
           </Card>
-        </div>
-      </div>
-
-      {/* ===== REFERRAL STATS SECTION ===== */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Referral Overview</h2>
-
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-900">
-                  Total Referrals
-                </CardTitle>
-                <Users className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {stats.totalReferrals}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.conversionRate.toFixed(1)}% conversion rate
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-900">
-                  Total Earnings
-                </CardTitle>
-                <DollarSign className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  ${stats.totalCommissions.toFixed(2)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  ${stats.pendingCommissions.toFixed(2)} pending
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-900">
-                  Conversion Rate
-                </CardTitle>
-                <Target className="h-4 w-4 text-purple-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {stats.conversionRate.toFixed(1)}%
-                </div>
-                <p className="text-xs text-muted-foreground">Last 30 days</p>
-              </CardContent>
-            </Card>
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-900">
-                  Active Tracking Codes
-                </CardTitle>
-                <TrendingUp className="h-4 w-4 text-orange-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {
-                    referralCodes.filter(
-                      (c) =>
-                        c.type !== "COUPON" &&
-                        c.isActive &&
-                        (!c.expiresAt || new Date(c.expiresAt) > new Date())
-                    ).length
-                  }
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {referralCodes.filter((c) => c.type !== "COUPON").length} total tracking codes
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
-
-      {/* ===== TRACKING CODES LIST (only tracking codes, not allowance/coupon codes) ===== */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Your Tracking Codes</h2>
-        <div className="space-y-6">
-          <div className="grid gap-6">
-            {referralCodes.filter((c) => c.type !== "COUPON").length === 0 ? (
-              <Card className="shadow-sm">
-                <CardContent className="py-12 text-center">
-                  <p className="text-muted-foreground">
-                    No tracking codes yet. Create your first tracking code to get
-                    started!
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              referralCodes
-                .filter((code) => code.type !== "COUPON")
-                .map((code) => (
-                <Card
-                  key={code.id}
-                  className="shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
-                          {code.code}
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          {code.commissionRate}% commission • {code.currentUses} uses
-                          {code.maxUses && ` / ${code.maxUses}`}
-                        </CardDescription>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(code)}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            copyToClipboard(code.code, "Tracking code")
-                          }
-                          className="px-3"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditClick(code)}
-                          className="px-3 hover:bg-blue-50"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteClick(code.id, code.code)}
-                          className="px-3 text-destructive hover:text-destructive hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-                      <div className="space-y-1">
-                        <p className="font-medium text-gray-700">Created</p>
-                        <p className="text-muted-foreground">
-                          {new Date(code.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium text-gray-700">Commission</p>
-                        <p className="text-muted-foreground">
-                          {code.commissionRate}%
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium text-gray-700">Expires</p>
-                        <p className="text-muted-foreground">
-                          {code.expiresAt
-                            ? parseDateOnly(code.expiresAt)?.toLocaleDateString() ??
-                              "Never"
-                            : "Never"}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
         </div>
       </div>
 

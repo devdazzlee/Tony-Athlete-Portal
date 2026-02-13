@@ -268,10 +268,14 @@ router.get(
         where: { action: "deliverable_submitted" },
       });
 
+      // Count pending: status is "PENDING" OR null (null defaults to pending)
       const pendingSubmissions = await prisma.activity.count({
         where: {
           action: "deliverable_submitted",
-          status: "PENDING",
+          OR: [
+            { status: "PENDING" },
+            { status: null },
+          ],
         },
       });
 
