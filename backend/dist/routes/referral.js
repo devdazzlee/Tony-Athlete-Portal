@@ -438,20 +438,9 @@ router.get("/analytics", auth_1.authenticateToken, async (req, res) => {
                 startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         }
         const referralCodes = await ReferralSystem_1.ReferralSystemModel.getAffiliateReferralCodes(affiliate.id);
-        const identifiers = referralCodes
-            .map((code) => [
-            code.id,
-            code.code,
-            code.code.split("-")[0],
-        ])
-            .flat()
-            .filter((value) => !!value);
         const orders = await prisma_1.prisma.affiliateOrder.findMany({
             where: {
                 affiliateId: affiliate.id,
-                referralCode: {
-                    in: identifiers,
-                },
                 createdAt: {
                     gte: startDate,
                 },
@@ -461,7 +450,6 @@ router.get("/analytics", auth_1.authenticateToken, async (req, res) => {
             by: ["referralCode"],
             where: {
                 affiliateId: affiliate.id,
-                referralCode: { in: identifiers },
                 createdAt: { gte: startDate },
             },
             _count: { id: true },

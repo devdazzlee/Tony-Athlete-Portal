@@ -465,7 +465,7 @@ export default function ReferralsPage() {
             <Card className="shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-900">
-                  Active Tracking Codes
+                  Active Discount Codes
                 </CardTitle>
                 <TrendingUp className="h-4 w-4 text-orange-500" />
               </CardHeader>
@@ -474,14 +474,13 @@ export default function ReferralsPage() {
                   {
                     referralCodes.filter(
                       (c) =>
-                        c.type !== "COUPON" &&
                         c.isActive &&
                         (!c.expiresAt || new Date(c.expiresAt) > new Date())
                     ).length
                   }
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {referralCodes.filter((c) => c.type !== "COUPON").length} total tracking codes
+                  {referralCodes.length} total codes
                 </p>
               </CardContent>
             </Card>

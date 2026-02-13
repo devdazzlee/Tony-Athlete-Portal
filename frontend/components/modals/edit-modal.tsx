@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,10 +23,18 @@ interface EditModalProps {
     options?: Array<{ value: string; label: string }>
     required?: boolean
   }>
+  isLoading?: boolean
 }
 
-export function EditModal({ isOpen, onClose, onSave, title, data, fields }: EditModalProps) {
+export function EditModal({ isOpen, onClose, onSave, title, data, fields, isLoading = false }: EditModalProps) {
   const [formData, setFormData] = useState<Record<string, any>>(data)
+
+  // Sync form data when modal opens with new data
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(data)
+    }
+  }, [isOpen, data])
 
   const handleInputChange = (key: string, value: any) => {
     setFormData(prev => ({
@@ -37,7 +45,6 @@ export function EditModal({ isOpen, onClose, onSave, title, data, fields }: Edit
 
   const handleSave = () => {
     onSave(formData)
-    onClose()
   }
 
   const renderField = (field: any) => {
@@ -101,7 +108,7 @@ export function EditModal({ isOpen, onClose, onSave, title, data, fields }: Edit
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isLoading) onClose() }}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
@@ -122,12 +129,21 @@ export function EditModal({ isOpen, onClose, onSave, title, data, fields }: Edit
         </div>
         
         <div className="flex justify-end space-x-2 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={handleSave}>
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

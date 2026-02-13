@@ -72,9 +72,6 @@ router.get("/overview", auth_1.authenticateToken, async (req, res) => {
                     referralCode: code.code,
                 },
             });
-            if (!affiliateCodes.includes(code.code)) {
-                return null;
-            }
             const conversions = await prisma.affiliateOrder.count({
                 where: {
                     affiliateId: affiliate.id,

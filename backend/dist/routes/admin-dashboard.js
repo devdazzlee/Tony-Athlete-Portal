@@ -231,17 +231,45 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
         const sortedTopAffiliates = topAffiliates
             .sort((a, b) => b.totalEarnings - a.totalEarnings)
             .slice(0, 5);
-        const pendingPayouts = [
-            {
-                id: "PAY-001",
-                affiliate: sortedTopAffiliates[0]?.name || "Affiliate 1",
-                amount: 250.0,
-                method: "PayPal",
-                status: "pending",
-                requestDate: new Date().toISOString().split("T")[0],
-                email: sortedTopAffiliates[0]?.email || "affiliate@example.com",
+        const formatPaymentMethod = (method) => {
+            const methodMap = {
+                PAYPAL: "PayPal",
+                STRIPE: "Stripe",
+                BANK_TRANSFER: "Bank Transfer",
+                CRYPTO: "Crypto",
+                WISE: "Wise",
+            };
+            return methodMap[method] || method;
+        };
+        const dbPendingPayouts = await prisma.payout.findMany({
+            where: { status: "PENDING" },
+            include: {
+                affiliate: {
+                    include: {
+                        user: {
+                            select: {
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                            },
+                        },
+                    },
+                },
             },
-        ];
+            orderBy: { createdAt: "desc" },
+            take: 10,
+        });
+        const pendingPayouts = dbPendingPayouts.map((payout) => ({
+            id: payout.id,
+            affiliate: payout.affiliate?.user
+                ? `${payout.affiliate.user.firstName} ${payout.affiliate.user.lastName}`
+                : "Unknown",
+            amount: payout.amount,
+            method: formatPaymentMethod(payout.method),
+            status: "pending",
+            requestDate: payout.createdAt.toISOString().split("T")[0],
+            email: payout.affiliate?.user?.email || "",
+        }));
         res.json({
             statistics: {
                 totalAffiliates,

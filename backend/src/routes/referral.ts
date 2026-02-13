@@ -553,27 +553,15 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get analytics data
+    // Get referral codes for per-code breakdown
     const referralCodes = await ReferralSystemModel.getAffiliateReferralCodes(
       affiliate.id
     );
 
-    const identifiers = referralCodes
-      .map((code) => [
-        code.id,
-        code.code,
-        code.code.split("-")[0],
-      ])
-      .flat()
-      .filter((value): value is string => !!value);
-
-    // Get orders as conversions
+    // Get orders as conversions — query by affiliateId only (no referralCode filter)
     const orders = await prisma.affiliateOrder.findMany({
       where: {
         affiliateId: affiliate.id,
-        referralCode: {
-          in: identifiers,
-        },
         createdAt: {
           gte: startDate,
         },
@@ -584,7 +572,6 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
       by: ["referralCode"],
       where: {
         affiliateId: affiliate.id,
-        referralCode: { in: identifiers },
         createdAt: { gte: startDate },
       },
       _count: { id: true },

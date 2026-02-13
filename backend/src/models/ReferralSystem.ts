@@ -196,94 +196,76 @@ export class ReferralSystemModel {
   static async getReferralStats(affiliateId: string): Promise<ReferralStats> {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get referral codes for this affiliate with currentUses
-    const referralCodes = await prisma.referralCode.findMany({
-      where: { affiliateId },
-      select: {
-        id: true,
-        currentUses: true,
-      },
-    });
-    const referralCodeIds = referralCodes.map((code) => code.id);
-
-    // Calculate total referrals from currentUses (sum of all uses across all codes)
-    // This gives us the actual number of times codes have been used
-    const totalReferrals = referralCodes.reduce(
-      (sum, code) => sum + (code.currentUses || 0),
-      0
-    );
-
-    // Get referral usages, orders, and clicks for commissions and conversion rate
+    // Get all AffiliateOrder records for this affiliate — this is the real source of truth.
+    // Orders are linked by affiliateId (set when order comes through a discount code / coupon).
     const [
-      referralUsages,
-      affiliateOrders,
+      allOrders,
+      recentOrders,
       affiliateClicks,
       allTimeClicksCount,
     ] = await Promise.all([
-      prisma.referralUsage.findMany({
-        where: {
-          referralCodeId: { in: referralCodeIds },
-          createdAt: { gte: thirtyDaysAgo },
-        },
-        include: {
-          referralCode: true,
-        },
+      // All-time orders for totals
+      prisma.affiliateOrder.findMany({
+        where: { affiliateId },
       }),
-      // Get paid commissions from AffiliateOrder table
+      // Last 30 days orders
       prisma.affiliateOrder.findMany({
         where: {
           affiliateId,
           createdAt: { gte: thirtyDaysAgo },
         },
       }),
-      // Get clicks for conversion rate calculation (last 30 days)
-      prisma.affiliateClick.findMany({
+      // Clicks for conversion rate (last 30 days)
+      prisma.affiliateClick.count({
         where: {
           affiliateId,
           createdAt: { gte: thirtyDaysAgo },
         },
       }),
-      // Get all-time clicks count for conversion rate calculation
+      // All-time clicks
       prisma.affiliateClick.count({
         where: { affiliateId },
       }),
     ]);
 
-    // Total commissions = sum of paid commissions from AffiliateOrder
-    const totalCommissions = affiliateOrders
-      .filter((order) => order.status === "PAID")
+    // Total referrals = total number of orders attributed to this affiliate (all time)
+    const totalReferrals = allOrders.length;
+
+    // Total commissions = sum of ALL commissions (not just PAID — matches Commission Management page)
+    const totalCommissions = allOrders.reduce(
+      (sum, order) => sum + (order.commissionAmount || 0),
+      0
+    );
+
+    // Pending commissions = sum of commissions where status is PENDING (or not PAID/CANCELLED)
+    const pendingCommissions = allOrders
+      .filter((order) => order.status !== "PAID" && order.status !== "CANCELLED")
       .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
 
-    // Pending commissions = sum of pending commissions from AffiliateOrder
-    const pendingCommissions = affiliateOrders
-      .filter((order) => order.status === "PENDING")
-      .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
-
-    // Calculate conversion rate: (total referrals / total clicks) * 100
-    // Use all-time clicks if last 30 days clicks are 0, otherwise use last 30 days
-    const totalClicks =
-      affiliateClicks.length > 0 ? affiliateClicks.length : allTimeClicksCount;
+    // Conversion rate: (recent orders / recent clicks) * 100
+    const totalClicks = affiliateClicks > 0 ? affiliateClicks : allTimeClicksCount;
+    const recentReferrals = recentOrders.length;
     const conversionRate =
-      totalClicks > 0 ? (totalReferrals / totalClicks) * 100 : 0;
+      totalClicks > 0 ? (recentReferrals / totalClicks) * 100 : 0;
 
-    // Round conversion rate to 2 decimal places
     const roundedConversionRate = Math.round(conversionRate * 100) / 100;
 
-    // Get top products from referral usages
-    const productStats = referralUsages
-      .filter((r) => r.productId)
+    // Top products from orders grouped by referralCode (discount code)
+    const productStats = allOrders
+      .filter((o) => o.referralCode)
       .reduce(
-        (acc, r) => {
-          if (!acc[r.productId!]) {
-            acc[r.productId!] = {
-              productId: r.productId!,
-              productName: r.productId!, // Use productId as name if product name not available
+        (acc, o) => {
+          const key = o.referralCode;
+          if (!acc[key]) {
+            acc[key] = {
+              productId: key,
+              productName: key,
               referrals: 0,
               commissions: 0,
             };
           }
-          acc[r.productId!].referrals++;
-          acc[r.productId!].commissions += r.commissionAmount || 0;
+          acc[key].referrals++;
+          acc[key].commissions += o.commissionAmount || 0;
           return acc;
         },
         {} as Record<string, any>

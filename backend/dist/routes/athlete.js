@@ -214,20 +214,6 @@ router.get("/performance", async (req, res) => {
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
         }
-        const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-        if (affiliate.coupons.length === 0) {
-            return res.json({
-                conversions: 0,
-                commissionEarned: "$0.00",
-                conversionChange: 0,
-                commissionChange: 0,
-                currentDateRange: "",
-                previousPeriod: "",
-                conversionChartData: [],
-                commissionChartData: [],
-                discountCodeUsage: 0,
-            });
-        }
         const now = new Date();
         let startDate;
         let previousStartDate;
@@ -864,19 +850,6 @@ router.get("/commission-summary", async (req, res) => {
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
         }
-        const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-        if (affiliate.coupons.length === 0) {
-            return res.json({
-                currentMonth: {
-                    month: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
-                    status: "Pending",
-                    totalOrders: 0,
-                    totalUnits: 0,
-                    commission: "£0.00",
-                },
-                previousMonths: [],
-            });
-        }
         const now = new Date();
         const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -996,15 +969,6 @@ router.get("/shop", async (req, res) => {
         });
         if (!affiliate) {
             return res.status(404).json({ error: "Affiliate profile not found" });
-        }
-        const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-        if (affiliate.coupons.length === 0) {
-            return res.json({
-                stores: [],
-                orderStats: [],
-                recentOrders: [],
-                discountCodes: [],
-            });
         }
         const stores = ShopifyService_1.default.getAllStores();
         const storesInfo = await Promise.all(stores.map(async (store) => {

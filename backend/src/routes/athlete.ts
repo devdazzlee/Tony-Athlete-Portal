@@ -256,21 +256,8 @@ router.get("/performance", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes (case-insensitive matching)
-    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-    if (affiliate.coupons.length === 0) {
-      return res.json({
-        conversions: 0,
-        commissionEarned: "$0.00",
-        conversionChange: 0,
-        commissionChange: 0,
-        currentDateRange: "",
-        previousPeriod: "",
-        conversionChartData: [],
-        commissionChartData: [],
-        discountCodeUsage: 0,
-      });
-    }
+    // No early return when coupons are empty — orders are linked by affiliateId,
+    // not by coupon codes. The affiliate may have orders without active coupons.
 
     // Calculate date ranges
     const now = new Date();
@@ -1043,20 +1030,7 @@ router.get("/commission-summary", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes (case-insensitive matching)
-    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-    if (affiliate.coupons.length === 0) {
-      return res.json({
-        currentMonth: {
-          month: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
-          status: "Pending",
-          totalOrders: 0,
-          totalUnits: 0,
-          commission: "£0.00",
-        },
-        previousMonths: [],
-      });
-    }
+    // No early return when coupons are empty — orders are linked by affiliateId
 
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1202,16 +1176,7 @@ router.get("/shop", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get affiliate's discount codes (case-insensitive matching)
-    const affiliateCodes = normalizeCodesForMatching(affiliate.coupons.map(c => c.code));
-    if (affiliate.coupons.length === 0) {
-      return res.json({
-        stores: [],
-        orderStats: [],
-        recentOrders: [],
-        discountCodes: [],
-      });
-    }
+    // No early return when coupons are empty — orders are linked by affiliateId
 
     // Get stores
     const stores = shopifyService.getAllStores();

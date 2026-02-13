@@ -267,6 +267,7 @@ export default function AdminDashboardPage() {
         }}
         onSave={handleUpdatePayoutStatus}
         title="Payout Action"
+        isLoading={isUpdatingPayout}
         data={{
           status: selectedPayout?.status
             ? String(selectedPayout.status).toUpperCase()

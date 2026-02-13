@@ -98,24 +98,9 @@ class ReferralSystemModel {
     }
     static async getReferralStats(affiliateId) {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        const referralCodes = await prisma_1.prisma.referralCode.findMany({
-            where: { affiliateId },
-            select: {
-                id: true,
-                currentUses: true,
-            },
-        });
-        const referralCodeIds = referralCodes.map((code) => code.id);
-        const totalReferrals = referralCodes.reduce((sum, code) => sum + (code.currentUses || 0), 0);
-        const [referralUsages, affiliateOrders, affiliateClicks, allTimeClicksCount,] = await Promise.all([
-            prisma_1.prisma.referralUsage.findMany({
-                where: {
-                    referralCodeId: { in: referralCodeIds },
-                    createdAt: { gte: thirtyDaysAgo },
-                },
-                include: {
-                    referralCode: true,
-                },
+        const [allOrders, recentOrders, affiliateClicks, allTimeClicksCount,] = await Promise.all([
+            prisma_1.prisma.affiliateOrder.findMany({
+                where: { affiliateId },
             }),
             prisma_1.prisma.affiliateOrder.findMany({
                 where: {
@@ -123,7 +108,7 @@ class ReferralSystemModel {
                     createdAt: { gte: thirtyDaysAgo },
                 },
             }),
-            prisma_1.prisma.affiliateClick.findMany({
+            prisma_1.prisma.affiliateClick.count({
                 where: {
                     affiliateId,
                     createdAt: { gte: thirtyDaysAgo },
@@ -133,28 +118,29 @@ class ReferralSystemModel {
                 where: { affiliateId },
             }),
         ]);
-        const totalCommissions = affiliateOrders
-            .filter((order) => order.status === "PAID")
+        const totalReferrals = allOrders.length;
+        const totalCommissions = allOrders.reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
+        const pendingCommissions = allOrders
+            .filter((order) => order.status !== "PAID" && order.status !== "CANCELLED")
             .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
-        const pendingCommissions = affiliateOrders
-            .filter((order) => order.status === "PENDING")
-            .reduce((sum, order) => sum + (order.commissionAmount || 0), 0);
-        const totalClicks = affiliateClicks.length > 0 ? affiliateClicks.length : allTimeClicksCount;
-        const conversionRate = totalClicks > 0 ? (totalReferrals / totalClicks) * 100 : 0;
+        const totalClicks = affiliateClicks > 0 ? affiliateClicks : allTimeClicksCount;
+        const recentReferrals = recentOrders.length;
+        const conversionRate = totalClicks > 0 ? (recentReferrals / totalClicks) * 100 : 0;
         const roundedConversionRate = Math.round(conversionRate * 100) / 100;
-        const productStats = referralUsages
-            .filter((r) => r.productId)
-            .reduce((acc, r) => {
-            if (!acc[r.productId]) {
-                acc[r.productId] = {
-                    productId: r.productId,
-                    productName: r.productId,
+        const productStats = allOrders
+            .filter((o) => o.referralCode)
+            .reduce((acc, o) => {
+            const key = o.referralCode;
+            if (!acc[key]) {
+                acc[key] = {
+                    productId: key,
+                    productName: key,
                     referrals: 0,
                     commissions: 0,
                 };
             }
-            acc[r.productId].referrals++;
-            acc[r.productId].commissions += r.commissionAmount || 0;
+            acc[key].referrals++;
+            acc[key].commissions += o.commissionAmount || 0;
             return acc;
         }, {});
         const topProducts = Object.values(productStats)
