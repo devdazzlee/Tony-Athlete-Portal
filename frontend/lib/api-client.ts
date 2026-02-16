@@ -225,12 +225,25 @@ apiClient.interceptors.response.use(
         case 401:
           // Don't redirect from here — let AuthContext handle navigation.
           // Only dispatch an event so AuthContext can react appropriately.
+          // Only show session expired if refresh was attempted and failed, or no refresh token exists
           if (
             typeof window !== "undefined" &&
             (refreshAttemptedAndFailed || !hasRefreshToken)
           ) {
-            // Dispatch a custom event for AuthContext to handle
-            window.dispatchEvent(new CustomEvent("auth:session-expired"));
+            // Check if this is a "Session expired" error specifically
+            const errorMessage = data?.error || "";
+            const isSessionExpired = errorMessage.toLowerCase().includes("session expired") || 
+                                     errorMessage.toLowerCase().includes("token expired") ||
+                                     data?.code === "TOKEN_EXPIRED";
+            
+            if (isSessionExpired) {
+              // Only dispatch session expired event if it's actually expired
+              // Don't show toast here - let AuthContext handle it
+              window.dispatchEvent(new CustomEvent("auth:session-expired"));
+            } else {
+              // For other 401 errors, show a toast
+              toast.error(errorMessage || "Authentication failed");
+            }
           }
           break;
         case 403:

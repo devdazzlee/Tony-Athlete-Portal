@@ -64,7 +64,8 @@ export const authenticateToken = async (
     }
 
     // Ensure the access token is still part of an active session (allows revocation)
-    const session = await prisma.session.findFirst({
+    // First try to find session by exact token match
+    let session = await prisma.session.findFirst({
       where: {
         token,
         isActive: true,
@@ -72,7 +73,43 @@ export const authenticateToken = async (
       } as any,
     } as any);
 
+    // If session not found by token, it might have been refreshed
+    // Check if there's an active session for this user (token refresh scenario)
+    if (!session && decoded.userId) {
+      const userSession = await prisma.session.findFirst({
+        where: {
+          userId: decoded.userId,
+          isActive: true,
+          expiresAt: { gt: new Date() },
+        } as any,
+        orderBy: {
+          lastActivity: "desc",
+        } as any,
+      } as any);
+
+      // Only use user session if the JWT is still valid (not expired)
+      // This handles the case where token was refreshed but old token is still being used
+      if (userSession) {
+        // Check if the JWT expiration is still valid (within 1 minute grace period)
+        const jwtExp = decoded.exp ? decoded.exp * 1000 : null;
+        const now = Date.now();
+        const oneMinuteGrace = 60 * 1000;
+        
+        if (jwtExp && (jwtExp - now) > -oneMinuteGrace) {
+          // Token is still valid (or expired less than 1 minute ago)
+          // This allows for race conditions during token refresh
+          session = userSession;
+        }
+      }
+    }
+
     if (!session) {
+      // Log for debugging
+      console.log("Session not found", {
+        tokenLength: token?.length,
+        userId: decoded.userId,
+        tokenExp: decoded.exp,
+      });
       return res.status(401).json({ error: "Session expired", code: "TOKEN_EXPIRED" });
     }
 
