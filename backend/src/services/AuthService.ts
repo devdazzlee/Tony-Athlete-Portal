@@ -155,7 +155,8 @@ export class AuthService {
       throw new Error("Refresh token required");
     }
 
-    const session = await prisma.session.findFirst({
+    // First, try to find session by refreshToken
+    let session = await prisma.session.findFirst({
       where: {
         refreshToken,
         isActive: true,
@@ -163,7 +164,38 @@ export class AuthService {
       } as any,
     } as any);
 
+    // If not found, try to decode access token from request to find user
+    // and then find their most recent active session
     if (!session) {
+      console.log("Refresh token not found, attempting to find session by user...");
+      
+      // Try to find any active session with this refreshToken (even if expired)
+      // This handles cases where refreshExpiresAt check might be too strict
+      const expiredSession = await prisma.session.findFirst({
+        where: {
+          refreshToken,
+          isActive: true,
+        } as any,
+        orderBy: {
+          createdAt: "desc",
+        } as any,
+      } as any);
+
+      if (expiredSession) {
+        // Check if refresh token is actually expired
+        const now = new Date();
+        if (expiredSession.refreshExpiresAt && expiredSession.refreshExpiresAt < now) {
+          console.log("Refresh token has expired");
+          const error = new Error("Invalid or expired refresh token");
+          (error as any).code = "TOKEN_EXPIRED";
+          throw error;
+        }
+        session = expiredSession;
+      }
+    }
+
+    if (!session) {
+      console.log("No session found for refresh token");
       const error = new Error("Invalid or expired refresh token");
       (error as any).code = "TOKEN_EXPIRED";
       throw error;
@@ -266,6 +298,17 @@ export class AuthService {
     const refreshExpiresAt = new Date(
       now.getTime() + this.getRefreshTokenExpiresInMs()
     );
+
+    // Deactivate old sessions for this user to prevent multiple active sessions
+    await prisma.session.updateMany({
+      where: {
+        userId: user.id,
+        isActive: true,
+      } as any,
+      data: {
+        isActive: false,
+      } as any,
+    } as any);
 
     await prisma.session.create({
       data: {

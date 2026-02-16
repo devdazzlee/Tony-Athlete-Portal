@@ -25,6 +25,35 @@ const apiClient = axios.create({
 
 let refreshPromise: Promise<RefreshResponse> | null = null;
 
+// Utility function to decode JWT token and get expiration time
+function getTokenExpiration(token: string): number | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    
+    const payload = JSON.parse(atob(parts[1]));
+    return payload.exp ? payload.exp * 1000 : null; // Convert to milliseconds
+  } catch (error) {
+    console.error("Error decoding token:", error);
+    return null;
+  }
+}
+
+// Check if token is expired or will expire soon (within 2 minutes)
+function isTokenExpiringSoon(token: string | null): boolean {
+  if (!token) return true;
+  
+  const expiration = getTokenExpiration(token);
+  if (!expiration) return true; // If we can't decode, assume expired
+  
+  const now = Date.now();
+  const timeUntilExpiry = expiration - now;
+  const twoMinutes = 2 * 60 * 1000; // 2 minutes in milliseconds
+  
+  // Return true if token expires within 2 minutes or is already expired
+  return timeUntilExpiry <= twoMinutes;
+}
+
 async function refreshTokens(): Promise<RefreshResponse> {
   if (typeof window === "undefined") {
     throw new Error("Cannot refresh tokens on server");
@@ -32,40 +61,94 @@ async function refreshTokens(): Promise<RefreshResponse> {
 
   const refreshToken = localStorage.getItem("refreshToken");
   if (!refreshToken) {
+    console.error("No refresh token found in localStorage");
     throw new Error("No refresh token");
   }
 
-  // Use a bare axios call to avoid interceptor loops
-  const response = await axios.post<RefreshResponse>(
-    `${config.apiUrl}/auth/refresh`,
-    { refreshToken },
-    {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      timeout: 30000,
+  console.log("Attempting to refresh token...");
+
+  try {
+    // Use a bare axios call to avoid interceptor loops
+    const response = await axios.post<RefreshResponse>(
+      `${config.apiUrl}/auth/refresh`,
+      { refreshToken },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      }
+    );
+
+    const data = response.data;
+    if (!data?.token) {
+      console.error("Refresh response missing token", data);
+      throw new Error("Refresh failed - no token in response");
     }
-  );
 
-  const data = response.data;
-  if (!data?.token) {
-    throw new Error("Refresh failed");
+    console.log("Token refreshed successfully");
+    localStorage.setItem("accessToken", data.token);
+    
+    // Always update refreshToken if provided, otherwise keep the existing one
+    if (data.refreshToken) {
+      localStorage.setItem("refreshToken", data.refreshToken);
+      console.log("Refresh token updated");
+    } else {
+      console.warn("No new refresh token in response, keeping existing one");
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error("Token refresh error:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    
+    // If refresh token is invalid/expired, clear auth to force re-login
+    if (error.response?.status === 401 || error.response?.data?.code === "TOKEN_EXPIRED") {
+      console.log("Refresh token expired, clearing auth");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("userData");
+    }
+    
+    throw error;
   }
-
-  localStorage.setItem("accessToken", data.token);
-  if (data.refreshToken) {
-    localStorage.setItem("refreshToken", data.refreshToken);
-  }
-
-  return data;
 }
 
-// Request interceptor - Add auth token from localStorage
+// Request interceptor - Add auth token from localStorage and proactively refresh if needed
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     // Get token from localStorage
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("accessToken");
+      let token = localStorage.getItem("accessToken");
+      const refreshToken = localStorage.getItem("refreshToken");
+      
+      // Proactively refresh token if it's expiring soon (within 2 minutes)
+      if (token && refreshToken && isTokenExpiringSoon(token)) {
+        const isRefreshCall =
+          typeof config.url === "string" && config.url.includes("/auth/refresh");
+        const isLoginCall =
+          typeof config.url === "string" && config.url.includes("/auth/login");
+        
+        // Don't refresh if this is already a refresh or login call
+        if (!isRefreshCall && !isLoginCall) {
+          try {
+            if (!refreshPromise) {
+              refreshPromise = refreshTokens().finally(() => {
+                refreshPromise = null;
+              });
+            }
+            const refreshed = await refreshPromise;
+            token = refreshed.token;
+          } catch (error) {
+            console.error("Proactive token refresh failed:", error);
+            // Continue with existing token - will fail and trigger reactive refresh
+          }
+        }
+      }
+      
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }

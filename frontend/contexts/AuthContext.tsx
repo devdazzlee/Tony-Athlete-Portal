@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { authClient, User, AuthResponse } from "@/lib/auth-client";
 import { AuthLoading } from "@/components/ui/loading";
+import { config } from "@/config/config";
 
 interface AuthContextType {
   user: User | null;
@@ -155,6 +156,73 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     initializeAuth();
   }, []);
+
+  // Periodic token refresh to keep session alive even when idle
+  useEffect(() => {
+    if (!user) return; // Only run if user is logged in
+
+    const checkAndRefreshToken = async () => {
+      const token = authClient.getToken();
+      const refreshToken = localStorage.getItem("refreshToken");
+      
+      if (!token || !refreshToken) return;
+
+      try {
+        // Decode token to check expiration
+        const parts = token.split(".");
+        if (parts.length !== 3) return;
+        
+        const payload = JSON.parse(atob(parts[1]));
+        const expiration = payload.exp ? payload.exp * 1000 : null;
+        
+        if (!expiration) return;
+        
+        const now = Date.now();
+        const timeUntilExpiry = expiration - now;
+        const fiveMinutes = 5 * 60 * 1000; // 5 minutes
+        
+        // Refresh if token expires within 5 minutes
+        if (timeUntilExpiry <= fiveMinutes && timeUntilExpiry > 0) {
+          isRefreshingRef.current = true;
+          
+          try {
+            const response = await fetch(`${config.apiUrl}/auth/refresh`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.token) {
+                localStorage.setItem("accessToken", data.token);
+                if (data.refreshToken) {
+                  localStorage.setItem("refreshToken", data.refreshToken);
+                }
+                console.log("Token refreshed proactively");
+              }
+            }
+          } catch (error) {
+            console.error("Periodic token refresh failed:", error);
+          } finally {
+            isRefreshingRef.current = false;
+          }
+        }
+      } catch (error) {
+        console.error("Error checking token expiration:", error);
+      }
+    };
+
+    // Check every 2 minutes
+    const interval = setInterval(checkAndRefreshToken, 2 * 60 * 1000);
+    
+    // Also check immediately
+    checkAndRefreshToken();
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   const login = async (
     email: string,

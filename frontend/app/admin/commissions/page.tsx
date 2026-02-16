@@ -1051,62 +1051,152 @@ export default function CommissionsPage() {
             </div>
           </div>
 
-          {filters.affiliateId && affiliateTotals && (
-            <div className="mt-4 rounded-xl border bg-white p-4">
-              <div className="text-sm font-semibold text-gray-900 mb-3">
-                Affiliate Totals
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Pending (Not Approved)</div>
-                  <div className="text-sm font-semibold">
-                    ${affiliateTotals.commissions.pendingAmount.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {affiliateTotals.commissions.pendingCount} commissions
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Approved (Not Paid)</div>
-                  <div className="text-sm font-semibold">
-                    ${affiliateTotals.commissions.approvedAmount.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {affiliateTotals.commissions.approvedCount} commissions
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Paid Commissions</div>
-                  <div className="text-sm font-semibold">
-                    ${affiliateTotals.commissions.paidAmount.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {affiliateTotals.commissions.paidCount} commissions
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Paid Payouts</div>
-                  <div className="text-sm font-semibold">
-                    ${affiliateTotals.payouts.paidAmount.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {affiliateTotals.payouts.paidCount} payouts
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Pending Payouts</div>
-                  <div className="text-sm font-semibold">
-                    ${affiliateTotals.payouts.pendingAmount.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {affiliateTotals.payouts.pendingCount} payouts
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Affiliate Earnings Summary Card */}
+      {filters.affiliateId && affiliateTotals && (
+        <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Affiliate Earnings Summary
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  {(() => {
+                    const selectedAffiliate = affiliates.find(
+                      (a) => a.id === filters.affiliateId
+                    );
+                    return selectedAffiliate
+                      ? `${selectedAffiliate.name} ${selectedAffiliate.email ? `(${selectedAffiliate.email})` : ""}`
+                      : "Selected Affiliate";
+                  })()}
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFilters((prev) => ({ ...prev, affiliateId: "" }));
+                  setAffiliateTotals(null);
+                }}
+              >
+                Clear Filter
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Pending Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-amber-700">
+                        ${affiliateTotals.commissions.pendingAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.pendingCount} commission{affiliateTotals.commissions.pendingCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                      <Clock className="h-5 w-5 text-amber-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Approved Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-purple-700">
+                        ${affiliateTotals.commissions.approvedAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.approvedCount} commission{affiliateTotals.commissions.approvedCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
+                      <CheckCircle className="h-5 w-5 text-purple-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Paid Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-blue-700">
+                        ${affiliateTotals.commissions.paidAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.paidCount} commission{affiliateTotals.commissions.paidCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                      <DollarSign className="h-5 w-5 text-blue-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Paid Payouts
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-emerald-700">
+                        ${affiliateTotals.payouts.paidAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.payouts.paidCount} payout{affiliateTotals.payouts.paidCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                      <CheckCircle className="h-5 w-5 text-emerald-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Pending Payouts
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-orange-700">
+                        ${affiliateTotals.payouts.pendingAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.payouts.pendingCount} payout{affiliateTotals.payouts.pendingCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
+                      <Clock className="h-5 w-5 text-orange-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Commissions Table */}
       <Card>

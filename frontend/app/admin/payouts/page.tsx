@@ -25,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle, DollarSign, RefreshCw } from "lucide-react";
+import { CheckCircle, DollarSign, RefreshCw, Clock, Users } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
@@ -59,6 +59,23 @@ interface PayoutSummary {
   totalPendingAmount: number;
 }
 
+interface AffiliateTotals {
+  commissions: {
+    pendingCount: number;
+    pendingAmount: number;
+    approvedCount: number;
+    approvedAmount: number;
+    paidCount: number;
+    paidAmount: number;
+  };
+  payouts: {
+    paidCount: number;
+    paidAmount: number;
+    pendingCount: number;
+    pendingAmount: number;
+  };
+}
+
 export default function PayoutsManagementPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [summary, setSummary] = useState<PayoutSummary | null>(null);
@@ -69,6 +86,9 @@ export default function PayoutsManagementPage() {
   const [affiliateFilter, setAffiliateFilter] = useState("all");
   const [affiliates, setAffiliates] = useState<AffiliateOption[]>([]);
   const [isAffiliatesLoading, setIsAffiliatesLoading] = useState(false);
+  const [affiliateTotals, setAffiliateTotals] = useState<AffiliateTotals | null>(
+    null
+  );
   const [selectedTransaction, setSelectedTransaction] = useState<Payout | null>(
     null
   );
@@ -87,6 +107,14 @@ export default function PayoutsManagementPage() {
     fetchAffiliates();
   }, []);
 
+  useEffect(() => {
+    if (affiliateFilter && affiliateFilter !== "all") {
+      fetchAffiliateTotals(affiliateFilter);
+    } else {
+      setAffiliateTotals(null);
+    }
+  }, [affiliateFilter]);
+
   const fetchAffiliates = async () => {
     setIsAffiliatesLoading(true);
     try {
@@ -103,6 +131,18 @@ export default function PayoutsManagementPage() {
       setAffiliates([]);
     } finally {
       setIsAffiliatesLoading(false);
+    }
+  };
+
+  const fetchAffiliateTotals = async (affiliateId: string) => {
+    try {
+      const response = await apiClient.get(
+        `/commission-management/affiliate-totals?affiliateId=${affiliateId}`
+      );
+      setAffiliateTotals(response.data);
+    } catch (error) {
+      console.error("Error fetching affiliate totals:", error);
+      setAffiliateTotals(null);
     }
   };
 
@@ -283,6 +323,150 @@ export default function PayoutsManagementPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Affiliate Earnings Summary Card */}
+      {affiliateFilter && affiliateFilter !== "all" && affiliateTotals && (
+        <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Affiliate Earnings Summary
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  {(() => {
+                    const selectedAffiliate = affiliates.find(
+                      (a) => a.id === affiliateFilter
+                    );
+                    return selectedAffiliate
+                      ? `${selectedAffiliate.name} ${selectedAffiliate.email ? `(${selectedAffiliate.email})` : ""}`
+                      : "Selected Affiliate";
+                  })()}
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAffiliateFilter("all");
+                  setAffiliateTotals(null);
+                }}
+              >
+                Clear Filter
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Pending Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-amber-700">
+                        ${affiliateTotals.commissions.pendingAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.pendingCount} commission{affiliateTotals.commissions.pendingCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                      <Clock className="h-5 w-5 text-amber-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Approved Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-purple-700">
+                        ${affiliateTotals.commissions.approvedAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.approvedCount} commission{affiliateTotals.commissions.approvedCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
+                      <CheckCircle className="h-5 w-5 text-purple-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Paid Commissions
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-blue-700">
+                        ${affiliateTotals.commissions.paidAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.commissions.paidCount} commission{affiliateTotals.commissions.paidCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                      <DollarSign className="h-5 w-5 text-blue-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Paid Payouts
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-emerald-700">
+                        ${affiliateTotals.payouts.paidAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.payouts.paidCount} payout{affiliateTotals.payouts.paidCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                      <CheckCircle className="h-5 w-5 text-emerald-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/80">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Pending Payouts
+                      </div>
+                      <div className="mt-2 text-2xl font-bold text-orange-700">
+                        ${affiliateTotals.payouts.pendingAmount.toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {affiliateTotals.payouts.pendingCount} payout{affiliateTotals.payouts.pendingCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
+                      <Clock className="h-5 w-5 text-orange-700" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Payouts Table */}
