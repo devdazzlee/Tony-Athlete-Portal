@@ -250,11 +250,11 @@ export default function TCNutritionDashboardLayout({
         <Link href="/dashboard" className="flex items-center space-x-2">
           {sidebarCollapsed ? (
             <Image 
-              src="/logo.png" 
-              alt="TC Nutrition" 
-              width={40} 
-              height={40}
-              className="h-10 w-auto"
+              src="/sidebar.png" 
+              alt="TC Nutrition compact" 
+              width={120} 
+              height={36}
+              className="h-auto w-[120px] min-w-[120px] max-h-10 object-contain"
               priority
             />
           ) : (
@@ -263,7 +263,7 @@ export default function TCNutritionDashboardLayout({
               alt="TC Nutrition" 
               width={180} 
               height={50}
-              className="h-auto w-auto max-w-[180px]"
+              className="h-auto w-[180px] max-h-12 object-contain"
               priority
             />
           )}
@@ -308,7 +308,7 @@ export default function TCNutritionDashboardLayout({
       {/* Desktop Sidebar */}
       <div className={cn(
         "hidden md:flex md:flex-col transition-all duration-300",
-        sidebarCollapsed ? "md:w-16" : "md:w-64"
+        sidebarCollapsed ? "md:w-20" : "md:w-64"
       )}>
         <div className="flex flex-col flex-grow">
           <SidebarContent showCollapseButton={false} />
@@ -523,4 +523,3 @@ export default function TCNutritionDashboardLayout({
     </div>
   );
 }
-

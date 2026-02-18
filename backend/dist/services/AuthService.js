@@ -140,7 +140,7 @@ class AuthService {
         if (!refreshToken) {
             throw new Error("Refresh token required");
         }
-        const session = await prisma.session.findFirst({
+        let session = await prisma.session.findFirst({
             where: {
                 refreshToken,
                 isActive: true,
@@ -148,6 +148,29 @@ class AuthService {
             },
         });
         if (!session) {
+            console.log("Refresh token not found, attempting to find session by user...");
+            const expiredSession = await prisma.session.findFirst({
+                where: {
+                    refreshToken,
+                    isActive: true,
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            });
+            if (expiredSession) {
+                const now = new Date();
+                if (expiredSession.refreshExpiresAt && expiredSession.refreshExpiresAt < now) {
+                    console.log("Refresh token has expired");
+                    const error = new Error("Invalid or expired refresh token");
+                    error.code = "TOKEN_EXPIRED";
+                    throw error;
+                }
+                session = expiredSession;
+            }
+        }
+        if (!session) {
+            console.log("No session found for refresh token");
             const error = new Error("Invalid or expired refresh token");
             error.code = "TOKEN_EXPIRED";
             throw error;
@@ -221,6 +244,15 @@ class AuthService {
         const now = new Date();
         const accessExpiresAt = new Date(now.getTime() + this.parseDurationMs(accessTokenExpiresIn));
         const refreshExpiresAt = new Date(now.getTime() + this.getRefreshTokenExpiresInMs());
+        await prisma.session.updateMany({
+            where: {
+                userId: user.id,
+                isActive: true,
+            },
+            data: {
+                isActive: false,
+            },
+        });
         await prisma.session.create({
             data: {
                 userId: user.id,

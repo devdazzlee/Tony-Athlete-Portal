@@ -1,0 +1,5 @@
+affiliateEmail,allowanceAmount,code,discountType,discountValue,freeShipping,description,syncToShopify
+losog46884@chaineor.com,150,MUAZ-MONTH,percentage,15,true,"Muaz monthly allowance with 15% discount + free shipping",true
+cs@tc-nutrition.com,200,RYAN-FEB,fixed_amount,25,false,"Ryan allowance with $25 off",true
+aaron@tc-nutrition.com,180,AARON-VIP,percentage,20,true,"Aaron VIP package with 20% off + free shipping",true
+losog46884@chaineor.com,120,,percentage,10,false,"Auto-generated code for Muaz - 10% discount",false

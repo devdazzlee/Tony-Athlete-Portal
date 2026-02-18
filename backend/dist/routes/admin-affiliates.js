@@ -221,6 +221,7 @@ router.get("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "
                 socialMedia: {
                     instagram: socialMedia.instagram || null,
                     tiktok: socialMedia.tiktok || null,
+                    other: socialMedia.other || null,
                 },
             },
         });
@@ -506,8 +507,8 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
                         targetType: "shipping_line",
                         startsAt: new Date().toISOString(),
                         endsAt: validUntil.toISOString(),
-                        usageLimit: validatedData.maxUsage || undefined,
-                        oncePerCustomer: true,
+                        usageLimit: undefined,
+                        oncePerCustomer: false,
                     });
                     const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
                     shopifyPriceRuleIds[store.id] = priceRule.id;
@@ -523,8 +524,8 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
                         value: shopifyValue,
                         startsAt: new Date().toISOString(),
                         endsAt: validUntil.toISOString(),
-                        usageLimit: validatedData.maxUsage || undefined,
-                        oncePerCustomer: true,
+                        usageLimit: undefined,
+                        oncePerCustomer: false,
                     });
                     const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
                     shopifyPriceRuleIds[store.id] = priceRule.id;
@@ -556,8 +557,8 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
                         value: shopifyValue,
                         startsAt: new Date().toISOString(),
                         endsAt: validUntil.toISOString(),
-                        usageLimit: validatedData.maxUsage || undefined,
-                        oncePerCustomer: true,
+                        usageLimit: undefined,
+                        oncePerCustomer: false,
                     });
                     const discCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
                     shopifyPriceRuleIds[store.id] = priceRule.id;
@@ -579,7 +580,7 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
                 discount: validatedData.discount,
                 affiliateId: id,
                 validUntil,
-                maxUsage: validatedData.maxUsage,
+                maxUsage: undefined,
                 status: "ACTIVE",
                 isAffiliate: true,
                 freeShipping: validatedData.freeShipping,
@@ -663,12 +664,13 @@ router.post("/:id/referral-code", auth_1.authenticateToken, (0, auth_1.requireRo
 router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
     try {
         const { id } = req.params;
-        const { instagram, tiktok } = req.body;
+        const { instagram, tiktok, other } = req.body;
         const schema = zod_1.z.object({
             instagram: zod_1.z.string().optional().nullable(),
             tiktok: zod_1.z.string().optional().nullable(),
+            other: zod_1.z.string().optional().nullable(),
         });
-        const validatedData = schema.parse({ instagram, tiktok });
+        const validatedData = schema.parse({ instagram, tiktok, other });
         const affiliate = await prisma.affiliateProfile.findUnique({
             where: { id },
         });
@@ -683,6 +685,7 @@ router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRo
                     ...existingSocialMedia,
                     instagram: validatedData.instagram || null,
                     tiktok: validatedData.tiktok || null,
+                    other: validatedData.other || null,
                 },
             },
         });
@@ -700,6 +703,41 @@ router.patch("/:id/social-media", auth_1.authenticateToken, (0, auth_1.requireRo
                 .json({ error: "Invalid input data", details: error.errors });
         }
         res.status(500).json({ error: "Failed to update social media links" });
+    }
+});
+router.patch("/:id/password", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const schema = zod_1.z.object({
+            password: zod_1.z.string().min(8, "Password must be at least 8 characters"),
+            confirmPassword: zod_1.z.string().min(8).optional(),
+        });
+        const data = schema.parse(req.body);
+        if (data.confirmPassword && data.password !== data.confirmPassword) {
+            return res.status(400).json({ error: "Passwords do not match" });
+        }
+        const affiliate = await prisma.affiliateProfile.findUnique({
+            where: { id },
+            select: { userId: true },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate not found" });
+        }
+        const hashedPassword = await bcryptjs_1.default.hash(data.password, 10);
+        await prisma.user.update({
+            where: { id: affiliate.userId },
+            data: { password: hashedPassword },
+        });
+        res.json({ success: true, message: "Affiliate password updated successfully" });
+    }
+    catch (error) {
+        console.error("Error updating affiliate password:", error);
+        if (error instanceof zod_1.z.ZodError) {
+            return res
+                .status(400)
+                .json({ error: "Invalid input data", details: error.errors });
+        }
+        res.status(500).json({ error: "Failed to update affiliate password" });
     }
 });
 router.get("/:id/analytics", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
@@ -780,6 +818,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
             discountValue: zod_1.z.number().min(0).max(100).optional(),
             instagram: zod_1.z.string().optional(),
             tiktok: zod_1.z.string().optional(),
+            other: zod_1.z.string().optional(),
             spendingLimit: zod_1.z.number().min(0).nullable().optional(),
         });
         const data = schema.parse(req.body);
@@ -812,6 +851,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     socialMedia: {
                         instagram: data.instagram || null,
                         tiktok: data.tiktok || null,
+                        other: data.other || null,
                     },
                 },
             });
@@ -867,7 +907,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                         value: shopifyValue,
                         startsAt: new Date().toISOString(),
                         endsAt: validUntil.toISOString(),
-                        oncePerCustomer: true,
+                        oncePerCustomer: false,
                     });
                     const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, normalizedCode);
                     shopifyPriceRuleIds[store.id] = priceRule.id;

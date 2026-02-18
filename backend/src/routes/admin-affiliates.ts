@@ -238,6 +238,7 @@ router.get(
           socialMedia: {
             instagram: socialMedia.instagram || null,
             tiktok: socialMedia.tiktok || null,
+            other: socialMedia.other || null,
           },
         },
       });
@@ -617,8 +618,8 @@ router.post(
               targetType: "shipping_line",
               startsAt: new Date().toISOString(),
               endsAt: validUntil.toISOString(),
-              usageLimit: validatedData.maxUsage || undefined,
-              oncePerCustomer: true,
+              usageLimit: undefined,
+              oncePerCustomer: false,
             });
 
             const discCode = await shopifyService.createDiscountCode(
@@ -643,8 +644,8 @@ router.post(
               value: shopifyValue,
               startsAt: new Date().toISOString(),
               endsAt: validUntil.toISOString(),
-              usageLimit: validatedData.maxUsage || undefined,
-              oncePerCustomer: true,
+              usageLimit: undefined,
+              oncePerCustomer: false,
             });
 
             const discCode = await shopifyService.createDiscountCode(
@@ -689,8 +690,8 @@ router.post(
               value: shopifyValue,
               startsAt: new Date().toISOString(),
               endsAt: validUntil.toISOString(),
-              usageLimit: validatedData.maxUsage || undefined,
-              oncePerCustomer: true,
+              usageLimit: undefined,
+              oncePerCustomer: false,
             });
 
             const discCode = await shopifyService.createDiscountCode(
@@ -721,7 +722,7 @@ router.post(
           discount: validatedData.discount,
           affiliateId: id,
           validUntil,
-          maxUsage: validatedData.maxUsage,
+          maxUsage: undefined,
           status: "ACTIVE",
           isAffiliate: true,
           freeShipping: validatedData.freeShipping,
@@ -832,15 +833,16 @@ router.patch(
   async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { instagram, tiktok } = req.body;
+      const { instagram, tiktok, other } = req.body;
 
       // Validate input
       const schema = z.object({
         instagram: z.string().optional().nullable(),
         tiktok: z.string().optional().nullable(),
+        other: z.string().optional().nullable(),
       });
 
-      const validatedData = schema.parse({ instagram, tiktok });
+      const validatedData = schema.parse({ instagram, tiktok, other });
 
       // Check if affiliate exists
       const affiliate = await prisma.affiliateProfile.findUnique({
@@ -862,6 +864,7 @@ router.patch(
             ...existingSocialMedia,
             instagram: validatedData.instagram || null,
             tiktok: validatedData.tiktok || null,
+            other: validatedData.other || null,
           },
         },
       });
@@ -879,6 +882,55 @@ router.patch(
           .json({ error: "Invalid input data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to update social media links" });
+    }
+  }
+);
+
+// Update affiliate password (admin only)
+router.patch(
+  "/:id/password",
+  authenticateToken,
+  requireRole(["ADMIN"]),
+  async (req: any, res) => {
+    try {
+      const { id } = req.params;
+
+      const schema = z.object({
+        password: z.string().min(8, "Password must be at least 8 characters"),
+        confirmPassword: z.string().min(8).optional(),
+      });
+
+      const data = schema.parse(req.body);
+
+      if (data.confirmPassword && data.password !== data.confirmPassword) {
+        return res.status(400).json({ error: "Passwords do not match" });
+      }
+
+      const affiliate = await prisma.affiliateProfile.findUnique({
+        where: { id },
+        select: { userId: true },
+      });
+
+      if (!affiliate) {
+        return res.status(404).json({ error: "Affiliate not found" });
+      }
+
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+
+      await prisma.user.update({
+        where: { id: affiliate.userId },
+        data: { password: hashedPassword },
+      });
+
+      res.json({ success: true, message: "Affiliate password updated successfully" });
+    } catch (error) {
+      console.error("Error updating affiliate password:", error);
+      if (error instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ error: "Invalid input data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update affiliate password" });
     }
   }
 );
@@ -984,6 +1036,7 @@ router.post(
         discountValue: z.number().min(0).max(100).optional(),
         instagram: z.string().optional(),
         tiktok: z.string().optional(),
+        other: z.string().optional(),
         spendingLimit: z.number().min(0).nullable().optional(),
       });
 
@@ -1027,6 +1080,7 @@ router.post(
             socialMedia: {
               instagram: data.instagram || null,
               tiktok: data.tiktok || null,
+              other: data.other || null,
             },
           },
         });
@@ -1095,7 +1149,7 @@ router.post(
               value: shopifyValue,
               startsAt: new Date().toISOString(),
               endsAt: validUntil.toISOString(),
-              oncePerCustomer: true,
+              oncePerCustomer: false,
             });
 
             const discountCode = await shopifyService.createDiscountCode(

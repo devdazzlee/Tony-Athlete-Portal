@@ -1,0 +1,12 @@
+affiliateEmail,allowanceAmount,code,discountType,discountValue,freeShipping,description,syncToShopify
+alice@example.com,150,ALICE-GIFT,fixed_amount,15,true,"Alice monthly allowance + free shipping",true
+bob@example.com,200,BOB-MONTH,percentage,20,false,"Bob 20% off allowance",true
+carol@example.com,120,,percentage,10,true,"Auto-code generated; 10% off + free ship",false
+dave@example.com,180,DAVE-VIP,fixed_amount,25,false,"VIP allowance for Dave",true
+eve@example.com,100,,fixed_amount,0,false,"No discount, just allowance",true
+frank@example.com,250,FRANK-SUMMER,percentage,15,true,"Summer promotion with free shipping",true
+grace@example.com,175,,fixed_amount,10,false,"Basic allowance with $10 off",false
+henry@example.com,300,HENRY-PREMIUM,percentage,25,true,"Premium affiliate package",true
+affiliateId,allowanceAmount,code,discountType,discountValue,freeShipping,description,syncToShopify
+cmk43uj5e0001og3j1ffd3whm,150,ID-TEST-1,fixed_amount,20,1,"Testing with affiliateId instead of email",yes
+cmk43uj5e0001og3j1ffd3whm,200,ID-TEST-2,percentage,15,0,"Testing boolean with 0/1",y

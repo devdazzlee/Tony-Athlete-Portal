@@ -31,6 +31,7 @@ interface LinkEntry {
   id: string;
   url: string;
   platform: string;
+  customPlatformName?: string; // For "Other" platform option
   photoUrl?: string | null;
 }
 
@@ -91,7 +92,7 @@ export default function DeliverablesPage() {
   };
 
   const addLink = () => {
-    setLinks([...links, { id: Date.now().toString(), url: "", platform: "", photoUrl: null }]);
+    setLinks([...links, { id: Date.now().toString(), url: "", platform: "", customPlatformName: "", photoUrl: null }]);
   };
 
   const handlePhotoUpload = async (linkId: string, file: File) => {
@@ -152,7 +153,17 @@ export default function DeliverablesPage() {
 
   const updateLink = (id: string, field: "url" | "platform", value: string) => {
     setLinks(
-      links.map((link) => (link.id === id ? { ...link, [field]: value } : link))
+      links.map((link) => {
+        if (link.id === id) {
+          const updated = { ...link, [field]: value };
+          // Clear customPlatformName if platform is changed from "Other" to something else
+          if (field === "platform" && value !== "Other") {
+            updated.customPlatformName = undefined;
+          }
+          return updated;
+        }
+        return link;
+      })
     );
   };
 
@@ -164,6 +175,15 @@ export default function DeliverablesPage() {
       return;
     }
 
+    // Validate that customPlatformName is provided when platform is "Other"
+    const invalidOtherPlatforms = links.filter(
+      (link) => link.platform === "Other" && (!link.customPlatformName || link.customPlatformName.trim() === "")
+    );
+    if (invalidOtherPlatforms.length > 0) {
+      toast.error("Please specify the platform name when selecting 'Other'");
+      return;
+    }
+
     try {
       setSubmitting(true);
       await apiClient.post("/athlete/deliverables", {
@@ -171,15 +191,17 @@ export default function DeliverablesPage() {
         links: links.map((link) => ({
           url: link.url,
           platform: link.platform,
+          customPlatformName: link.platform === "Other" ? link.customPlatformName : undefined,
           photoUrl: link.photoUrl || undefined,
         })),
       });
       toast.success("Deliverables submitted successfully!");
-      setLinks([{ id: "1", url: "", platform: "", photoUrl: null }]);
+      setLinks([{ id: "1", url: "", platform: "", customPlatformName: "", photoUrl: null }]);
       fetchSubmissions();
     } catch (error: any) {
       console.error("Error submitting deliverables:", error);
-      toast.error("Failed to submit deliverables");
+      const errorMessage = error.response?.data?.error || "Failed to submit deliverables";
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -190,7 +212,7 @@ export default function DeliverablesPage() {
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Deliverables</h1>
         <p className="text-sm sm:text-base text-gray-600">
-          Submit your Instagram, TikTok, or YouTube post URL for this month and
+          Submit your social media post URLs for this month (Instagram, TikTok, YouTube, or other platforms) and
           review your submissions.
         </p>
       </div>
@@ -234,7 +256,7 @@ export default function DeliverablesPage() {
           <CardHeader>
             <CardTitle className="text-gray-900">Submit Deliverable</CardTitle>
             <CardDescription className="text-gray-600">
-              Submit your Instagram, TikTok, or YouTube post URL for {month} 2025.
+              Submit your social media post URLs for {month} 2025 (Instagram, TikTok, YouTube, or other platforms).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -279,7 +301,7 @@ export default function DeliverablesPage() {
               </div>
 
               {links.map((link, index) => (
-                <div key={link.id} className="p-3 sm:p-4 bg-gray-50 rounded-lg">
+                <div key={link.id} className="p-3 sm:p-4 bg-gray-50 rounded-lg space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2">
                     {/* Mobile: Stacked layout, Desktop: Inline layout */}
                     <div className="flex items-center justify-between sm:contents">
@@ -326,6 +348,9 @@ export default function DeliverablesPage() {
                         <SelectItem value="YouTube" className="text-gray-900">
                           YouTube
                         </SelectItem>
+                        <SelectItem value="Other" className="text-gray-900">
+                          Other
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     </div>
@@ -341,6 +366,30 @@ export default function DeliverablesPage() {
                       </Button>
                     )}
                   </div>
+                  
+                  {/* Custom Platform Name Input - Show when "Other" is selected - Always on new line */}
+                  {link.platform === "Other" && (
+                    <div className="w-full">
+                      <Label className="text-sm text-gray-700">Platform Name & Handle</Label>
+                      <Input
+                        placeholder="e.g., Twitter: @username or Facebook: username"
+                        value={link.customPlatformName || ""}
+                        onChange={(e) => {
+                          setLinks(
+                            links.map((l) =>
+                              l.id === link.id
+                                ? { ...l, customPlatformName: e.target.value }
+                                : l
+                            )
+                          );
+                        }}
+                        className="bg-white border-gray-300 text-gray-900 mt-1 w-full"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enter the platform/app name and your handle (e.g., "Twitter: @username")
+                      </p>
+                    </div>
+                  )}
                   
                   {/* Photo Upload Section */}
                   <div className="mt-3 space-y-2">

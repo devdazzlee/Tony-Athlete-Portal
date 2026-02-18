@@ -74,6 +74,27 @@ export interface ShopifyOrder {
     first_name: string;
     last_name: string;
   };
+  shipping_lines?: Array<{
+    id: number;
+    title: string;
+    price: string;
+    code?: string;
+  }>;
+  total_shipping_price_set?: {
+    shop_money?: {
+      amount: string;
+    };
+  };
+  current_subtotal_price?: string;
+  current_subtotal_price_set?: {
+    shop_money?: {
+      amount: string;
+    };
+  };
+  current_total_price?: string;
+  current_total_tax?: string;
+  total_duties?: string;
+  total_tip_received?: string;
   note?: string;
   tags?: string;
   referring_site?: string;
@@ -137,6 +158,13 @@ class ShopifyService {
     STORE_CONFIGS.forEach(store => {
       this.stores.set(store.id, store);
     });
+  }
+
+  private getCommissionableValue(order: ShopifyOrder): number {
+    const subtotal = Number.parseFloat(order.subtotal_price);
+    if (!Number.isNaN(subtotal)) return subtotal;
+    const total = Number.parseFloat(order.total_price);
+    return Number.isNaN(total) ? 0 : total;
   }
 
   /**
@@ -706,7 +734,7 @@ class ShopifyService {
   } {
     const totalOrders = orders.length;
     const totalRevenue = orders.reduce(
-      (sum, order) => sum + parseFloat(order.total_price),
+      (sum, order) => sum + this.getCommissionableValue(order),
       0
     );
     const totalCommission = totalRevenue * commissionRate;
@@ -813,7 +841,7 @@ class ShopifyService {
       chartData = Array.from(grouped.entries()).map(([name, dayOrders]) => ({
         name,
         conversions: dayOrders.length,
-        commission: dayOrders.reduce((sum, o) => sum + parseFloat(o.total_price) * commissionRate, 0),
+        commission: dayOrders.reduce((sum, o) => sum + this.getCommissionableValue(o) * commissionRate, 0),
       }));
     } else if (daysDiff <= 60) {
       // Group by week
@@ -829,7 +857,7 @@ class ShopifyService {
       chartData = Array.from(grouped.entries()).map(([name, weekOrders]) => ({
         name,
         conversions: weekOrders.length,
-        commission: weekOrders.reduce((sum, o) => sum + parseFloat(o.total_price) * commissionRate, 0),
+        commission: weekOrders.reduce((sum, o) => sum + this.getCommissionableValue(o) * commissionRate, 0),
       }));
     } else {
       // Group by month
@@ -844,7 +872,7 @@ class ShopifyService {
       chartData = Array.from(grouped.entries()).map(([name, monthOrders]) => ({
         name,
         conversions: monthOrders.length,
-        commission: monthOrders.reduce((sum, o) => sum + parseFloat(o.total_price) * commissionRate, 0),
+        commission: monthOrders.reduce((sum, o) => sum + this.getCommissionableValue(o) * commissionRate, 0),
       }));
     }
 
@@ -900,4 +928,3 @@ class ShopifyService {
 // Export singleton instance
 export const shopifyService = new ShopifyService();
 export default shopifyService;
-

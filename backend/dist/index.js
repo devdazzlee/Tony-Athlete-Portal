@@ -131,6 +131,8 @@ app.use((0, cors_1.default)({
     allowedHeaders: [
         "Content-Type",
         "Authorization",
+        "Cache-Control",
+        "Pragma",
         "Cookie",
         "X-Requested-With",
         "X-Trackdesk-Version",
@@ -192,6 +194,7 @@ app.use("/api/admin/deliverables", admin_deliverables_1.default);
 app.use("/api/admin/feedback", admin_feedback_1.default);
 app.use("/api/admin/tiers", admin_tiers_1.default);
 app.use("/api/system/settings", system_settings_1.default);
+app.use("/api/system-settings", system_settings_1.default);
 app.use("/api/upload", upload_1.default);
 app.use("/api/websites", websites_1.default);
 app.use("/api/athlete", athlete_1.default);

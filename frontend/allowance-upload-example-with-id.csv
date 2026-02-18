@@ -1,0 +1,5 @@
+affiliateId,allowanceAmount,code,discountType,discountValue,freeShipping,description,syncToShopify
+cmi3epivb0002b1s5e7187813,150,MUAZ-MONTH-ID,percentage,15,true,"Muaz monthly allowance using affiliate ID",true
+cmlp9xzaa0002l704szhkwjwj,200,RYAN-FEB-ID,fixed_amount,25,false,"Ryan allowance using affiliate ID",true
+cmkbielbw0002jr04riqchvw4,180,AARON-VIP-ID,percentage,20,true,"Aaron VIP package using affiliate ID",true
+cmi3epivb0002b1s5e7187813,120,,percentage,10,false,"Auto-generated code for Muaz using ID",false

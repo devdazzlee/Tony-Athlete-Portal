@@ -37,7 +37,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
-import { Textarea } from "@/components/ui/textarea";
 
 interface Commission {
   id: string;
@@ -122,18 +121,6 @@ interface PayoutSettings {
   };
 }
 
-interface BankDetailsForm {
-  accountHolder: string;
-  bankName: string;
-  accountNumber: string;
-  routingNumber: string;
-  swiftCode: string;
-  iban: string;
-  currency: string;
-  notes: string;
-  address: string;
-}
-
 export default function CommissionsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("30d");
   const [selectedTab, setSelectedTab] = useState("pending");
@@ -146,23 +133,9 @@ export default function CommissionsPage() {
   const [payoutHistory, setPayoutHistory] = useState<PayoutHistoryItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
-  const emptyBankDetails: BankDetailsForm = {
-    accountHolder: "",
-    bankName: "",
-    accountNumber: "",
-    routingNumber: "",
-    swiftCode: "",
-    iban: "",
-    currency: "",
-    notes: "",
-    address: "",
-  };
   const [settingsForm, setSettingsForm] = useState({
-    payoutMethod: "BANK_TRANSFER",
+    payoutMethod: "PAYPAL",
     payoutEmail: "",
-    payoutFrequency: "Monthly",
-    minimumPayout: 50,
-    bankDetails: emptyBankDetails,
   });
   const [initialSettingsForm, setInitialSettingsForm] = useState(settingsForm);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -177,41 +150,17 @@ export default function CommissionsPage() {
   const [payoutRequestAmount, setPayoutRequestAmount] = useState("");
   const [payoutRequestReason, setPayoutRequestReason] = useState("");
 
-  const payoutMethodOptions = [
-    { value: "PAYPAL", label: "Manual Payout" },
-    { value: "BANK_TRANSFER", label: "Bank Transfer" },
-    { value: "STRIPE", label: "Stripe" },
-    { value: "CRYPTO", label: "Crypto Wallet" },
-    { value: "WISE", label: "Wise" },
-  ];
-
   const formatPayoutMethodDisplay = (method?: string | null) => {
-    if (!method) return undefined;
+    if (!method) return "PayPal";
 
     const normalized = method.toUpperCase().replace(/\s+/g, "_");
-
-    if (normalized === "BANK_TRANSFER" || normalized === "PAYPAL") {
-      return "Manual Payout";
-    }
+    if (normalized === "PAYPAL") return "PayPal";
 
     return method
       .toString()
       .replace(/_/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
-
-  const payoutFrequencyOptions = [
-    { value: "Monthly", label: "Monthly" },
-    { value: "Bi-Weekly", label: "Bi-Weekly" },
-    { value: "Weekly", label: "Weekly" },
-    { value: "Quarterly", label: "Quarterly" },
-  ];
-
-  const hasBankDetails = useMemo(() => {
-    return Object.values(settingsForm.bankDetails).some((value) =>
-      value ? value.trim() !== "" : false
-    );
-  }, [settingsForm.bankDetails]);
 
   const isSettingsDirty = useMemo(() => {
     return JSON.stringify(settingsForm) !== JSON.stringify(initialSettingsForm);
@@ -222,34 +171,15 @@ export default function CommissionsPage() {
 
     const normalizedMethod = data.payoutMethod
       ? data.payoutMethod.toUpperCase().replace(/\s+/g, "_")
-      : "BANK_TRANSFER";
-
-    const bankDetails: BankDetailsForm = {
-      ...emptyBankDetails,
-      accountHolder: data.bankDetails?.accountHolder || "",
-      bankName: data.bankDetails?.bankName || "",
-      accountNumber: data.bankDetails?.accountNumber || "",
-      routingNumber: data.bankDetails?.routingNumber || "",
-      swiftCode: data.bankDetails?.swiftCode || "",
-      iban: data.bankDetails?.iban || "",
-      currency: data.bankDetails?.currency || "",
-      notes: data.bankDetails?.notes || "",
-      address: data.bankDetails?.address || "",
-    };
+      : "PAYPAL";
 
     const formState = {
-      payoutMethod: normalizedMethod,
+      payoutMethod: normalizedMethod === "PAYPAL" ? "PAYPAL" : "PAYPAL",
       payoutEmail: data.payoutEmail || "",
-      payoutFrequency: data.payoutFrequency || "Monthly",
-      minimumPayout: data.minimumPayout ?? 50,
-      bankDetails,
     };
 
     setSettingsForm(formState);
-    setInitialSettingsForm({
-      ...formState,
-      bankDetails: { ...bankDetails },
-    });
+    setInitialSettingsForm(formState);
   };
 
   useEffect(() => {
@@ -356,34 +286,9 @@ export default function CommissionsPage() {
 
     setIsSavingSettings(true);
     try {
-      const trimmedBankDetails: BankDetailsForm = Object.fromEntries(
-        Object.entries(settingsForm.bankDetails).map(([key, value]) => [
-          key,
-          typeof value === "string" ? value.trim() : value,
-        ])
-      ) as BankDetailsForm;
-
-      let bankDetailsPayload: BankDetails | null = null;
-      if (hasBankDetails) {
-        if (
-          !trimmedBankDetails.accountHolder ||
-          !trimmedBankDetails.accountNumber
-        ) {
-          toast.error(
-            "Account holder and account number are required for bank details"
-          );
-          setIsSavingSettings(false);
-          return;
-        }
-        bankDetailsPayload = trimmedBankDetails;
-      }
-
       const payload = {
-        payoutMethod: settingsForm.payoutMethod,
+        payoutMethod: "PAYPAL",
         payoutEmail: settingsForm.payoutEmail,
-        payoutFrequency: settingsForm.payoutFrequency,
-        minimumPayout: Number(settingsForm.minimumPayout) || 0,
-        bankDetails: bankDetailsPayload,
       };
 
       const response = await apiClient.put("/commissions/settings", payload);
@@ -396,35 +301,6 @@ export default function CommissionsPage() {
         (error as any)?.response?.data?.error ||
           (error as any)?.response?.data?.message ||
           "Failed to update payout settings"
-      );
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
-  const handleClearBankDetails = async () => {
-    if (isSavingSettings) return;
-
-    setIsSavingSettings(true);
-    try {
-      const payload = {
-        payoutMethod: settingsForm.payoutMethod,
-        payoutEmail: settingsForm.payoutEmail,
-        payoutFrequency: settingsForm.payoutFrequency,
-        minimumPayout: Number(settingsForm.minimumPayout) || 0,
-        bankDetails: null,
-      };
-
-      const response = await apiClient.put("/commissions/settings", payload);
-      applySettingsResponse(response.data);
-      toast.success("Bank details removed");
-      fetchCommissionsData();
-    } catch (error) {
-      console.error("Error clearing bank details:", error);
-      toast.error(
-        (error as any)?.response?.data?.error ||
-          (error as any)?.response?.data?.message ||
-          "Failed to remove bank details"
       );
     } finally {
       setIsSavingSettings(false);
@@ -518,12 +394,6 @@ export default function CommissionsPage() {
     commissionSummary?.payoutEmail ||
     payoutSettings?.payoutEmail ||
     "No email set";
-  const payoutFrequencyDisplay =
-    commissionSummary?.payoutFrequency ||
-    payoutSettings?.payoutFrequency ||
-    "Monthly";
-  const minimumPayoutAmount =
-    commissionSummary?.minimumPayout || payoutSettings?.minimumPayout || 50;
 
   if (isLoading) {
     return <DataLoading message="Loading commissions..." />;
@@ -604,12 +474,7 @@ export default function CommissionsPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{payoutFrequencyDisplay}</div>
-            <p className="text-xs text-muted-foreground">
-              {minimumPayoutAmount
-                ? `Next: ${nextPayoutDate}`
-                : "No upcoming payout"}
-            </p>
+            <div className="text-2xl font-bold">{nextPayoutDate}</div>
             <p className="text-xs text-muted-foreground">
               Amount: {formatCurrency(nextPayoutAmount)}
             </p>
@@ -920,8 +785,7 @@ export default function CommissionsPage() {
             <CardHeader>
               <CardTitle>Payout Settings</CardTitle>
               <CardDescription>
-                Configure how you would like to receive your payouts. These
-                details are shared securely with the admin team.
+                Provide the PayPal email where you want to receive payouts.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -938,26 +802,14 @@ export default function CommissionsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>Payout Method</Label>
-                    <Select
-                      value={settingsForm.payoutMethod}
-                      onValueChange={(value) =>
-                        setSettingsForm((prev) => ({
-                          ...prev,
-                          payoutMethod: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a payout method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {payoutMethodOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      value="PayPal"
+                      disabled
+                      className="bg-muted"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      PayPal is the only supported payout method.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -974,224 +826,6 @@ export default function CommissionsPage() {
                       placeholder="you@example.com"
                       required
                     />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Payout Frequency</Label>
-                    <Select
-                      value={settingsForm.payoutFrequency}
-                      onValueChange={(value) =>
-                        setSettingsForm((prev) => ({
-                          ...prev,
-                          payoutFrequency: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select frequency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {payoutFrequencyOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Minimum Payout</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={settingsForm.minimumPayout}
-                      onChange={(e) =>
-                        setSettingsForm((prev) => ({
-                          ...prev,
-                          minimumPayout: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="border rounded-lg p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold">Bank Details</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Provide the bank information where you would like your
-                        payouts to be deposited.
-                      </p>
-                    </div>
-                    {hasBankDetails && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleClearBankDetails}
-                        disabled={isSavingSettings}
-                      >
-                        Remove Bank Details
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Account Holder *</Label>
-                      <Input
-                        value={settingsForm.bankDetails.accountHolder}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              accountHolder: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="John Doe"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Bank Name</Label>
-                      <Input
-                        value={settingsForm.bankDetails.bankName}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              bankName: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Bank of Example"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Account Number *</Label>
-                      <Input
-                        value={settingsForm.bankDetails.accountNumber}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              accountNumber: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="1234567890"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Routing Number</Label>
-                      <Input
-                        value={settingsForm.bankDetails.routingNumber}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              routingNumber: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="110000000"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>SWIFT / BIC</Label>
-                      <Input
-                        value={settingsForm.bankDetails.swiftCode}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              swiftCode: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="ABCDEF12"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>IBAN</Label>
-                      <Input
-                        value={settingsForm.bankDetails.iban}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              iban: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="GB33BUKB20201555555555"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Currency</Label>
-                      <Input
-                        value={settingsForm.bankDetails.currency}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              currency: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="USD"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Bank Address</Label>
-                      <Input
-                        value={settingsForm.bankDetails.address}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              address: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="123 Example Street, New York, NY"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Additional Notes</Label>
-                      <Textarea
-                        value={settingsForm.bankDetails.notes}
-                        onChange={(e) =>
-                          setSettingsForm((prev) => ({
-                            ...prev,
-                            bankDetails: {
-                              ...prev.bankDetails,
-                              notes: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Any additional instructions for payouts"
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -1213,12 +847,7 @@ export default function CommissionsPage() {
                     type="button"
                     variant="outline"
                     disabled={isSavingSettings || !isSettingsDirty}
-                    onClick={() =>
-                      setSettingsForm({
-                        ...initialSettingsForm,
-                        bankDetails: { ...initialSettingsForm.bankDetails },
-                      })
-                    }
+                    onClick={() => setSettingsForm(initialSettingsForm)}
                   >
                     Reset
                   </Button>

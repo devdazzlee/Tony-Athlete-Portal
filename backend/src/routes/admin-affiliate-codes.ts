@@ -2,11 +2,78 @@ import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import * as crypto from "crypto";
+import multer from "multer";
+import csv from "csv-parser";
+import { Readable } from "stream";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import shopifyService from "../services/ShopifyService";
 
 const router: Router = Router();
 const prisma = new PrismaClient();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
+
+const normalizeCode = (code: string) =>
+  code.trim().toUpperCase().replace(/\s+/g, "-");
+
+async function generateUniqueAllowanceCode(customCode?: string) {
+  if (customCode) {
+    const normalized = normalizeCode(customCode);
+    const existingCode = await prisma.coupon.findFirst({
+      where: { code: normalized },
+    });
+    if (existingCode) {
+      throw new Error(
+        `The code "${normalized}" already exists. Please choose a different code.`
+      );
+    }
+    return normalized;
+  }
+
+  let attempts = 0;
+  const existingCodes = new Set(
+    (await prisma.coupon.findMany({ select: { code: true } })).map(
+      (c) => c.code
+    )
+  );
+
+  let code = "";
+  do {
+    const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
+    code = `AFFILIATE-${randomPart}`;
+    attempts++;
+  } while (existingCodes.has(code) && attempts < 10);
+
+  if (attempts >= 10) {
+    throw new Error("Unable to generate unique code");
+  }
+
+  return code;
+}
+
+async function generateUniqueShippingCode(allowanceCode: string) {
+  const base = `${allowanceCode}-SHIP`;
+  let candidate = base;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const existingCode = await prisma.coupon.findFirst({
+      where: { code: candidate },
+    });
+    if (!existingCode) return candidate;
+    const suffix = crypto.randomBytes(2).toString("hex").toUpperCase();
+    candidate = `${base}-${suffix}`;
+  }
+
+  throw new Error("Unable to generate unique shipping code");
+}
+
+const parseCsvBoolean = (value?: string) => {
+  if (!value) return false;
+  return ["true", "1", "yes", "y"].includes(value.trim().toLowerCase());
+};
 
 // Get all affiliate codes with filtering and pagination
 router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
@@ -166,184 +233,122 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       return res.status(404).json({ error: "Affiliate not found" });
     }
 
-    // Determine the code to use
+    // Determine the allowance code to use
     let code: string;
-
-    if (data.customCode) {
-      // Admin provided a custom code — clean it up and check uniqueness
-      code = data.customCode.trim().toUpperCase().replace(/\s+/g, "-");
-
-      const existingCode = await prisma.coupon.findFirst({
-        where: { code },
-      });
-
-      if (existingCode) {
-        return res.status(400).json({
-          error: `The code "${code}" already exists. Please choose a different code.`,
-        });
-      }
-    } else {
-      // Auto-generate unique code
-    let attempts = 0;
-    const existingCodes = new Set(
-      (await prisma.coupon.findMany({ select: { code: true } })).map((c) => c.code)
-    );
-
-    do {
-      const randomPart = crypto
-        .randomBytes(4)
-        .toString("hex")
-        .toUpperCase();
-      code = `AFFILIATE-${randomPart}`;
-      attempts++;
-    } while (existingCodes.has(code) && attempts < 10);
-
-    if (attempts >= 10) {
-      return res.status(400).json({ error: "Unable to generate unique code" });
-      }
+    try {
+      code = await generateUniqueAllowanceCode(data.customCode);
+    } catch (err: any) {
+      return res.status(400).json({ error: err.message || "Unable to generate unique code" });
     }
+
+    // Generate a separate shipping code if needed
+    const shippingCode = data.freeShipping ? await generateUniqueShippingCode(code) : null;
 
     // Calculate end of current month
     const now = new Date();
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     // Create description
-    const shippingText = data.freeShipping ? " + Free Shipping" : "";
-    const discountText = data.discountValue > 0 
-      ? data.discountType === "percentage" 
-        ? `${data.discountValue}% off${shippingText}` 
-        : `$${data.discountValue} off${shippingText}`
-      : data.freeShipping 
-        ? "Free Shipping Only" 
-        : "No Discount";
+    const discountText = data.discountValue > 0
+      ? data.discountType === "percentage"
+        ? `${data.discountValue}% off`
+        : `$${data.discountValue} off`
+      : "No Discount";
+    const shippingNote = shippingCode ? ` + Free Shipping (use code ${shippingCode})` : "";
 
-    const description = data.description || 
-      `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText} - Expires ${endOfMonth.toLocaleDateString()}`;
+    const description =
+      data.description ||
+      `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${endOfMonth.toLocaleDateString()}`;
+
+    const shippingDescription = shippingCode
+      ? `Free shipping code for ${affiliate.user.firstName} ${affiliate.user.lastName} (paired with ${code}) - Expires ${endOfMonth.toLocaleDateString()}`
+      : null;
 
     // ----- Sync to Shopify (both USA and Canada stores) -----
-    let syncedToShopify = false;
-    let shopifyPriceRuleIds: Record<string, number> = {};
-    let shopifyDiscountIds: Record<string, number> = {};
-    let syncedStores: string[] = [];
+    let allowanceSyncedToShopify = false;
+    let allowanceShopifyPriceRuleIds: Record<string, number> = {};
+    let allowanceShopifyDiscountIds: Record<string, number> = {};
+    let allowanceSyncedStores: string[] = [];
+
+    let shippingSyncedToShopify = false;
+    let shippingShopifyPriceRuleIds: Record<string, number> = {};
+    let shippingShopifyDiscountIds: Record<string, number> = {};
+    let shippingSyncedStores: string[] = [];
+
     const shopifyErrors: string[] = [];
 
     if (data.syncToShopify) {
       const stores = shopifyService.getAllStores();
-      const hasFreeShipping = data.freeShipping === true;
-      const hasDiscount = data.discountValue > 0;
 
       for (const store of stores) {
+        // Allowance discount code (single-use)
         try {
-          if (hasFreeShipping && !hasDiscount) {
-            // FREE SHIPPING ONLY — create a shipping_line price rule
-            const priceRule = await shopifyService.createPriceRule(store.id, {
-              title: `Affiliate Code: ${code} (Free Shipping)`,
+          const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
+
+          const priceRule = await shopifyService.createPriceRule(store.id, {
+            title: `Affiliate Allowance Code: ${code}`,
+            valueType: data.discountType,
+            value: shopifyValue,
+            startsAt: new Date().toISOString(),
+            endsAt: endOfMonth.toISOString(),
+            usageLimit: undefined, // No total limit - Shopify enforces oncePerCustomer: true
+            oncePerCustomer: true, // Each customer can use it once
+          });
+
+          const discountCode = await shopifyService.createDiscountCode(
+            store.id,
+            priceRule.id,
+            code
+          );
+
+          allowanceShopifyPriceRuleIds[store.id] = priceRule.id;
+          allowanceShopifyDiscountIds[store.id] = discountCode.id;
+          allowanceSyncedStores.push(store.id);
+
+          console.log(`✅ Synced allowance code "${code}" to ${store.name}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to sync allowance code "${code}" to ${store.name}:`, err.message);
+          shopifyErrors.push(`${store.name} (allowance): ${err.message}`);
+        }
+
+        // Separate shipping code (unlimited use)
+        if (shippingCode) {
+          try {
+            const shippingRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Shipping Code: ${shippingCode}`,
               valueType: "percentage",
               value: -100,
               targetType: "shipping_line",
               startsAt: new Date().toISOString(),
               endsAt: endOfMonth.toISOString(),
-              usageLimit: 1,
-              oncePerCustomer: true,
+              oncePerCustomer: false,
             });
 
-            const discountCode = await shopifyService.createDiscountCode(
+            const shippingDiscount = await shopifyService.createDiscountCode(
               store.id,
-              priceRule.id,
-              code
+              shippingRule.id,
+              shippingCode
             );
 
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discountCode.id;
-            syncedStores.push(store.id);
+            shippingShopifyPriceRuleIds[store.id] = shippingRule.id;
+            shippingShopifyDiscountIds[store.id] = shippingDiscount.id;
+            shippingSyncedStores.push(store.id);
 
-            console.log(`✅ Synced free shipping code "${code}" to ${store.name}`);
-          } else if (hasFreeShipping && hasDiscount) {
-            // DISCOUNT + FREE SHIPPING
-            // Shopify REST API can't combine both in one price rule/code.
-            // Strategy: Create the discount CODE + an AUTOMATIC free shipping rule (no code needed, auto-applies at checkout)
-            const shopifyValue = -data.discountValue;
-
-            // 1. Create the product discount code (customer enters this)
-            const priceRule = await shopifyService.createPriceRule(store.id, {
-              title: `Affiliate Code: ${code}`,
-              valueType: data.discountType,
-              value: shopifyValue,
-              startsAt: new Date().toISOString(),
-              endsAt: endOfMonth.toISOString(),
-              usageLimit: 1,
-              oncePerCustomer: true,
-            });
-
-            const discountCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              code
-            );
-
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discountCode.id;
-
-            // 2. Create an AUTOMATIC free shipping rule (no discount code — Shopify auto-applies it at checkout)
-            try {
-              const shippingRule = await shopifyService.createPriceRule(store.id, {
-                title: `Auto Free Shipping (Affiliate: ${code})`,
-                valueType: "percentage",
-                value: -100,
-                targetType: "shipping_line",
-                startsAt: new Date().toISOString(),
-                endsAt: endOfMonth.toISOString(),
-                // No usageLimit — auto-applies to all orders during the period
-                oncePerCustomer: false,
-              });
-
-              // Do NOT create a discount code for this rule — it's automatic
-              // Store the shipping rule ID for cleanup (keyed with -shipping suffix)
-              shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
-
-              console.log(`✅ Synced discount "${code}" + automatic free shipping to ${store.name}`);
-            } catch (fsErr: any) {
-              console.warn(`⚠️ Discount code synced but auto free shipping rule failed for ${store.name}:`, fsErr.message);
-              shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
-            }
-
-            syncedStores.push(store.id);
-          } else {
-            // DISCOUNT ONLY (no free shipping)
-            const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
-
-            const priceRule = await shopifyService.createPriceRule(store.id, {
-              title: `Affiliate Code: ${code}`,
-              valueType: data.discountType,
-              value: shopifyValue,
-              startsAt: new Date().toISOString(),
-              endsAt: endOfMonth.toISOString(),
-              usageLimit: 1,
-              oncePerCustomer: true,
-            });
-
-            const discountCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              code
-            );
-
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discountCode.id;
-            syncedStores.push(store.id);
-
-            console.log(`✅ Synced code "${code}" to ${store.name} (${store.country})`);
+            console.log(`✅ Synced shipping code "${shippingCode}" to ${store.name}`);
+          } catch (err: any) {
+            console.error(`❌ Failed to sync shipping code "${shippingCode}" to ${store.name}:`, err.message);
+            shopifyErrors.push(`${store.name} (shipping): ${err.message}`);
           }
-        } catch (err: any) {
-          console.error(`❌ Failed to sync code "${code}" to ${store.name}:`, err.message);
-          shopifyErrors.push(`${store.name}: ${err.message}`);
         }
       }
 
-      syncedToShopify = syncedStores.length > 0;
+      allowanceSyncedToShopify = allowanceSyncedStores.length > 0;
+      shippingSyncedToShopify = shippingSyncedStores.length > 0;
     }
 
-    // Create the affiliate code in our database
+    // Create the allowance code in our database
+    // Monthly allowance codes: single-use per customer (not single-use total)
+    // Shopify enforces oncePerCustomer: true, so we set maxUsage: null (unlimited total uses)
     const affiliateCode = await prisma.coupon.create({
       data: {
         code,
@@ -351,15 +356,15 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
         discount: data.discountValue.toString(),
         affiliateId: data.affiliateId,
         validUntil: endOfMonth,
-        maxUsage: 1, // One-time use
+        maxUsage: null, // Unlimited total uses - Shopify enforces oncePerCustomer: true
         usage: 0,
         status: "ACTIVE",
-        freeShipping: data.freeShipping,
+        freeShipping: false,
         isAffiliate: true,
-        syncedToShopify,
-        shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
-        shopifyDiscountIds: Object.keys(shopifyDiscountIds).length > 0 ? shopifyDiscountIds : undefined,
-        syncedStores,
+        syncedToShopify: allowanceSyncedToShopify,
+        shopifyPriceRuleIds: Object.keys(allowanceShopifyPriceRuleIds).length > 0 ? allowanceShopifyPriceRuleIds : undefined,
+        shopifyDiscountIds: Object.keys(allowanceShopifyDiscountIds).length > 0 ? allowanceShopifyDiscountIds : undefined,
+        syncedStores: allowanceSyncedStores,
       },
       include: {
         affiliate: {
@@ -377,27 +382,43 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       },
     });
 
-    const hasFreeShippingSync = data.freeShipping && syncedToShopify;
-    const freeShippingNote = hasFreeShippingSync
-      ? data.discountValue > 0
-        ? `. Free shipping enabled as automatic discount on Shopify.`
-        : `. Free shipping code synced.`
-      : "";
+    if (shippingCode) {
+      await prisma.coupon.create({
+        data: {
+          code: shippingCode,
+          description: shippingDescription || `Free shipping code for ${affiliate.user.firstName} ${affiliate.user.lastName}`,
+          discount: "0",
+          affiliateId: data.affiliateId,
+          validUntil: endOfMonth,
+          maxUsage: null, // Unlimited use for shipping code
+          usage: 0,
+          status: "ACTIVE",
+          freeShipping: true,
+          isAffiliate: true,
+          syncedToShopify: shippingSyncedToShopify,
+          shopifyPriceRuleIds: Object.keys(shippingShopifyPriceRuleIds).length > 0 ? shippingShopifyPriceRuleIds : undefined,
+          shopifyDiscountIds: Object.keys(shippingShopifyDiscountIds).length > 0 ? shippingShopifyDiscountIds : undefined,
+          syncedStores: shippingSyncedStores,
+        },
+      });
+    }
 
     const responseMessage = shopifyErrors.length > 0
-      ? `Code created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
-      : syncedToShopify
-        ? `Code "${code}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})${freeShippingNote}`
-        : "Affiliate code generated successfully";
+      ? `Codes created but failed to sync to some Shopify stores: ${shopifyErrors.join("; ")}`
+      : allowanceSyncedToShopify
+        ? `Allowance code "${code}" created and synced to Shopify (${allowanceSyncedStores.length} store${allowanceSyncedStores.length > 1 ? "s" : ""})${shippingCode ? `; shipping code "${shippingCode}" ${shippingSyncedToShopify ? "synced" : "created"}` : ""}`
+        : `Allowance code "${code}" created${shippingCode ? ` and shipping code "${shippingCode}" created` : ""}`;
 
     res.status(201).json({
       message: responseMessage,
       code: affiliateCode,
+      shippingCode,
       shopifySync: {
-        synced: syncedToShopify,
-        stores: syncedStores,
+        synced: allowanceSyncedToShopify,
+        stores: allowanceSyncedStores,
+        shippingSynced: shippingSyncedToShopify,
+        shippingStores: shippingSyncedStores,
         errors: shopifyErrors,
-        freeShippingAutoApplied: hasFreeShippingSync && data.discountValue > 0,
       },
     });
   } catch (error) {
@@ -408,6 +429,275 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
     res.status(500).json({ error: "Failed to generate affiliate code" });
   }
 });
+
+// Bulk import affiliate allowance codes from CSV
+router.post(
+  "/import",
+  authenticateToken,
+  requireRole(["ADMIN"]),
+  upload.single("csvFile") as any,
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file?.buffer) {
+        return res.status(400).json({ error: "No CSV file provided" });
+      }
+
+      const rows: Record<string, string>[] = [];
+      const errors: string[] = [];
+
+      await new Promise<void>((resolve, reject) => {
+        Readable.from(req.file!.buffer)
+          .pipe(csv())
+          .on("data", (row) => rows.push(row))
+          .on("end", () => resolve())
+          .on("error", (err) => reject(err));
+      });
+
+      if (rows.length === 0) {
+        return res.status(400).json({ error: "CSV file is empty" });
+      }
+
+      const existingCodes = new Set(
+        (await prisma.coupon.findMany({ select: { code: true } })).map(
+          (c) => c.code
+        )
+      );
+
+      let imported = 0;
+      let shippingCreated = 0;
+
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        const rowLabel = `Row ${index + 1}`;
+
+        try {
+          const affiliateId = row.affiliateId?.trim();
+          const affiliateEmail = row.affiliateEmail?.trim() || row.email?.trim();
+
+          if (!affiliateId && !affiliateEmail) {
+            throw new Error("affiliateId or affiliateEmail is required");
+          }
+
+          const allowanceAmount = Number.parseFloat(row.allowanceAmount || row.allowance || row.amount || "");
+          if (Number.isNaN(allowanceAmount)) {
+            throw new Error("allowanceAmount is required and must be a number");
+          }
+
+          const discountTypeRaw = row.discountType?.trim().toLowerCase();
+          const discountType =
+            discountTypeRaw === "percentage" ? "percentage" : "fixed_amount";
+          const discountValue = Number.parseFloat(row.discountValue || "0");
+          const freeShipping = parseCsvBoolean(row.freeShipping);
+          const syncToShopify =
+            row.syncToShopify === undefined
+              ? true
+              : parseCsvBoolean(row.syncToShopify);
+
+          const customCode = row.code?.trim();
+
+          const makeUniqueCode = () => {
+            if (customCode) {
+              const normalized = normalizeCode(customCode);
+              if (existingCodes.has(normalized)) {
+                throw new Error(`Code "${normalized}" already exists`);
+              }
+              existingCodes.add(normalized);
+              return normalized;
+            }
+
+            let attempts = 0;
+            let generated = "";
+            do {
+              const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
+              generated = `AFFILIATE-${randomPart}`;
+              attempts++;
+            } while (existingCodes.has(generated) && attempts < 10);
+
+            if (attempts >= 10) {
+              throw new Error("Unable to generate unique code");
+            }
+
+            existingCodes.add(generated);
+            return generated;
+          };
+
+          const allowanceCode = makeUniqueCode();
+          const shippingCode = freeShipping ? await generateUniqueShippingCode(allowanceCode) : null;
+          if (shippingCode) {
+            existingCodes.add(shippingCode);
+          }
+
+          const affiliate = affiliateId
+            ? await prisma.affiliateProfile.findUnique({
+                where: { id: affiliateId },
+                include: { user: true },
+              })
+            : await prisma.affiliateProfile.findFirst({
+                where: { user: { email: affiliateEmail } },
+                include: { user: true },
+              });
+
+          if (!affiliate) {
+            throw new Error("Affiliate not found");
+          }
+
+          const now = new Date();
+          const endOfMonth = new Date(
+            now.getFullYear(),
+            now.getMonth() + 1,
+            0,
+            23,
+            59,
+            59,
+            999
+          );
+
+          const discountText = discountValue > 0
+            ? discountType === "percentage"
+              ? `${discountValue}% off`
+              : `$${discountValue} off`
+            : "No Discount";
+
+          const shippingNote = shippingCode ? ` + Free Shipping (use code ${shippingCode})` : "";
+
+          const description =
+            row.description?.trim() ||
+            `Affiliate allowance code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() +
+              ` - $${allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${endOfMonth.toLocaleDateString()}`;
+
+          const shippingDescription = shippingCode
+            ? `Free shipping code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() +
+              ` (paired with ${allowanceCode}) - Expires ${endOfMonth.toLocaleDateString()}`
+            : null;
+
+          let allowanceSyncedToShopify = false;
+          let allowanceShopifyPriceRuleIds: Record<string, number> = {};
+          let allowanceShopifyDiscountIds: Record<string, number> = {};
+          let allowanceSyncedStores: string[] = [];
+
+          let shippingSyncedToShopify = false;
+          let shippingShopifyPriceRuleIds: Record<string, number> = {};
+          let shippingShopifyDiscountIds: Record<string, number> = {};
+          let shippingSyncedStores: string[] = [];
+
+          if (syncToShopify) {
+            const stores = shopifyService.getAllStores();
+            for (const store of stores) {
+              try {
+                const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
+                const priceRule = await shopifyService.createPriceRule(store.id, {
+                  title: `Affiliate Allowance Code: ${allowanceCode}`,
+                  valueType: discountType,
+                  value: shopifyValue,
+                  startsAt: new Date().toISOString(),
+                  endsAt: endOfMonth.toISOString(),
+                  usageLimit: undefined, // No total limit - Shopify enforces oncePerCustomer: true
+                  oncePerCustomer: true, // Each customer can use it once
+                });
+
+                const discountCode = await shopifyService.createDiscountCode(
+                  store.id,
+                  priceRule.id,
+                  allowanceCode
+                );
+
+                allowanceShopifyPriceRuleIds[store.id] = priceRule.id;
+                allowanceShopifyDiscountIds[store.id] = discountCode.id;
+                allowanceSyncedStores.push(store.id);
+              } catch (err: any) {
+                errors.push(`${rowLabel} (${store.name} allowance): ${err.message}`);
+              }
+
+              if (shippingCode) {
+                try {
+                  const shippingRule = await shopifyService.createPriceRule(store.id, {
+                    title: `Affiliate Shipping Code: ${shippingCode}`,
+                    valueType: "percentage",
+                    value: -100,
+                    targetType: "shipping_line",
+                    startsAt: new Date().toISOString(),
+                    endsAt: endOfMonth.toISOString(),
+                    oncePerCustomer: false,
+                  });
+
+                  const shippingDiscount = await shopifyService.createDiscountCode(
+                    store.id,
+                    shippingRule.id,
+                    shippingCode
+                  );
+
+                  shippingShopifyPriceRuleIds[store.id] = shippingRule.id;
+                  shippingShopifyDiscountIds[store.id] = shippingDiscount.id;
+                  shippingSyncedStores.push(store.id);
+                } catch (err: any) {
+                  errors.push(`${rowLabel} (${store.name} shipping): ${err.message}`);
+                }
+              }
+            }
+
+            allowanceSyncedToShopify = allowanceSyncedStores.length > 0;
+            shippingSyncedToShopify = shippingSyncedStores.length > 0;
+          }
+
+          await prisma.coupon.create({
+            data: {
+              code: allowanceCode,
+              description,
+              discount: discountValue.toString(),
+              affiliateId: affiliate.id,
+              validUntil: endOfMonth,
+              maxUsage: null, // Unlimited total uses - Shopify enforces oncePerCustomer: true
+              usage: 0,
+              status: "ACTIVE",
+              freeShipping: false,
+              isAffiliate: true,
+              syncedToShopify: allowanceSyncedToShopify,
+              shopifyPriceRuleIds: Object.keys(allowanceShopifyPriceRuleIds).length > 0 ? allowanceShopifyPriceRuleIds : undefined,
+              shopifyDiscountIds: Object.keys(allowanceShopifyDiscountIds).length > 0 ? allowanceShopifyDiscountIds : undefined,
+              syncedStores: allowanceSyncedStores,
+            },
+          });
+
+          if (shippingCode) {
+            await prisma.coupon.create({
+              data: {
+                code: shippingCode,
+                description: shippingDescription || `Free shipping code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim(),
+                discount: "0",
+                affiliateId: affiliate.id,
+                validUntil: endOfMonth,
+                maxUsage: null,
+                usage: 0,
+                status: "ACTIVE",
+                freeShipping: true,
+                isAffiliate: true,
+                syncedToShopify: shippingSyncedToShopify,
+                shopifyPriceRuleIds: Object.keys(shippingShopifyPriceRuleIds).length > 0 ? shippingShopifyPriceRuleIds : undefined,
+                shopifyDiscountIds: Object.keys(shippingShopifyDiscountIds).length > 0 ? shippingShopifyDiscountIds : undefined,
+                syncedStores: shippingSyncedStores,
+              },
+            });
+            shippingCreated++;
+          }
+
+          imported++;
+        } catch (err: any) {
+          errors.push(`${rowLabel}: ${err.message || "Failed to import"}`);
+        }
+      }
+
+      res.status(201).json({
+        message: `Imported ${imported} allowance codes${shippingCreated ? ` and ${shippingCreated} shipping codes` : ""}`,
+        imported,
+        shippingCreated,
+        errors: errors.slice(0, 50),
+      });
+    } catch (error: any) {
+      console.error("Error importing affiliate codes:", error);
+      res.status(500).json({ error: "Failed to import affiliate codes" });
+    }
+  }
+);
 
 // Delete affiliate code (also removes from Shopify)
 router.delete("/:id", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
@@ -527,32 +817,84 @@ router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (re
 
       const stores = shopifyService.getAllStores();
       const discountValue = parseFloat(code.discount.replace(/[^0-9.]/g, "")) || 0;
-      const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
       const valueType = code.discount.includes("$") ? "fixed_amount" as const : "percentage" as const;
+      const hasDiscount = discountValue > 0;
+      const hasFreeShipping = code.freeShipping === true;
+      const usageLimit = code.maxUsage || undefined;
+      const oncePerCustomer = !!code.maxUsage;
 
       for (const store of stores) {
         try {
-          const priceRule = await shopifyService.createPriceRule(store.id, {
-            title: `Affiliate Code: ${code.code}`,
-            valueType,
-            value: shopifyValue,
-            startsAt: new Date().toISOString(),
-            endsAt: code.validUntil.toISOString(),
-            usageLimit: code.maxUsage || undefined,
-            oncePerCustomer: true,
-          });
+          if (hasFreeShipping && !hasDiscount) {
+            // Shipping-only code
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Shipping Code: ${code.code}`,
+              valueType: "percentage",
+              value: -100,
+              targetType: "shipping_line",
+              startsAt: new Date().toISOString(),
+              endsAt: code.validUntil.toISOString(),
+              usageLimit,
+              oncePerCustomer,
+            });
 
-          const discountCode = await shopifyService.createDiscountCode(
-            store.id,
-            priceRule.id,
-            code.code
-          );
+            const discountCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              code.code
+            );
 
-          shopifyPriceRuleIds[store.id] = priceRule.id;
-          shopifyDiscountIds[store.id] = discountCode.id;
-          syncedStores.push(store.id);
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discountCode.id;
+            syncedStores.push(store.id);
 
-          console.log(`✅ Reactivated: synced code "${code.code}" to ${store.name}`);
+            console.log(`✅ Reactivated shipping code "${code.code}" on ${store.name}`);
+          } else {
+            // Discount code (allowance or general)
+            const shopifyValue = hasDiscount ? -discountValue : -0.01;
+
+            const priceRule = await shopifyService.createPriceRule(store.id, {
+              title: `Affiliate Code: ${code.code}`,
+              valueType,
+              value: shopifyValue,
+              startsAt: new Date().toISOString(),
+              endsAt: code.validUntil.toISOString(),
+              usageLimit,
+              oncePerCustomer,
+            });
+
+            const discountCode = await shopifyService.createDiscountCode(
+              store.id,
+              priceRule.id,
+              code.code
+            );
+
+            shopifyPriceRuleIds[store.id] = priceRule.id;
+            shopifyDiscountIds[store.id] = discountCode.id;
+            syncedStores.push(store.id);
+
+            // Legacy case: discount + free shipping on same code
+            if (hasFreeShipping && hasDiscount) {
+              try {
+                const shippingRule = await shopifyService.createPriceRule(store.id, {
+                  title: `Auto Free Shipping (Affiliate: ${code.code})`,
+                  valueType: "percentage",
+                  value: -100,
+                  targetType: "shipping_line",
+                  startsAt: new Date().toISOString(),
+                  endsAt: code.validUntil.toISOString(),
+                  oncePerCustomer: false,
+                });
+
+                shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+              } catch (fsErr: any) {
+                console.warn(`⚠️ Failed to recreate auto free shipping for ${store.name}:`, fsErr.message);
+                shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
+              }
+            }
+
+            console.log(`✅ Reactivated code "${code.code}" on ${store.name}`);
+          }
         } catch (err: any) {
           console.error(`❌ Failed to re-sync code "${code.code}" to ${store.name}:`, err.message);
           shopifyErrors.push(`${store.name}: ${err.message}`);
@@ -653,4 +995,3 @@ router.get("/stats/overview", authenticateToken, requireRole(["ADMIN"]), async (
 });
 
 export default router;
-

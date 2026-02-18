@@ -349,7 +349,7 @@ router.get("/terms", async (req, res) => {
         {
           title: "Payment Terms",
           content:
-            "Payments are processed monthly with a minimum payout threshold of $50. Payments are made via PayPal or bank transfer.",
+            "Payments are processed via PayPal.",
         },
         {
           title: "Prohibited Activities",

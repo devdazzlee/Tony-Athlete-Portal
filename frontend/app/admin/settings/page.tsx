@@ -23,7 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Settings,
   Save,
-  DollarSign,
   Shield,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,54 +30,13 @@ import apiClient from "@/lib/api-client";
 
 
 export default function SystemSettingsPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState<{
-    general: any;
-    commission: {
-      defaultRate: number;
-      minimumPayout: number;
-      payoutFrequency: string;
-      approvalPeriod: number;
-      cookieDuration: number;
-    } | null;
-    affiliate: any;
-    security: any;
-    notifications: any;
-  }>({
-    // General Settings
-    general: {
-      programName: "AffiliateHub",
-      programDescription: "Professional affiliate management platform",
-      timezone: "America/New_York",
-      currency: "USD",
-      language: "en",
-    },
-    // Commission Settings - will be loaded from API
-    commission: null,
-    // Affiliate Settings
-    affiliate: {
-      autoApprove: false,
-      requireApproval: true,
-      maxAffiliates: 1000,
-      allowSelfReferrals: false,
-    },
-    // Security Settings
-    security: {
-      twoFactorRequired: false,
-      ipWhitelist: false,
-      sessionTimeout: 30,
-      passwordPolicy: "strong",
-      auditLogging: true,
-    },
-    // Notification Settings
-    notifications: {
-      emailNotifications: true,
-      adminAlerts: true,
-      affiliateWelcome: true,
-      payoutNotifications: true,
-      systemMaintenance: true,
-    },
-  });
+    general?: any;
+    affiliate?: any;
+    security?: any;
+    notifications?: any;
+  } | null>(null);
 
   useEffect(() => {
     fetchSettings();
@@ -86,7 +44,7 @@ export default function SystemSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const response = await apiClient.get("/system/settings", {
+      const response = await apiClient.get("/system-settings", {
         headers: {
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
@@ -96,42 +54,11 @@ export default function SystemSettingsPage() {
       const data = response.data;
       console.log("Fetched settings data:", data); // Debug log
 
-      // Commission settings must come from API - no fallback
-      if (!data.commission) {
-        console.error("Commission settings not found in API response");
-        toast.error("Commission settings not found. Please refresh the page.");
-        return;
-      }
-
       setSettings({
-        general: data.general || {
-          programName: "Trackdesk",
-          programDescription: "Professional affiliate management platform",
-          timezone: "America/New_York",
-          currency: "USD",
-          language: "en",
-        },
-        commission: data.commission,
-        affiliate: data.affiliate || {
-          autoApprove: false,
-          requireApproval: true,
-          maxAffiliates: 1000,
-          allowSelfReferrals: false,
-        },
-        security: data.security || {
-          twoFactorRequired: false,
-          ipWhitelist: false,
-          sessionTimeout: 30,
-          passwordPolicy: "strong",
-          auditLogging: true,
-        },
-        notifications: data.notifications || {
-          emailNotifications: true,
-          adminAlerts: true,
-          affiliateWelcome: true,
-          payoutNotifications: true,
-          systemMaintenance: true,
-        },
+        general: data.general || {},
+        affiliate: data.affiliate || {},
+        security: data.security || {},
+        notifications: data.notifications || {},
       });
     } catch (error) {
       console.error("Error fetching settings:", error);
@@ -140,15 +67,22 @@ export default function SystemSettingsPage() {
           (error as any)?.response?.data?.message ||
           "Failed to load settings"
       );
+    } finally {
+      setIsLoading(false);
     }
   };
 
 
   const handleSaveGeneral = async () => {
+    if (!settings || !settings.general) {
+      toast.error("Settings not loaded. Please refresh the page.");
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const response = await apiClient.put(
-        "/system/settings/general",
+        "/system-settings/general",
         settings.general,
         {
           headers: {
@@ -175,117 +109,30 @@ export default function SystemSettingsPage() {
     }
   };
 
-  const handleSaveCommission = async () => {
-    // Always update all affiliates when commission rate changes
-    await saveCommissionSettings(true);
-  };
-
-  const saveCommissionSettings = async (updateAffiliates: boolean) => {
-    setIsLoading(true);
-    try {
-      const response = await apiClient.put(
-        "/system/settings/commission",
-        {
-          ...settings.commission,
-          updateAffiliates,
-        },
-        {
-          headers: {
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-          },
-        }
-      );
-
-      const data = response.data;
-      console.log("Commission update response:", data);
-
-      let message = data.message || "Commission settings updated successfully!";
-      if (data.impact?.updatedAffiliates > 0) {
-        message += ` (${data.impact.updatedAffiliates} affiliates updated)`;
-      }
-
-      toast.success(message);
-      await fetchSettings();
-    } catch (error) {
-      const errorData = (error as any)?.response?.data;
-      console.error("Error updating commission settings:", error);
-
-      // Handle validation errors with better messages
-      if (errorData?.details && Array.isArray(errorData.details)) {
-        const defaultRateError = errorData.details.find((detail: any) =>
-          detail.path?.includes("defaultRate")
-        );
-
-        if (defaultRateError) {
-          let errorMessage = defaultRateError.message;
-
-          // If no message from backend, create a user-friendly one
-          if (!errorMessage || errorMessage === "Rate must be between 0 and 100") {
-            if (defaultRateError.code === "too_big") {
-              errorMessage =
-                "Commission rate is too large. Please enter a value less than or equal to 100%.";
-            } else if (defaultRateError.code === "too_small") {
-              errorMessage =
-                "Commission rate is too small. Please enter a value greater than or equal to 0%.";
-            } else {
-              errorMessage =
-                "Invalid commission rate. Please enter a value between 0 and 100%.";
-            }
-          }
-
-          toast.error(errorMessage);
-          return;
-        }
-      }
-
-      toast.error(
-        errorData?.error ||
-          errorData?.message ||
-          (error as any)?.message ||
-          "Failed to update commission settings"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
 
   const handleSettingChange = (section: string, key: string, value: any) => {
-    setSettings((prev) => ({
-      ...prev,
-      [section]: {
-        ...prev[section as keyof typeof prev],
-        [key]: value,
-      },
-    }));
+    setSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [section]: {
+          ...(prev as any)[section],
+          [key]: value,
+        },
+      };
+    });
   };
-
-  // Don't render commission settings if not loaded from API
-  if (!settings.commission) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
-            <p className="text-gray-600">
-              Configure your affiliate program settings
-            </p>
-          </div>
-          <Badge variant="secondary" className="flex items-center gap-2 bg-gray-200 text-gray-900">
-            <Shield className="h-3 w-3" />
-            Admin
-          </Badge>
-        </div>
-        <div className="text-center py-8">
-          <p className="text-gray-600">Loading commission settings...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+      {isLoading || !settings ? (
+        <div className="space-y-4">
+          <div className="h-6 w-48 bg-gray-200 animate-pulse rounded" />
+          <div className="h-4 w-64 bg-gray-200 animate-pulse rounded" />
+          <div className="h-64 bg-white border border-gray-200 rounded-xl shadow-sm animate-pulse" />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -373,8 +220,7 @@ export default function SystemSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200">
-                  <SelectItem value="USD" className="text-gray-900 hover:bg-gray-100">USD - US Dollar</SelectItem>
-                  <SelectItem value="EUR" className="text-gray-900 hover:bg-gray-100">EUR - Euro</SelectItem>
+                  <SelectItem value="USD" className="text-gray-900 hover:bg-gray-100">USD - US Dollar ($)</SelectItem>
                   <SelectItem value="GBP" className="text-gray-900 hover:bg-gray-100">GBP - British Pound</SelectItem>
                   <SelectItem value="CAD" className="text-gray-900 hover:bg-gray-100">CAD - Canadian Dollar</SelectItem>
                   <SelectItem value="AUD" className="text-gray-900 hover:bg-gray-100">AUD - Australian Dollar</SelectItem>
@@ -422,123 +268,8 @@ export default function SystemSettingsPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Commission Settings */}
-      <Card className="bg-white border-gray-200">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center text-gray-900">
-                <DollarSign className="h-5 w-5 mr-2" />
-                Commission Settings
-              </CardTitle>
-              <CardDescription className="text-gray-600">
-                Configure commission rates and payout terms
-              </CardDescription>
-            </div>
-            <Button
-              onClick={handleSaveCommission}
-              disabled={isLoading}
-              size="sm"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {isLoading ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="defaultRate" className="text-gray-700">Default Commission Rate (%)</Label>
-              <Input
-                id="defaultRate"
-                type="number"
-                value={settings.commission.defaultRate}
-                onChange={(e) =>
-                  handleSettingChange(
-                    "commission",
-                    "defaultRate",
-                    parseInt(e.target.value)
-                  )
-                }
-                className="!bg-white border-gray-300 text-gray-900"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="minimumPayout" className="text-gray-700">Minimum Payout ($)</Label>
-              <Input
-                id="minimumPayout"
-                type="number"
-                step="0.01"
-                value={settings.commission.minimumPayout}
-                onChange={(e) =>
-                  handleSettingChange(
-                    "commission",
-                    "minimumPayout",
-                    parseFloat(e.target.value)
-                  )
-                }
-                className="!bg-white border-gray-300 text-gray-900"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="payoutFrequency" className="text-gray-700">Payout Frequency</Label>
-              <Select
-                value={settings.commission.payoutFrequency}
-                onValueChange={(value) =>
-                  handleSettingChange("commission", "payoutFrequency", value)
-                }
-              >
-                <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
-                  <SelectItem value="Weekly" className="text-gray-900 hover:bg-gray-100">Weekly</SelectItem>
-                  <SelectItem value="Monthly" className="text-gray-900 hover:bg-gray-100">Monthly</SelectItem>
-                  <SelectItem value="Quarterly" className="text-gray-900 hover:bg-gray-100">Quarterly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="approvalPeriod" className="text-gray-700">Approval Period (days)</Label>
-              <Input
-                id="approvalPeriod"
-                type="number"
-                value={settings.commission.approvalPeriod}
-                onChange={(e) =>
-                  handleSettingChange(
-                    "commission",
-                    "approvalPeriod",
-                    parseInt(e.target.value)
-                  )
-                }
-                className="!bg-white border-gray-300 text-gray-900"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="cookieDuration" className="text-gray-700">Cookie Duration (days)</Label>
-              <Input
-                id="cookieDuration"
-                type="number"
-                value={settings.commission.cookieDuration}
-                onChange={(e) =>
-                  handleSettingChange(
-                    "commission",
-                    "cookieDuration",
-                    parseInt(e.target.value)
-                  )
-                }
-                className="!bg-white border-gray-300 text-gray-900"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
+      </>
+      )}
     </div>
   );
 }

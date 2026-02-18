@@ -463,7 +463,7 @@ class LinksService {
                 discount: discount,
                 validUntil: validUntil,
                 usage: 0,
-                maxUsage: data.maxUsage || 100,
+                maxUsage: null,
                 status: "ACTIVE",
             },
         });

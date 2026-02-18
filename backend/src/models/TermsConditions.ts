@@ -305,7 +305,6 @@ export class TermsConditionsModel {
           <p>Commissions are paid at a rate of {{commissionRate}}% for qualified sales. Commissions are subject to the following terms:</p>
           <ul>
             <li>Commissions are paid {{payoutSchedule}}</li>
-            <li>Minimum payout threshold is $50</li>
             <li>Commissions may be reversed for returns or chargebacks</li>
           </ul>
           

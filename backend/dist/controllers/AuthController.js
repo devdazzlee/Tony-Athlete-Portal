@@ -82,9 +82,18 @@ class AuthController {
             const refreshToken = req.body?.refreshToken ||
                 req.cookies?.refreshToken;
             if (!refreshToken) {
+                console.log("Refresh endpoint: No refresh token provided");
                 return res.status(400).json({ error: "Refresh token required" });
             }
+            console.log("Refresh endpoint: Attempting to refresh token", {
+                refreshTokenLength: refreshToken?.length,
+                hasRefreshToken: !!refreshToken,
+            });
             const result = await authService.refresh(refreshToken, req.ip, req.get("User-Agent"));
+            console.log("Refresh endpoint: Token refreshed successfully", {
+                userId: result.user?.id,
+                hasNewRefreshToken: !!result.refreshToken,
+            });
             (0, auth_1.setAuthCookies)(res, result.token, result.refreshToken || null, result.user, req);
             res.json({
                 message: "Token refreshed",
@@ -94,6 +103,11 @@ class AuthController {
             });
         }
         catch (error) {
+            console.error("Refresh endpoint error:", {
+                message: error.message,
+                code: error.code,
+                refreshTokenProvided: !!req.body?.refreshToken || !!req.cookies?.refreshToken,
+            });
             res.status(401).json({
                 error: error.message || "Invalid refresh token",
                 code: error.code || "AUTH_ERROR"

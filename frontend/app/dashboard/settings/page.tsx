@@ -37,23 +37,6 @@ const settingsItems = [
     color: "text-green-600",
     bgColor: "bg-green-100",
   },
-  {
-    title: "Commission Payout Settings",
-    description: "Add bank details and manage payout preferences",
-    icon: CreditCard,
-    href: "/dashboard/commissions",
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-100",
-  },
-  {
-    title: "Websites",
-    description:
-      "Manage your websites and get Website IDs for tracking integration",
-    icon: Globe,
-    href: "/dashboard/settings/websites",
-    color: "text-purple-600",
-    bgColor: "bg-purple-100",
-  },
 ];
 
 export default function SettingsPage() {
@@ -105,29 +88,6 @@ export default function SettingsPage() {
         })}
       </div>
 
-      {/* Quick Info */}
-      <Card className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-        <CardContent className="p-6">
-          <div className="flex items-start space-x-4">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <SettingsIcon className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 mb-2">Need Help?</h4>
-              <p className="text-sm text-gray-600 mb-3">
-                If you need assistance with your account settings, our support
-                team is here to help.
-              </p>
-              <button
-                onClick={() => router.push("/dashboard/resources/support")}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
-              >
-                Contact Support →
-              </button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [profileData, setProfileData] = useState({
     instagram: null as string | null,
     tiktok: null as string | null,
+    other: null as string | null,
     discountCodes: [] as Array<{
       code: string;
       value: string;
@@ -90,12 +91,14 @@ export default function DashboardPage() {
       const response = await apiClient.put("/athlete/profile/social", {
         instagram: profileData.instagram,
         tiktok: profileData.tiktok,
+        other: profileData.other,
       });
 
       setProfileData((prev) => ({
         ...prev,
         instagram: response.data?.instagram ?? prev.instagram,
         tiktok: response.data?.tiktok ?? prev.tiktok,
+        other: response.data?.other ?? prev.other,
       }));
 
       toast.success("Social handles updated");
@@ -239,6 +242,18 @@ export default function DashboardPage() {
                     setProfileData((prev) => ({ ...prev, tiktok: e.target.value }))
                   }
                   placeholder="yourhandle"
+                  className="h-11 !bg-white border-gray-300 text-gray-900 placeholder:text-gray-500"
+                  disabled={isSavingSocials}
+                />
+              </div>
+              <div>
+                <Label className="text-gray-700 block mb-2">Other (App + Handle)</Label>
+                <Input
+                  value={profileData.other || ""}
+                  onChange={(e) =>
+                    setProfileData((prev) => ({ ...prev, other: e.target.value }))
+                  }
+                  placeholder="e.g., YouTube: @yourhandle"
                   className="h-11 !bg-white border-gray-300 text-gray-900 placeholder:text-gray-500"
                   disabled={isSavingSocials}
                 />

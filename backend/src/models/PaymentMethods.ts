@@ -407,7 +407,7 @@ export class PaymentMethodsModel {
           phoneRequired: false,
           additionalDocuments: [],
         },
-        supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+        supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
         processingTime: "Instant",
         description: "Fast and secure PayPal payments",
         instructions: "Enter your PayPal email address to receive payments",
@@ -442,7 +442,7 @@ export class PaymentMethodsModel {
           phoneRequired: true,
           additionalDocuments: ["Bank statement", "Government ID"],
         },
-        supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+        supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
         processingTime: "1-3 business days",
         description: "Direct bank transfer to your account",
         instructions:
@@ -480,7 +480,6 @@ export class PaymentMethodsModel {
         },
         supportedCurrencies: [
           "USD",
-          "EUR",
           "GBP",
           "CAD",
           "AUD",

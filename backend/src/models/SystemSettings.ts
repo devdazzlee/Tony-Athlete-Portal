@@ -218,7 +218,7 @@ export class SystemSettingsModel {
         },
         currencies: data.currencies || {
           defaultCurrency: "USD",
-          supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+          supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
           exchangeRateProvider: "fixer",
           autoUpdateRates: true,
           rateUpdateInterval: 24,
@@ -561,7 +561,6 @@ export class SystemSettingsModel {
   static async getSupportedCurrencies(): Promise<string[]> {
     return [
       "USD",
-      "EUR",
       "GBP",
       "JPY",
       "CAD",
@@ -590,7 +589,6 @@ export class SystemSettingsModel {
     // For now, return mock data
     const rates: Record<string, number> = {
       USD: 1.0,
-      EUR: 0.85,
       GBP: 0.73,
       JPY: 110.0,
       CAD: 1.25,

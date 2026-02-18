@@ -44,7 +44,7 @@ router.get("/public", authenticateToken, async (req: any, res) => {
           },
           currencies: {
             defaultCurrency: "USD",
-            supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+            supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
           },
           notifications: {
             emailNotifications: true,
@@ -146,7 +146,7 @@ router.get("/", authenticateToken, async (req: any, res) => {
           },
           currencies: {
             defaultCurrency: "USD",
-            supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+            supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
           },
           notifications: {
             emailNotifications: true,
@@ -159,6 +159,30 @@ router.get("/", authenticateToken, async (req: any, res) => {
           performance: {},
           compliance: {},
         },
+      });
+    }
+
+    // Normalize general defaults if stale values exist
+    let general = (settings.general || {}) as Record<string, any>;
+    const desiredGeneralDefaults = {
+      programName: "TC Nutrition Athlete Portal",
+      currency: "USD",
+      language: "en",
+      timezone: "America/New_York",
+    };
+
+    let generalUpdated = false;
+    for (const [key, value] of Object.entries(desiredGeneralDefaults)) {
+      if (general[key] === undefined || general[key] === null || general[key] === "") {
+        general[key] = value;
+        generalUpdated = true;
+      }
+    }
+
+    if (generalUpdated) {
+      settings = await prisma.systemSettings.update({
+        where: { accountId: ACCOUNT_ID },
+        data: { general },
       });
     }
 

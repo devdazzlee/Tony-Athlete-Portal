@@ -6,6 +6,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import shopifyService from './ShopifyService';
+import { getCommissionableValue } from '../utils/orderValue';
 
 const prisma = new PrismaClient();
 
@@ -109,7 +110,7 @@ async function syncAllStores(): Promise<{
                 data: {
                   financialStatus: order.financial_status,
                   fulfillmentStatus: order.fulfillment_status,
-                  orderValue: parseFloat(order.total_price),
+                  orderValue: getCommissionableValue(order),
                   updatedAt: new Date(),
                 },
               });
@@ -121,7 +122,7 @@ async function syncAllStores(): Promise<{
           for (const discount of order.discount_codes) {
             const affiliate = codeToAffiliate.get(discount.code.toLowerCase());
             if (affiliate) {
-              const orderValue = parseFloat(order.total_price);
+              const orderValue = getCommissionableValue(order);
               const commissionAmount = orderValue * affiliate.commissionRate;
 
               // Create affiliate order
@@ -254,4 +255,3 @@ export default {
   triggerSync,
   syncAllStores,
 };
-

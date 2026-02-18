@@ -334,19 +334,30 @@ This verification link will expire in 24 hours. If you didn't create an account 
           <meta charset="utf-8">
           <title>Reset Your Password - TC Nutrition Athlete Portal</title>
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .button { display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: #fff; text-decoration: none; border-radius: 4px; }
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; margin: 0; padding: 0; }
+            .container { max-width: 640px; margin: 0 auto; padding: 32px 24px; }
+            .panel { background: #ffffff; border-radius: 12px; padding: 32px 28px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+            h2 { margin: 0 0 12px; color: #111827; }
+            p { color: #374151; margin: 0 0 14px; }
+            .button { display: inline-block; padding: 14px 26px; background-color: #ef4444; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 700; letter-spacing: 0.2px; border: 2px solid #ef4444; }
+            .button:hover { background: #dc2626; border-color: #dc2626; }
+            .link { color: #1f2937; word-break: break-all; }
+            .footer { margin-top: 18px; font-size: 12px; color: #6b7280; }
           </style>
         </head>
         <body>
           <div class="container">
-            <h2>Password Reset Request</h2>
-            <p>Hi ${firstName},</p>
-            <p>We received a request to reset your password. Click the button below to reset it:</p>
-            <p><a href="${resetUrl}" class="button">Reset Password</a></p>
-            <p>Or copy this link: ${resetUrl}</p>
-            <p>This link will expire in 1 hour. If you didn't request this, please ignore this email.</p>
+            <div class="panel">
+              <h2>Password Reset Request</h2>
+              <p>Hi ${firstName},</p>
+              <p>We received a request to reset your password. Click the red button below to reset it:</p>
+              <p style="text-align:center; margin: 18px 0;">
+                <a href="${resetUrl}" class="button">Reset Password</a>
+              </p>
+              <p>Or copy this link:</p>
+              <p class="link">${resetUrl}</p>
+              <p class="footer">This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+            </div>
           </div>
         </body>
       </html>

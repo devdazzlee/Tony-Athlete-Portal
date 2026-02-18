@@ -3,6 +3,7 @@ import { authenticateToken } from "../middleware/auth";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import shopifyService from "../services/ShopifyService";
+import { getCommissionableValue } from "../utils/orderValue";
 
 const router: Router = express.Router();
 const prisma = new PrismaClient();
@@ -396,9 +397,10 @@ router.post("/capture-paypal-order", async (req: any, res) => {
       }
     }
 
-    // Calculate commission
+    // Calculate commission (after discount, before shipping & tax)
     const commissionRate = affiliate.commissionRate || 10;
-    const commissionAmount = (paymentAmount * commissionRate) / 100;
+    const commissionBase = getCommissionableValue(shopifyOrder as any);
+    const commissionAmount = (commissionBase * commissionRate) / 100;
 
     // Create order record in database
     const affiliateOrder = await prisma.affiliateOrder.create({
@@ -409,7 +411,7 @@ router.post("/capture-paypal-order", async (req: any, res) => {
         orderId: `shopify-${shopifyOrder.id}`,
         shopifyOrderId: shopifyOrder.id.toString(),
         shopifyOrderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
-        orderValue: paymentAmount,
+        orderValue: commissionBase,
         subtotalPrice: parseFloat(shopifyOrder.subtotal_price || "0"),
         totalTax: parseFloat(shopifyOrder.total_tax || "0"),
         currency: store.currency,

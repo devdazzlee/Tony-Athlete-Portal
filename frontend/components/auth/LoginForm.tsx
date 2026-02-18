@@ -129,7 +129,7 @@ export function LoginForm({
               alt="TC Nutrition" 
               width={200} 
               height={60}
-              className="h-auto w-auto max-w-[200px]"
+              className="h-auto w-[200px] max-h-12 object-contain"
               priority
             />
           </div>
@@ -269,4 +269,3 @@ export function LoginForm({
     </div>
   );
 }
-

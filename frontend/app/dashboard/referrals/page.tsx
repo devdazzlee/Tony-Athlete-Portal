@@ -166,7 +166,7 @@ export default function ReferralsPage() {
     if (showCreateDialog) {
       const fetchSystemSettings = async () => {
         try {
-          const response = await apiClient.get("/system/settings/public");
+          const response = await apiClient.get("/system-settings/public");
           const settingsData = response.data;
           if (settingsData.commission?.defaultRate) {
             setNewCode((prev) => ({
@@ -200,7 +200,7 @@ export default function ReferralsPage() {
           apiClient.get("/referral/codes"),
           apiClient.get("/referral/stats"),
           apiClient.get("/settings/profile"),
-          apiClient.get("/system/settings/public"),
+          apiClient.get("/system-settings/public"),
         ]);
 
       const codes = codesResponse.data;
@@ -259,7 +259,7 @@ export default function ReferralsPage() {
       toast.success("Referral code created successfully!");
       setShowCreateDialog(false);
       // Reset to system default commission rate
-      const settingsResponse = await apiClient.get("/system/settings/public");
+      const settingsResponse = await apiClient.get("/system-settings/public");
       let defaultCommissionRate = 15;
       if (settingsResponse.data?.commission?.defaultRate) {
         defaultCommissionRate = settingsResponse.data.commission.defaultRate;

@@ -611,6 +611,7 @@ export class LinksService {
         : `$${data.discountValue}`;
 
     // Create coupon
+    // Affiliate-generated codes for followers should be unlimited use
     const coupon = await prisma.coupon.create({
       data: {
         affiliateId: affiliate.id,
@@ -619,7 +620,7 @@ export class LinksService {
         discount: discount,
         validUntil: validUntil,
         usage: 0,
-        maxUsage: data.maxUsage || 100,
+        maxUsage: null, // Unlimited use for follower codes
         status: "ACTIVE",
       },
     });

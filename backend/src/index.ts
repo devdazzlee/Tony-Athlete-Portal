@@ -155,6 +155,8 @@ app.use(
     allowedHeaders: [
       "Content-Type",
       "Authorization",
+      "Cache-Control",
+      "Pragma",
       "Cookie",
       "X-Requested-With",
       "X-Trackdesk-Version",
@@ -232,7 +234,8 @@ app.use("/api/admin/affiliate-codes", adminAffiliateCodesRoutes); // Admin affil
 app.use("/api/admin/deliverables", adminDeliverablesRoutes); // Admin deliverables management
 app.use("/api/admin/feedback", adminFeedbackRoutes); // Admin feedback management
 app.use("/api/admin/tiers", adminTiersRoutes); // Admin tier management
-app.use("/api/system/settings", systemSettingsRoutes); // System settings routes
+app.use("/api/system/settings", systemSettingsRoutes); // System settings routes (legacy path)
+app.use("/api/system-settings", systemSettingsRoutes); // System settings routes (dash path)
 app.use("/api/upload", uploadRoutes); // File upload routes
 app.use("/api/websites", websitesRoutes); // Website management routes
 app.use("/api/athlete", athleteRoutes); // Athlete-specific routes

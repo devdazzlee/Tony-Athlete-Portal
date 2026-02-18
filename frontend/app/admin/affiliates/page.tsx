@@ -122,7 +122,11 @@ export default function AffiliatesManagementPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [isEditLoading, setIsEditLoading] = useState(false);
+  // password visibility
+  const [showPassword, setShowPassword] = useState(false); // create dialog password
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [editForm, setEditForm] = useState({
     status: "",
     commissionRate: 5,
@@ -132,6 +136,9 @@ export default function AffiliatesManagementPage() {
     discountExpiresAt: "",
     instagram: "",
     tiktok: "",
+    other: "",
+    newPassword: "",
+    confirmPassword: "",
     spendingLimit: "",
   });
   const [createForm, setCreateForm] = useState({
@@ -144,6 +151,7 @@ export default function AffiliatesManagementPage() {
     discountValue: "10",
     instagram: "",
     tiktok: "",
+    other: "",
     spendingLimit: "",
   });
   const [existingDiscountCodes, setExistingDiscountCodes] = useState<any[]>([]);
@@ -210,17 +218,18 @@ export default function AffiliatesManagementPage() {
     setIsCreating(true);
     try {
       const createResponse = await apiClient.post("/admin/affiliates/create", {
-        email: createForm.email,
-        password: createForm.password,
-        firstName: createForm.firstName,
-        lastName: createForm.lastName,
-        commissionRate: createForm.commissionRate,
-        discountCode: createForm.discountCode || undefined,
+          email: createForm.email,
+          password: createForm.password,
+          firstName: createForm.firstName,
+          lastName: createForm.lastName,
+          commissionRate: createForm.commissionRate,
+          discountCode: createForm.discountCode || undefined,
         discountValue: createForm.discountValue
           ? parseFloat(createForm.discountValue)
           : undefined,
-        instagram: createForm.instagram || undefined,
-        tiktok: createForm.tiktok || undefined,
+          instagram: createForm.instagram || undefined,
+          tiktok: createForm.tiktok || undefined,
+        other: createForm.other || undefined,
         spendingLimit: createForm.spendingLimit
           ? parseFloat(createForm.spendingLimit)
           : undefined,
@@ -247,6 +256,7 @@ export default function AffiliatesManagementPage() {
           discountValue: "10",
           instagram: "",
           tiktok: "",
+          other: "",
           spendingLimit: "",
         });
         
@@ -302,7 +312,14 @@ export default function AffiliatesManagementPage() {
   };
 
   const handleEditAffiliate = async (affiliate: Affiliate) => {
+    // Prevent multiple clicks - if already loading, ignore
+    if (isEditLoading) return;
+    
+    setIsEditLoading(true);
     setSelectedAffiliate(affiliate);
+    
+    // Open dialog immediately to show loading state
+    setEditDialogOpen(true);
     
     setEditForm({
       status: affiliate.status.toUpperCase(),
@@ -313,6 +330,9 @@ export default function AffiliatesManagementPage() {
       discountExpiresAt: "",
       instagram: "",
       tiktok: "",
+      other: "",
+      newPassword: "",
+      confirmPassword: "",
       spendingLimit: "",
     });
     
@@ -320,26 +340,30 @@ export default function AffiliatesManagementPage() {
     try {
       const response = await apiClient.get(`/admin/affiliates/${affiliate.id}`);
       const data = response.data;
-      const socialMedia = data.affiliate?.socialMedia || {};
+        const socialMedia = data.affiliate?.socialMedia || {};
       setSelectedAffiliateDetails(data.affiliate);
       
-      setEditForm((prev) => ({
-        ...prev,
+        setEditForm((prev) => ({
+          ...prev,
         commissionRate: data.affiliate?.commissionRate || prev.commissionRate,
-        deliverablesNote: data.affiliate?.deliverablesNote || "",
-        instagram: socialMedia.instagram || "",
-        tiktok: socialMedia.tiktok || "",
+          deliverablesNote: data.affiliate?.deliverablesNote || "",
+          instagram: socialMedia.instagram || "",
+          tiktok: socialMedia.tiktok || "",
+        other: socialMedia.other || "",
         spendingLimit: data.affiliate?.spendingLimit
           ? data.affiliate.spendingLimit.toString()
           : "",
-      }));
-      setExistingDiscountCodes(data.affiliate?.discountCodes || []);
-      setExistingReferralCodes(data.affiliate?.referralCodes || []);
+        }));
+        setExistingDiscountCodes(data.affiliate?.discountCodes || []);
+        setExistingReferralCodes(data.affiliate?.referralCodes || []);
     } catch (error) {
       console.error("Error fetching affiliate details:", error);
+      toast.error("Failed to load affiliate details");
+      // Close dialog on error
+      setEditDialogOpen(false);
+    } finally {
+      setIsEditLoading(false);
     }
-    
-    setEditDialogOpen(true);
   };
 
   const handleSaveChanges = async () => {
@@ -347,6 +371,19 @@ export default function AffiliatesManagementPage() {
 
     setIsSaving(true);
     try {
+      if (editForm.newPassword || editForm.confirmPassword) {
+        if (!editForm.newPassword || editForm.newPassword.length < 8) {
+          toast.error("New password must be at least 8 characters");
+          setIsSaving(false);
+          return;
+        }
+        if (editForm.newPassword !== editForm.confirmPassword) {
+          toast.error("Passwords do not match");
+          setIsSaving(false);
+          return;
+        }
+      }
+
       // Update status
       if (editForm.status !== selectedAffiliate.status.toUpperCase()) {
         await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/status`, {
@@ -395,16 +432,16 @@ export default function AffiliatesManagementPage() {
       await apiClient.patch(
         `/admin/affiliates/${selectedAffiliate.id}/deliverables-note`,
         {
-          deliverablesNote: editForm.deliverablesNote || null,
+            deliverablesNote: editForm.deliverablesNote || null,
         }
       );
 
       // Create discount code if provided (auto-syncs to Shopify)
       if (editForm.discountCode && editForm.discountValue) {
         const codeResponse = await apiClient.post(`/admin/affiliates/${selectedAffiliate.id}/discount-code`, {
-          code: editForm.discountCode,
-          discount: editForm.discountValue,
-          expiresAt: editForm.discountExpiresAt || undefined,
+              code: editForm.discountCode,
+              discount: editForm.discountValue,
+              expiresAt: editForm.discountExpiresAt || undefined,
         });
 
         // Show Shopify sync status
@@ -433,8 +470,9 @@ export default function AffiliatesManagementPage() {
 
       // Update social media links
       await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/social-media`, {
-        instagram: editForm.instagram || null,
-        tiktok: editForm.tiktok || null,
+            instagram: editForm.instagram || null,
+            tiktok: editForm.tiktok || null,
+        other: editForm.other || null,
       });
 
       // Update spending limit (monthly allowance)
@@ -446,6 +484,19 @@ export default function AffiliatesManagementPage() {
           `/admin/affiliates/${selectedAffiliate.id}/spending-limit`,
           { spendingLimit: spendingLimitValue }
         );
+      }
+
+      if (editForm.newPassword) {
+        await apiClient.patch(`/admin/affiliates/${selectedAffiliate.id}/password`, {
+          password: editForm.newPassword,
+          confirmPassword: editForm.confirmPassword,
+        });
+
+        setEditForm((prev) => ({
+          ...prev,
+          newPassword: "",
+          confirmPassword: "",
+        }));
       }
 
       toast.success("Affiliate updated successfully");
@@ -469,9 +520,9 @@ export default function AffiliatesManagementPage() {
     setIsDeleting(true);
     try {
       await apiClient.delete(`/admin/affiliates/${deleteModal.affiliateId}`);
-      toast.success("Affiliate deleted successfully");
+        toast.success("Affiliate deleted successfully");
       setDeleteModal({ isOpen: false, affiliateId: null, affiliateName: null });
-      fetchAffiliates();
+        fetchAffiliates();
     } catch (error) {
       console.error("Error deleting affiliate:", error);
       toast.error("Failed to delete affiliate");
@@ -692,40 +743,40 @@ export default function AffiliatesManagementPage() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
               <div className="md:col-span-6 lg:col-span-6 space-y-1">
                 <Label>Search</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
                     placeholder="Search affiliate name or email..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setCurrentPage(1);
-                    }}
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
                     className="pl-10 pr-4 h-11 py-0 rounded-lg"
-                  />
-                </div>
+                />
               </div>
+            </div>
 
               <div className="md:col-span-6 lg:col-span-6 space-y-1">
                 <Label>Date range</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <DatePicker
-                    value={fromDate}
-                    onChange={(date) => {
-                      setFromDate(date);
-                      setCurrentPage(1);
-                    }}
+              <DatePicker
+                value={fromDate}
+                onChange={(date) => {
+                  setFromDate(date);
+                  setCurrentPage(1);
+                }}
                     placeholder="From"
-                  />
-                  <DatePicker
-                    value={toDate}
-                    onChange={(date) => {
-                      setToDate(date);
-                      setCurrentPage(1);
-                    }}
+              />
+              <DatePicker
+                value={toDate}
+                onChange={(date) => {
+                  setToDate(date);
+                  setCurrentPage(1);
+                }}
                     placeholder="To"
-                  />
-                </div>
+              />
+            </div>
               </div>
             </div>
 
@@ -759,51 +810,51 @@ export default function AffiliatesManagementPage() {
 
               <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
+            <div className="space-y-1">
                     <Label>Sort</Label>
-                    <Select
-                      value={sortBy}
-                      onValueChange={(value: "createdAt" | "name") => {
-                        setSortBy(value);
-                      }}
-                    >
+              <Select
+                value={sortBy}
+                onValueChange={(value: "createdAt" | "name") => {
+                  setSortBy(value);
+                }}
+              >
                       <SelectTrigger className="h-11 rounded-lg w-full">
                         <SelectValue placeholder="Sort by" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="createdAt">Date Created</SelectItem>
-                        <SelectItem value="name">Name</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Order</Label>
-                    <Select
-                      value={sortOrder}
-                      onValueChange={(value: "asc" | "desc") => {
-                        setSortOrder(value);
-                      }}
-                    >
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="createdAt">Date Created</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Order</Label>
+              <Select
+                value={sortOrder}
+                onValueChange={(value: "asc" | "desc") => {
+                  setSortOrder(value);
+                }}
+              >
                       <SelectTrigger className="h-11 rounded-lg w-full">
-                        <SelectValue placeholder="Order" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="asc">Ascending</SelectItem>
-                        <SelectItem value="desc">Descending</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <SelectValue placeholder="Order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asc">Ascending</SelectItem>
+                  <SelectItem value="desc">Descending</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
                 </div>
 
-                <Button
-                  variant="outline"
+              <Button
+                variant="outline"
                   className="gap-2 h-11 rounded-lg"
-                  onClick={handleResetFilters}
-                  disabled={!filtersActive}
-                >
-                  <RefreshCw className="h-4 w-4" />
+                onClick={handleResetFilters}
+                disabled={!filtersActive}
+              >
+                <RefreshCw className="h-4 w-4" />
                   Clear
-                </Button>
+              </Button>
               </div>
             </div>
           </div>
@@ -846,9 +897,21 @@ export default function AffiliatesManagementPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditAffiliate(affiliate)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit
+                              <DropdownMenuItem 
+                                onClick={() => handleEditAffiliate(affiliate)}
+                                disabled={isEditLoading}
+                              >
+                                {isEditLoading ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Loading...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </>
+                                )}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => router.push(`/admin/commissions?affiliateId=${affiliate.id}`)}
@@ -958,9 +1021,19 @@ export default function AffiliatesManagementPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 onClick={() => handleEditAffiliate(affiliate)}
+                                disabled={isEditLoading}
                               >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit
+                                {isEditLoading ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Loading...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </>
+                                )}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => router.push(`/admin/commissions?affiliateId=${affiliate.id}`)}
@@ -1014,7 +1087,26 @@ export default function AffiliatesManagementPage() {
       </Card>
 
       {/* Edit Affiliate Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog 
+        open={editDialogOpen} 
+        onOpenChange={(open) => {
+          // Prevent closing dialog while loading
+          if (!open && !isEditLoading) {
+            setEditDialogOpen(false);
+            // Reset form when closing
+            setEditForm((prev) => ({
+              ...prev,
+              discountCode: "",
+              discountValue: "",
+              discountExpiresAt: "",
+              newPassword: "",
+              confirmPassword: "",
+            }));
+            setSelectedAffiliate(null);
+            setSelectedAffiliateDetails(null);
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] flex flex-col max-w-2xl w-full">
           <DialogHeader>
             <DialogTitle>Edit Affiliate</DialogTitle>
@@ -1022,7 +1114,12 @@ export default function AffiliatesManagementPage() {
               Update affiliate status, commission rate, and allowance
             </DialogDescription>
           </DialogHeader>
-          {selectedAffiliate && (
+          {isEditLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+              <p className="text-sm text-muted-foreground">Loading affiliate details...</p>
+            </div>
+          ) : selectedAffiliate && (
             <div className="space-y-4 overflow-y-auto max-h-[calc(90vh-180px)] pr-2">
               <div>
                 <Label>Affiliate</Label>
@@ -1181,8 +1278,8 @@ export default function AffiliatesManagementPage() {
                             </Badge>
                           )}
                           <Badge variant={code.status === "ACTIVE" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                            {code.status}
-                          </Badge>
+                          {code.status}
+                        </Badge>
                         </div>
                       </div>
                     ))}
@@ -1193,7 +1290,7 @@ export default function AffiliatesManagementPage() {
               {/* Create New Discount Code (auto-syncs to Shopify) */}
               <div className="space-y-2 border-t pt-3">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-semibold">Assign Discount Code</Label>
+                <Label className="text-sm font-semibold">Assign Discount Code</Label>
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-300 text-green-700 bg-green-50">
                     <ShoppingBag className="w-2.5 h-2.5 mr-0.5" />
                     Auto-syncs to Shopify
@@ -1288,8 +1385,82 @@ export default function AffiliatesManagementPage() {
                     }
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="otherSocial">Other (App + Handle)</Label>
+                  <Input
+                    id="otherSocial"
+                    placeholder="e.g., YouTube: @username"
+                    value={editForm.other}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        other: e.target.value,
+                      })
+                    }
+                  />
+                </div>
                 <p className="text-xs text-muted-foreground">
                   These will be displayed on the affiliate's dashboard
+                </p>
+              </div>
+
+              {/* Change Password */}
+              <div className="space-y-2 border-t pt-3">
+                <Label className="text-sm font-semibold">Change Password</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showNewPassword ? "text" : "password"}
+                        placeholder="At least 8 characters"
+                        value={editForm.newPassword}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            newPassword: e.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+                        onClick={() => setShowNewPassword((prev) => !prev)}
+                        aria-label={showNewPassword ? "Hide password" : "Show password"}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Re-enter new password"
+                        value={editForm.confirmPassword}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            confirmPassword: e.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to keep the current password.
                 </p>
               </div>
             </div>
@@ -1298,16 +1469,22 @@ export default function AffiliatesManagementPage() {
             <Button 
               variant="outline" 
               onClick={() => {
-                setEditDialogOpen(false);
-                // Reset fields when closing
-                setEditForm((prev) => ({
-                  ...prev,
-                  discountCode: "",
-                  discountValue: "",
-                  discountExpiresAt: "",
-                }));
+                if (!isEditLoading) {
+                  setEditDialogOpen(false);
+                  // Reset fields when closing
+                  setEditForm((prev) => ({
+                    ...prev,
+                    discountCode: "",
+                    discountValue: "",
+                    discountExpiresAt: "",
+                    newPassword: "",
+                    confirmPassword: "",
+                  }));
+                  setSelectedAffiliate(null);
+                  setSelectedAffiliateDetails(null);
+                }
               }}
-              disabled={isSaving}
+              disabled={isSaving || isEditLoading}
             >
               Cancel
             </Button>
@@ -1336,6 +1513,7 @@ export default function AffiliatesManagementPage() {
               discountValue: "10",
               instagram: "",
               tiktok: "",
+              other: "",
               spendingLimit: "",
             });
             setShowPassword(false);
@@ -1392,14 +1570,14 @@ export default function AffiliatesManagementPage() {
               <div className="space-y-2">
                 <Label htmlFor="create-password">Password *</Label>
                 <div className="relative">
-                  <Input
-                    id="create-password"
+                <Input
+                  id="create-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Min 8 characters"
-                    value={createForm.password}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, password: e.target.value })
-                    }
+                  placeholder="Min 8 characters"
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, password: e.target.value })
+                  }
                     className="pr-10"
                   />
                   <Button
@@ -1521,6 +1699,17 @@ export default function AffiliatesManagementPage() {
                     value={createForm.tiktok}
                     onChange={(e) =>
                       setCreateForm({ ...createForm, tiktok: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="create-other">Other (App + Handle)</Label>
+                  <Input
+                    id="create-other"
+                    placeholder="e.g., YouTube: @username"
+                    value={createForm.other}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, other: e.target.value })
                     }
                   />
                 </div>

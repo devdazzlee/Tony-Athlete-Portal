@@ -149,7 +149,11 @@ apiClient.interceptors.request.use(
         }
       }
       
+      // Set Authorization header - ensure headers object exists
       if (token) {
+        if (!config.headers) {
+          config.headers = {} as any;
+        }
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
@@ -158,8 +162,26 @@ apiClient.interceptors.request.use(
     // so axios/browser can automatically set it to multipart/form-data with
     // the correct boundary. Without this, the hardcoded "application/json"
     // default prevents multer from parsing the file on the backend.
+    // IMPORTANT: Only delete Content-Type, keep Authorization header!
     if (config.data instanceof FormData) {
-      delete config.headers["Content-Type"];
+      // Ensure headers object exists
+      if (!config.headers) {
+        config.headers = {} as any;
+      }
+      
+      // Preserve Authorization header before deleting Content-Type
+      const authHeader = config.headers.Authorization;
+      
+      // Delete Content-Type to let browser set multipart/form-data with boundary
+      delete (config.headers as any)["Content-Type"];
+      
+      // Restore Authorization header if it was set
+      if (authHeader) {
+        config.headers.Authorization = authHeader;
+      }
+      
+      // Log for debugging
+      console.log("FormData request - Authorization header:", config.headers.Authorization ? "Present" : "Missing");
     }
 
     return config;

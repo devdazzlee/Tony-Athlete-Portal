@@ -70,7 +70,6 @@ interface Commission {
   status: "PENDING" | "APPROVED" | "PAID" | "CANCELLED";
   createdAt: string;
   payoutDate?: string;
-  bankDetails?: CommissionBankDetails | null;
   affiliate: {
     id: string;
     user: {
@@ -128,22 +127,6 @@ interface CommissionAnalytics {
   }>;
 }
 
-interface CommissionBankDetails {
-  accountHolder?: string;
-  bankName?: string;
-  accountNumber?: string;
-  routingNumber?: string;
-  swiftCode?: string;
-  iban?: string;
-  currency?: string;
-  notes?: string;
-  address?: string;
-  payoutMethod?: string;
-  payoutEmail?: string;
-  payoutFrequency?: string;
-  minimumPayout?: number;
-}
-
 type SortByOption =
   | "createdAt"
   | "commissionAmount"
@@ -194,15 +177,6 @@ export default function CommissionsPage() {
     total: 0,
     pages: 0,
   });
-  const [bankDetailsModal, setBankDetailsModal] = useState<{
-    isOpen: boolean;
-    affiliateName: string;
-    bankDetails: CommissionBankDetails | null;
-  }>({
-    isOpen: false,
-    affiliateName: "",
-    bankDetails: null,
-  });
 
   const [topAffiliatesModalOpen, setTopAffiliatesModalOpen] = useState(false);
 
@@ -239,20 +213,6 @@ export default function CommissionsPage() {
     );
   };
 
-  const openBankDetailsModal = (
-    affiliateName: string,
-    bankDetails: CommissionBankDetails | null
-  ) => {
-    setBankDetailsModal({
-      isOpen: true,
-      affiliateName,
-      bankDetails,
-    });
-  };
-
-  const closeBankDetailsModal = () => {
-    setBankDetailsModal((prev) => ({ ...prev, isOpen: false }));
-  };
 
   const applyStatusFilter = (
     status: "all" | "PENDING" | "APPROVED" | "PAID"
@@ -1273,7 +1233,6 @@ export default function CommissionsPage() {
                   <TableHead>Rate</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
-                  <TableHead>Bank Details</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1281,7 +1240,7 @@ export default function CommissionsPage() {
                 {!isTableLoading && commissions.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={8}
                       className="text-center py-8 text-muted-foreground"
                     >
                       No commissions found. Create some referral codes to
@@ -1331,26 +1290,6 @@ export default function CommissionsPage() {
                             month: "2-digit",
                             day: "2-digit",
                           }
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {commission.bankDetails ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              openBankDetailsModal(
-                                `${commission.affiliate.user.firstName} ${commission.affiliate.user.lastName}`,
-                                commission.bankDetails ?? null
-                              )
-                            }
-                          >
-                            <Eye className="h-4 w-4 mr-2" /> View
-                          </Button>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            Not provided
-                          </span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -1446,98 +1385,6 @@ export default function CommissionsPage() {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={bankDetailsModal.isOpen}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) {
-            closeBankDetailsModal();
-          }
-        }}
-      >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Bank Details</DialogTitle>
-            <DialogDescription>
-              {bankDetailsModal.affiliateName || "Affiliate information"}
-            </DialogDescription>
-          </DialogHeader>
-
-          {bankDetailsModal.bankDetails ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {renderDetail(
-                  "Account Holder",
-                  bankDetailsModal.bankDetails.accountHolder
-                )}
-                {renderDetail(
-                  "Bank Name",
-                  bankDetailsModal.bankDetails.bankName
-                )}
-                {renderDetail(
-                  "Account Number",
-                  bankDetailsModal.bankDetails.accountNumber
-                )}
-                {renderDetail(
-                  "Routing Number",
-                  bankDetailsModal.bankDetails.routingNumber
-                )}
-                {renderDetail(
-                  "SWIFT / BIC",
-                  bankDetailsModal.bankDetails.swiftCode
-                )}
-                {renderDetail("IBAN", bankDetailsModal.bankDetails.iban)}
-                {renderDetail(
-                  "Currency",
-                  bankDetailsModal.bankDetails.currency
-                )}
-                {renderDetail(
-                  "Payout Method",
-                  bankDetailsModal.bankDetails.payoutMethod
-                )}
-                {renderDetail(
-                  "Payout Email",
-                  bankDetailsModal.bankDetails.payoutEmail
-                )}
-                {renderDetail(
-                  "Payout Frequency",
-                  bankDetailsModal.bankDetails.payoutFrequency
-                )}
-                {renderDetail(
-                  "Minimum Payout",
-                  bankDetailsModal.bankDetails.minimumPayout,
-                  (val) => `$${Number(val).toFixed(2)}`
-                )}
-              </div>
-
-              {bankDetailsModal.bankDetails.address && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Bank Address
-                  </p>
-                  <p className="text-sm font-semibold whitespace-pre-wrap">
-                    {bankDetailsModal.bankDetails.address}
-                  </p>
-                </div>
-              )}
-
-              {bankDetailsModal.bankDetails.notes && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Notes
-                  </p>
-                  <p className="text-sm font-semibold whitespace-pre-wrap">
-                    {bankDetailsModal.bankDetails.notes}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              This affiliate has not provided bank details yet.
-            </p>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

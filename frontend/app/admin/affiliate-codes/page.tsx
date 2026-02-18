@@ -96,6 +96,7 @@ export default function AffiliateCodesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   
   // Form state
@@ -108,6 +109,8 @@ export default function AffiliateCodesPage() {
   const [syncToShopify, setSyncToShopify] = useState(true);
   const [customDescription, setCustomDescription] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Edit state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -242,6 +245,38 @@ export default function AffiliateCodesPage() {
     }
   };
 
+  const handleBulkUpload = async () => {
+    if (!uploadFile) {
+      toast.error("Please select a CSV file to upload");
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append("csvFile", uploadFile);
+
+      const response = await api.post("/admin/affiliate-codes/import", formData);
+      const data = response.data;
+
+      if (data?.errors?.length) {
+        console.warn("Bulk upload errors:", data.errors);
+        toast.warning(data.message || "Imported with some errors. Check console for details.");
+      } else {
+        toast.success(data.message || "Bulk upload completed successfully");
+      }
+
+      setShowUploadModal(false);
+      setUploadFile(null);
+      fetchCodes();
+      fetchStats();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to upload CSV");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleEditCode = (code: AffiliateCode) => {
     setEditingCode(code);
     setEditStatus(code.status);
@@ -337,13 +372,22 @@ export default function AffiliateCodesPage() {
             Generate one-time use codes for affiliate monthly product allowances
           </p>
         </div>
-        <button
-          onClick={() => setShowGenerateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          <Plus size={20} />
-          Generate New Code
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-900 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Download size={18} />
+            Bulk Upload
+          </button>
+          <button
+            onClick={() => setShowGenerateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <Plus size={20} />
+            Generate New Code
+          </button>
+        </div>
       </div>
 
       {/* Info Banner */}
@@ -370,9 +414,9 @@ export default function AffiliateCodesPage() {
                 About Affiliate Allowance Codes
               </h3>
               <p className="text-sm text-indigo-800">
-                Generate unique one-time use discount codes for affiliates. Each code automatically expires at the end of the month it's created. 
-                You can customize each code with a discount percentage or fixed amount, and optionally add free shipping. 
-                Perfect for monthly product allowances and affiliate perks.
+                Generate unique one-time use allowance codes for affiliates. Each code automatically expires at the end of the month it's created.
+                You can customize each code with a discount percentage or fixed amount. If free shipping is enabled, a separate shipping code
+                is created for the same period.
               </p>
             </div>
           </div>
@@ -549,6 +593,22 @@ export default function AffiliateCodesPage() {
                           {code.affiliate.user.firstName} {code.affiliate.user.lastName}
                         </div>
                         <div className="text-xs text-muted-foreground">{code.affiliate.user.email}</div>
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono text-gray-600">
+                            {code.affiliate.id}
+                          </code>
+                          <button
+                            onClick={() => handleCopyCode(code.affiliate.id)}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Copy affiliate ID"
+                          >
+                            {copiedCode === code.affiliate.id ? (
+                              <Check size={12} className="text-green-600" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
                       </div>
 
                       <div>
@@ -665,6 +725,22 @@ export default function AffiliateCodesPage() {
                           {code.affiliate.user.firstName} {code.affiliate.user.lastName}
                         </div>
                         <div className="text-gray-500">{code.affiliate.user.email}</div>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono text-gray-600">
+                            {code.affiliate.id}
+                          </code>
+                          <button
+                            onClick={() => handleCopyCode(code.affiliate.id)}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Copy affiliate ID"
+                          >
+                            {copiedCode === code.affiliate.id ? (
+                              <Check size={12} className="text-green-600" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -745,6 +821,146 @@ export default function AffiliateCodesPage() {
         )}
       </Card>
 
+      {/* Bulk Upload Modal */}
+      <Dialog
+        open={showUploadModal}
+        onOpenChange={(open) => {
+          setShowUploadModal(open);
+          if (!open) setUploadFile(null);
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Bulk Upload Allowance Codes</DialogTitle>
+            <DialogDescription>
+              Upload a CSV to create monthly allowance codes in bulk.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-upload-file">CSV File</Label>
+              <label
+                htmlFor="bulk-upload-file"
+                className="flex items-center justify-between w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold text-sm">
+                    CSV
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-sm font-medium text-gray-800">Choose a CSV file</span>
+                    <span className="text-xs text-gray-500">Drag & drop or click to browse</span>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {uploadFile ? uploadFile.name : "Max 10MB"}
+                </div>
+              </label>
+              <input
+                id="bulk-upload-file"
+                type="file"
+                accept=".csv"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+              <div className="rounded-lg border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 shadow-sm">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-100 rounded-lg">
+                      <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">CSV Format</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">UTF-8 encoding • Max 10MB</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Columns Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Required Columns */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+                      <p className="text-xs font-semibold text-gray-900 uppercase tracking-wide">Required Columns</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <code className="inline-flex items-center px-2.5 py-1 bg-red-50 border border-red-200 text-red-700 text-xs font-mono rounded-md">
+                        affiliateId
+                      </code>
+                      <span className="inline-flex items-center text-xs text-gray-400 font-medium px-1">or</span>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-red-50 border border-red-200 text-red-700 text-xs font-mono rounded-md">
+                        affiliateEmail
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-red-50 border border-red-200 text-red-700 text-xs font-mono rounded-md">
+                        allowanceAmount
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Optional Columns */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <p className="text-xs font-semibold text-gray-900 uppercase tracking-wide">Optional Columns</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        code
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        discountType
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        discountValue
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        freeShipping
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        description
+                      </code>
+                      <code className="inline-flex items-center px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono rounded-md">
+                        syncToShopify
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Help Text */}
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      <span className="font-semibold text-gray-700">discountType:</span> Use <code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">percentage</code> or <code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">fixed_amount</code>. 
+                      Boolean fields (<code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">freeShipping</code>, <code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">syncToShopify</code>) use <code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">true</code> or <code className="px-1 py-0.5 bg-gray-100 rounded text-gray-700 font-mono">false</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+                          </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUploadModal(false)}
+              disabled={isUploading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleBulkUpload} disabled={isUploading || !uploadFile}>
+              {isUploading ? "Uploading..." : "Upload CSV"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Generate Code Modal */}
       <Dialog 
         open={showGenerateModal} 
@@ -806,7 +1022,7 @@ export default function AffiliateCodesPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 mt-2 font-mono uppercase"
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  Set your own code or leave blank to auto-generate one. This is the code customers will enter at checkout.
+                  Set your own allowance code or leave blank to auto-generate one. If free shipping is enabled, a separate shipping code will be created.
                 </p>
               </div>
 
@@ -902,7 +1118,7 @@ export default function AffiliateCodesPage() {
                       Add Free Shipping
                     </Label>
                     <p className="text-xs text-gray-600 mt-1">
-                      Check this box to include free shipping with the discount code
+                      A separate shipping code will be created for free shipping.
                     </p>
                   </div>
                 </div>
@@ -966,7 +1182,7 @@ export default function AffiliateCodesPage() {
                   <ul className="text-sm text-blue-800 space-y-1.5">
                     <li className="flex items-start gap-2">
                       <span className="text-blue-600 font-bold">→</span>
-                      <span><strong>Usage:</strong> One-time use only (expires after 1 use)</span>
+                      <span><strong>Usage:</strong> One-time use per customer (each customer can use it once)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-blue-600 font-bold">→</span>
@@ -985,7 +1201,7 @@ export default function AffiliateCodesPage() {
                     {freeShipping && (
                       <li className="flex items-start gap-2">
                         <span className="text-green-600 font-bold">✓</span>
-                        <span><strong>Free Shipping:</strong> Enabled</span>
+                        <span><strong>Free Shipping:</strong> Enabled (separate shipping code will be created)</span>
                       </li>
                     )}
                     {(!discountValue || parseFloat(discountValue) === 0) && !freeShipping && (
@@ -1181,4 +1397,3 @@ export default function AffiliateCodesPage() {
     </div>
   );
 }
-

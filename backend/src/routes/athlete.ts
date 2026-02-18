@@ -3,6 +3,7 @@ import { authenticateToken } from "../middleware/auth";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import shopifyService from "../services/ShopifyService";
+import { getCommissionableValue } from "../utils/orderValue";
 
 const router: Router = express.Router();
 const prisma = new PrismaClient();
@@ -114,6 +115,7 @@ router.get("/profile", async (req: any, res) => {
     res.json({
       instagram: socialMedia.instagram || null,
       tiktok: socialMedia.tiktok || null,
+      other: socialMedia.other || null,
       discountCodes,
       spendingLimit: affiliate.spendingLimit ? `$${affiliate.spendingLimit.toFixed(2)}` : "Not Set",
       deliverablesNote: affiliate.deliverablesNote || null,
@@ -142,6 +144,7 @@ router.put("/profile/social", async (req: any, res) => {
     const schema = z.object({
       instagram: z.string().trim().optional().nullable(),
       tiktok: z.string().trim().optional().nullable(),
+      other: z.string().trim().optional().nullable(),
     });
 
     const data = schema.parse(req.body);
@@ -164,6 +167,8 @@ router.put("/profile/social", async (req: any, res) => {
       data.instagram == null || data.instagram === "" ? null : data.instagram;
     const normalizedTiktok =
       data.tiktok == null || data.tiktok === "" ? null : data.tiktok;
+    const normalizedOther =
+      data.other == null || data.other === "" ? null : data.other;
 
     const updated = await prisma.affiliateProfile.update({
       where: { id: affiliate.id },
@@ -172,6 +177,7 @@ router.put("/profile/social", async (req: any, res) => {
           ...(currentSocial || {}),
           instagram: normalizedInstagram,
           tiktok: normalizedTiktok,
+          other: normalizedOther,
         } as any,
       },
       select: {
@@ -185,6 +191,7 @@ router.put("/profile/social", async (req: any, res) => {
       success: true,
       instagram: updatedSocial.instagram || null,
       tiktok: updatedSocial.tiktok || null,
+      other: updatedSocial.other || null,
     });
   } catch (error) {
     console.error("Error updating athlete social media:", error);
@@ -453,7 +460,8 @@ const deliverableSchema = z.object({
   links: z.array(
     z.object({
       url: z.string().url(),
-      platform: z.enum(["Instagram", "TikTok", "YouTube"]),
+      platform: z.enum(["Instagram", "TikTok", "YouTube", "Other"]),
+      customPlatformName: z.string().optional(), // Required when platform is "Other"
       photoUrl: z.string().url().optional(),
     })
   ),
@@ -472,6 +480,16 @@ router.post("/deliverables", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
+    // Validate that customPlatformName is provided when platform is "Other"
+    for (const link of data.links) {
+      if (link.platform === "Other" && (!link.customPlatformName || link.customPlatformName.trim() === "")) {
+        return res.status(400).json({ 
+          error: "customPlatformName is required when platform is 'Other'",
+          details: [{ path: ["links"], message: "Please specify the platform name when selecting 'Other'" }]
+        });
+      }
+    }
+
     // Store deliverables in Activity table with approval status
     const deliverables = await Promise.all(
       data.links.map((link) =>
@@ -484,7 +502,11 @@ router.post("/deliverables", async (req: any, res) => {
             details: {
               month: data.month,
               url: link.url,
-              platform: link.platform,
+              platform: link.platform === "Other" && link.customPlatformName 
+                ? link.customPlatformName.trim() 
+                : link.platform,
+              originalPlatform: link.platform, // Keep track of original selection
+              customPlatformName: link.platform === "Other" ? link.customPlatformName?.trim() : null,
               photoUrl: link.photoUrl || null,
             } as any,
             ipAddress: req.ip,
@@ -529,10 +551,12 @@ router.get("/deliverables", async (req: any, res) => {
 
     const submissions = activities.map((activity) => {
       const details = activity.details as any;
+      // Use customPlatformName if available (for "Other" platform), otherwise use platform
+      const displayPlatform = details.customPlatformName || details.platform;
       return {
         id: activity.id,
         date: formatDate(activity.createdAt),
-        platform: details.platform,
+        platform: displayPlatform,
         url: details.url,
         photoUrl: details.photoUrl || null,
         status: activity.status || "PENDING",
@@ -1064,7 +1088,7 @@ router.get("/commission-summary", async (req: any, res) => {
       totalOrders: currentOrders.length,
       totalUnits,
       commission: currentCommission._sum.commissionAmount
-        ? `£${currentCommission._sum.commissionAmount.toFixed(2)}`
+        ? `$${currentCommission._sum.commissionAmount.toFixed(2)}`
         : "Commission not calculated yet",
     };
 
@@ -1104,8 +1128,8 @@ router.get("/commission-summary", async (req: any, res) => {
         totalOrders: orders.length,
         totalUnits: units,
         commission: commissionSum._sum.commissionAmount
-          ? `£${commissionSum._sum.commissionAmount.toFixed(2)}`
-          : "£0.00",
+          ? `$${commissionSum._sum.commissionAmount.toFixed(2)}`
+          : "$0.00",
       });
     }
 
@@ -1409,7 +1433,7 @@ router.post("/sync-orders", async (req: any, res) => {
       // Get the actual code (preserving case)
       const actualCode = affiliateCodesMap.get(matchedCodeUpper)!;
 
-      const orderValue = parseFloat(order.total_price);
+      const orderValue = getCommissionableValue(order as any);
       const commissionRate = (affiliate.commissionRate || 10) / 100;
       const commissionAmount = orderValue * commissionRate;
 
@@ -1527,10 +1551,10 @@ router.post("/orders/create", async (req: any, res) => {
       throw new Error("Failed to create order in Shopify");
     }
 
-    // Calculate commission
-    const orderTotal = parseFloat(shopifyOrder.total_price || "0");
+    // Calculate commission (after discount, before shipping & tax)
+    const orderValue = getCommissionableValue(shopifyOrder as any);
     const commissionRate = affiliate.commissionRate || 10;
-    const commissionAmount = (orderTotal * commissionRate) / 100;
+    const commissionAmount = (orderValue * commissionRate) / 100;
 
     // Create order record in database
     const affiliateOrder = await prisma.affiliateOrder.create({
@@ -1541,7 +1565,7 @@ router.post("/orders/create", async (req: any, res) => {
         orderId: `shopify-${shopifyOrder.id}`,
         shopifyOrderId: shopifyOrder.id.toString(),
         shopifyOrderNumber: shopifyOrder.name || `#${shopifyOrder.order_number}`,
-        orderValue: orderTotal,
+        orderValue: orderValue,
         subtotalPrice: parseFloat(shopifyOrder.subtotal_price || "0"),
         totalTax: parseFloat(shopifyOrder.total_tax || "0"),
         currency: store.currency || "USD",
@@ -1596,4 +1620,3 @@ function formatDate(date: Date): string {
 }
 
 export default router;
-

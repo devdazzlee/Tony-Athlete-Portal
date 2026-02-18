@@ -10,6 +10,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import shopifyService, { ShopifyOrder } from '../services/ShopifyService';
+import { getCommissionableValue } from '../utils/orderValue';
 
 const prisma = new PrismaClient();
 
@@ -111,7 +112,7 @@ async function processNewOrder(order: ShopifyOrder, storeId: string, storeName: 
 
       if (coupon) {
         const affiliate = coupon.affiliate;
-        const orderValue = parseFloat(order.total_price);
+        const orderValue = getCommissionableValue(order);
         const commissionRate = affiliate.commissionRate / 100 || DEFAULT_COMMISSION_RATE;
         const commissionAmount = orderValue * commissionRate;
 
@@ -198,7 +199,7 @@ async function updateExistingOrder(order: ShopifyOrder, storeId: string) {
       data: {
         financialStatus: order.financial_status,
         fulfillmentStatus: order.fulfillment_status,
-        orderValue: parseFloat(order.total_price),
+        orderValue: getCommissionableValue(order),
         items: order.line_items,
         updatedAt: new Date(),
       },
@@ -393,7 +394,7 @@ export async function syncAffiliateOrders(req: Request, res: Response) {
         });
 
         if (affiliate) {
-          const orderValue = parseFloat(order.total_price);
+          const orderValue = getCommissionableValue(order);
           const commissionRate = affiliate.commissionRate / 100 || DEFAULT_COMMISSION_RATE;
           const commissionAmount = orderValue * commissionRate;
 
@@ -492,7 +493,7 @@ export async function syncAllOrders(req: Request, res: Response) {
         );
 
         if (coupon && coupon.affiliate) {
-          const orderValue = parseFloat(order.total_price);
+          const orderValue = getCommissionableValue(order);
           const commissionRate = coupon.affiliate.commissionRate / 100 || DEFAULT_COMMISSION_RATE;
           const commissionAmount = orderValue * commissionRate;
 
@@ -553,4 +554,3 @@ export default {
   syncAffiliateOrders,
   syncAllOrders,
 };
-

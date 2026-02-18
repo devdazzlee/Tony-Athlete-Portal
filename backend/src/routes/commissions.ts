@@ -6,13 +6,7 @@ import { z } from "zod";
 const router: Router = express.Router();
 const prisma = new PrismaClient();
 
-const ALLOWED_PAYMENT_METHODS: PaymentMethod[] = [
-  "PAYPAL",
-  "STRIPE",
-  "BANK_TRANSFER",
-  "CRYPTO",
-  "WISE",
-];
+const ALLOWED_PAYMENT_METHODS: PaymentMethod[] = ["PAYPAL"];
 
 function normalizePaymentMethod(method: string): PaymentMethod {
   const normalized = method.toUpperCase().replace(/\s+/g, "_") as PaymentMethod;
@@ -24,32 +18,7 @@ function normalizePaymentMethod(method: string): PaymentMethod {
   return normalized;
 }
 
-function parseBankAccountData(bankAccount?: string | null) {
-  if (!bankAccount) {
-    return {
-      bankDetails: null as Record<string, any> | null,
-      payoutFrequency: null as string | null,
-      minimumPayout: null as number | null,
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(bankAccount);
-
-    if (parsed && typeof parsed === "object") {
-      return {
-        bankDetails: parsed.bankDetails || parsed || null,
-        payoutFrequency: parsed.payoutFrequency || null,
-        minimumPayout:
-          typeof parsed.minimumPayout === "number"
-            ? parsed.minimumPayout
-            : null,
-      };
-    }
-  } catch (error) {
-    console.warn("Failed to parse bank account settings", error);
-  }
-
+function parseBankAccountData() {
   return {
     bankDetails: null as Record<string, any> | null,
     payoutFrequency: null as string | null,
@@ -58,7 +27,7 @@ function parseBankAccountData(bankAccount?: string | null) {
 }
 
 async function buildAffiliatePayoutSettings(affiliate: any) {
-  const bankData = parseBankAccountData(affiliate.bankAccount);
+  const bankData = parseBankAccountData();
 
   const [lastPayout, nextPendingOrder] = await Promise.all([
     prisma.payout.findFirst({
@@ -82,11 +51,11 @@ async function buildAffiliatePayoutSettings(affiliate: any) {
     : null;
 
   return {
-    minimumPayout: bankData.minimumPayout ?? 50.0,
-    payoutMethod: formatPayoutMethod(affiliate.paymentMethod),
+    minimumPayout: null,
+    payoutMethod: formatPayoutMethod("PAYPAL"),
     payoutEmail: affiliate.paymentEmail || affiliate.user?.email || "",
-    payoutFrequency: bankData.payoutFrequency || "Monthly",
-    bankDetails: bankData.bankDetails,
+    payoutFrequency: null,
+    bankDetails: null,
     lastPayoutDate: lastPayout?.processedAt || lastPayout?.createdAt || null,
     nextPayoutDate: nextPayoutDate ? nextPayoutDate.toISOString() : null,
     taxInfo: {
@@ -241,7 +210,7 @@ router.get("/pending", authenticateToken, async (req: any, res) => {
         )
       : null;
 
-    const bankData = parseBankAccountData(affiliate.bankAccount);
+  const bankData = parseBankAccountData();
     const summary = {
       pendingAmount: pendingSummary._sum.commissionAmount || 0,
       pendingCount: pendingSummary._count.id || 0,
@@ -422,27 +391,7 @@ router.put("/settings", authenticateToken, async (req: any, res) => {
     }
 
     const settingsSchema = z.object({
-      payoutMethod: z.string().min(1, "Payout method is required"),
       payoutEmail: z.string().email(),
-      payoutFrequency: z
-        .enum(["Monthly", "Bi-Weekly", "Weekly", "Quarterly"])
-        .optional()
-        .default("Monthly"),
-      minimumPayout: z.number().min(0).optional().default(50),
-      bankDetails: z
-        .object({
-          accountHolder: z.string().min(1, "Account holder is required"),
-          bankName: z.string().optional(),
-          accountNumber: z.string().min(1, "Account number is required"),
-          routingNumber: z.string().optional(),
-          swiftCode: z.string().optional(),
-          iban: z.string().optional(),
-          currency: z.string().optional(),
-          notes: z.string().optional(),
-          address: z.string().optional(),
-        })
-        .nullable()
-        .optional(),
     });
 
     let validatedData;
@@ -458,27 +407,15 @@ router.put("/settings", authenticateToken, async (req: any, res) => {
       throw error;
     }
 
-    let normalizedMethod: PaymentMethod;
-    try {
-      normalizedMethod = normalizePaymentMethod(validatedData.payoutMethod);
-    } catch (error: any) {
-      return res
-        .status(400)
-        .json({ error: error.message || "Invalid payout method" });
-    }
-
-    const bankPayload = {
-      payoutFrequency: validatedData.payoutFrequency || "Monthly",
-      minimumPayout: validatedData.minimumPayout ?? 50,
-      bankDetails: validatedData.bankDetails || null,
-    };
+    // Force PayPal as the only allowed method
+    const normalizedMethod: PaymentMethod = "PAYPAL";
 
     const updatedAffiliate = await prisma.affiliateProfile.update({
       where: { id: affiliate.id },
       data: {
         paymentMethod: normalizedMethod,
         paymentEmail: validatedData.payoutEmail,
-        bankAccount: JSON.stringify(bankPayload),
+        bankAccount: null,
         updatedAt: new Date(),
       },
       include: { user: true },
@@ -529,13 +466,6 @@ router.post("/request-payout", authenticateToken, async (req: any, res) => {
       return res.status(400).json({
         error: "Requested amount exceeds available balance",
         availableAmount,
-      });
-    }
-
-    if (amount < 50) {
-      return res.status(400).json({
-        error: "Minimum payout amount is $50",
-        minimumAmount: 50,
       });
     }
 

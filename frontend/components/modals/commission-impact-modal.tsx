@@ -53,7 +53,7 @@ export default function CommissionImpactModal({
     setIsLoadingPreview(true);
     try {
       const response = await apiClient.post(
-        "/system/settings/commission/preview",
+        "/system-settings/commission/preview",
         { defaultRate: newDefaultRate }
       );
       setImpactData(response.data?.preview);

@@ -320,7 +320,7 @@ export default function DashboardLayout({
             alt="TC Nutrition" 
             width={180} 
             height={50}
-            className="h-auto w-auto max-w-[180px]"
+            className="h-auto w-[180px] max-h-12 object-contain"
             priority
           />
         </Link>

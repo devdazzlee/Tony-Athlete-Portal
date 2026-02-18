@@ -29,7 +29,7 @@ class SystemSettingsModel {
                 },
                 currencies: data.currencies || {
                     defaultCurrency: "USD",
-                    supportedCurrencies: ["USD", "EUR", "GBP", "CAD", "AUD"],
+                    supportedCurrencies: ["USD", "GBP", "CAD", "AUD"],
                     exchangeRateProvider: "fixer",
                     autoUpdateRates: true,
                     rateUpdateInterval: 24,
@@ -313,7 +313,6 @@ class SystemSettingsModel {
     static async getSupportedCurrencies() {
         return [
             "USD",
-            "EUR",
             "GBP",
             "JPY",
             "CAD",
@@ -337,7 +336,6 @@ class SystemSettingsModel {
     static async getExchangeRates(baseCurrency = "USD") {
         const rates = {
             USD: 1.0,
-            EUR: 0.85,
             GBP: 0.73,
             JPY: 110.0,
             CAD: 1.25,

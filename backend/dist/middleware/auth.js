@@ -68,14 +68,39 @@ const authenticateToken = async (req, res, next) => {
             }
             return res.status(401).json({ error: "Invalid access token" });
         }
-        const session = await prisma.session.findFirst({
+        let session = await prisma.session.findFirst({
             where: {
                 token,
                 isActive: true,
                 expiresAt: { gt: new Date() },
             },
         });
+        if (!session && decoded.userId) {
+            const userSession = await prisma.session.findFirst({
+                where: {
+                    userId: decoded.userId,
+                    isActive: true,
+                    expiresAt: { gt: new Date() },
+                },
+                orderBy: {
+                    lastActivity: "desc",
+                },
+            });
+            if (userSession) {
+                const jwtExp = decoded.exp ? decoded.exp * 1000 : null;
+                const now = Date.now();
+                const oneMinuteGrace = 60 * 1000;
+                if (jwtExp && (jwtExp - now) > -oneMinuteGrace) {
+                    session = userSession;
+                }
+            }
+        }
         if (!session) {
+            console.log("Session not found", {
+                tokenLength: token?.length,
+                userId: decoded.userId,
+                tokenExp: decoded.exp,
+            });
             return res.status(401).json({ error: "Session expired", code: "TOKEN_EXPIRED" });
         }
         const user = await prisma.user.findUnique({
