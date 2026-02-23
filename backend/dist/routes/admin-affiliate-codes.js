@@ -260,21 +260,20 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
             const stores = ShopifyService_1.default.getAllStores();
             for (const store of stores) {
                 try {
-                    const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
-                    const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                    const result = await ShopifyService_1.default.createDiscountCodeGraphQL(store.id, {
                         title: `Affiliate Allowance Code: ${code}`,
+                        code: code,
                         valueType: data.discountType,
-                        value: shopifyValue,
+                        value: data.discountValue > 0 ? data.discountValue : 0.01,
                         startsAt: new Date().toISOString(),
                         endsAt: endOfMonth.toISOString(),
-                        usageLimit: undefined,
                         oncePerCustomer: true,
+                        combinesWith: { shippingDiscounts: true },
                     });
-                    const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code);
-                    allowanceShopifyPriceRuleIds[store.id] = priceRule.id;
-                    allowanceShopifyDiscountIds[store.id] = discountCode.id;
+                    allowanceShopifyPriceRuleIds[store.id] = result.graphqlId;
+                    allowanceShopifyDiscountIds[store.id] = result.graphqlId;
                     allowanceSyncedStores.push(store.id);
-                    console.log(`✅ Synced allowance code "${code}" to ${store.name}`);
+                    console.log(`✅ Synced allowance code "${code}" to ${store.name} via GraphQL`);
                 }
                 catch (err) {
                     console.error(`❌ Failed to sync allowance code "${code}" to ${store.name}:`, err.message);
@@ -282,20 +281,21 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 }
                 if (shippingCode) {
                     try {
-                        const shippingRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        const shipResult = await ShopifyService_1.default.createFreeShippingCodeGraphQL(store.id, {
                             title: `Affiliate Shipping Code: ${shippingCode}`,
-                            valueType: "percentage",
-                            value: -100,
-                            targetType: "shipping_line",
+                            code: shippingCode,
                             startsAt: new Date().toISOString(),
                             endsAt: endOfMonth.toISOString(),
                             oncePerCustomer: false,
+                            combinesWith: {
+                                orderDiscounts: true,
+                                productDiscounts: true,
+                            },
                         });
-                        const shippingDiscount = await ShopifyService_1.default.createDiscountCode(store.id, shippingRule.id, shippingCode);
-                        shippingShopifyPriceRuleIds[store.id] = shippingRule.id;
-                        shippingShopifyDiscountIds[store.id] = shippingDiscount.id;
+                        shippingShopifyPriceRuleIds[store.id] = shipResult.graphqlId;
+                        shippingShopifyDiscountIds[store.id] = shipResult.graphqlId;
                         shippingSyncedStores.push(store.id);
-                        console.log(`✅ Synced shipping code "${shippingCode}" to ${store.name}`);
+                        console.log(`✅ Synced shipping code "${shippingCode}" to ${store.name} via GraphQL`);
                     }
                     catch (err) {
                         console.error(`❌ Failed to sync shipping code "${shippingCode}" to ${store.name}:`, err.message);
@@ -491,19 +491,18 @@ router.post("/import", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     const stores = ShopifyService_1.default.getAllStores();
                     for (const store of stores) {
                         try {
-                            const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
-                            const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                            const result = await ShopifyService_1.default.createDiscountCodeGraphQL(store.id, {
                                 title: `Affiliate Allowance Code: ${allowanceCode}`,
+                                code: allowanceCode,
                                 valueType: discountType,
-                                value: shopifyValue,
+                                value: discountValue > 0 ? discountValue : 0.01,
                                 startsAt: new Date().toISOString(),
                                 endsAt: endOfMonth.toISOString(),
-                                usageLimit: undefined,
                                 oncePerCustomer: true,
+                                combinesWith: { shippingDiscounts: true },
                             });
-                            const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, allowanceCode);
-                            allowanceShopifyPriceRuleIds[store.id] = priceRule.id;
-                            allowanceShopifyDiscountIds[store.id] = discountCode.id;
+                            allowanceShopifyPriceRuleIds[store.id] = result.graphqlId;
+                            allowanceShopifyDiscountIds[store.id] = result.graphqlId;
                             allowanceSyncedStores.push(store.id);
                         }
                         catch (err) {
@@ -511,18 +510,19 @@ router.post("/import", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                         }
                         if (shippingCode) {
                             try {
-                                const shippingRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                                const shipResult = await ShopifyService_1.default.createFreeShippingCodeGraphQL(store.id, {
                                     title: `Affiliate Shipping Code: ${shippingCode}`,
-                                    valueType: "percentage",
-                                    value: -100,
-                                    targetType: "shipping_line",
+                                    code: shippingCode,
                                     startsAt: new Date().toISOString(),
                                     endsAt: endOfMonth.toISOString(),
                                     oncePerCustomer: false,
+                                    combinesWith: {
+                                        orderDiscounts: true,
+                                        productDiscounts: true,
+                                    },
                                 });
-                                const shippingDiscount = await ShopifyService_1.default.createDiscountCode(store.id, shippingRule.id, shippingCode);
-                                shippingShopifyPriceRuleIds[store.id] = shippingRule.id;
-                                shippingShopifyDiscountIds[store.id] = shippingDiscount.id;
+                                shippingShopifyPriceRuleIds[store.id] = shipResult.graphqlId;
+                                shippingShopifyDiscountIds[store.id] = shipResult.graphqlId;
                                 shippingSyncedStores.push(store.id);
                             }
                             catch (err) {
@@ -601,15 +601,15 @@ router.delete("/:id", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"
         }
         const shopifyErrors = [];
         if (code.syncedToShopify && code.shopifyPriceRuleIds) {
-            const priceRuleIds = code.shopifyPriceRuleIds;
-            for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+            const ids = code.shopifyPriceRuleIds;
+            for (const [key, idValue] of Object.entries(ids)) {
                 const actualStoreId = key.replace(/-shipping$/, "");
                 try {
-                    await ShopifyService_1.default.deletePriceRule(actualStoreId, priceRuleId);
-                    console.log(`✅ Deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
+                    await ShopifyService_1.default.deleteDiscountSmart(actualStoreId, idValue);
+                    console.log(`✅ Deleted discount from Shopify store ${actualStoreId} (key: ${key})`);
                 }
                 catch (err) {
-                    console.error(`❌ Failed to delete price rule ${priceRuleId} from ${actualStoreId}:`, err.message);
+                    console.error(`❌ Failed to delete discount from ${actualStoreId}:`, err.message);
                     shopifyErrors.push(`${actualStoreId}: ${err.message}`);
                 }
             }
@@ -644,12 +644,12 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
         }
         const shopifyErrors = [];
         if (status === "INACTIVE" && code.syncedToShopify && code.shopifyPriceRuleIds) {
-            const priceRuleIds = code.shopifyPriceRuleIds;
-            for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+            const ids = code.shopifyPriceRuleIds;
+            for (const [key, idValue] of Object.entries(ids)) {
                 const actualStoreId = key.replace(/-shipping$/, "");
                 try {
-                    await ShopifyService_1.default.deletePriceRule(actualStoreId, priceRuleId);
-                    console.log(`✅ Deactivated: deleted price rule ${priceRuleId} from Shopify store ${actualStoreId} (key: ${key})`);
+                    await ShopifyService_1.default.deleteDiscountSmart(actualStoreId, idValue);
+                    console.log(`✅ Deactivated: deleted discount from Shopify store ${actualStoreId} (key: ${key})`);
                 }
                 catch (err) {
                     console.error(`❌ Failed to deactivate code on ${actualStoreId}:`, err.message);
@@ -689,61 +689,63 @@ router.patch("/:id/status", auth_1.authenticateToken, (0, auth_1.requireRole)(["
             const valueType = code.discount.includes("$") ? "fixed_amount" : "percentage";
             const hasDiscount = discountValue > 0;
             const hasFreeShipping = code.freeShipping === true;
-            const usageLimit = code.maxUsage || undefined;
             const oncePerCustomer = !!code.maxUsage;
+            const isFarFuture = code.validUntil.getFullYear() >= 2090;
+            const reactivateEndsAt = isFarFuture ? null : code.validUntil.toISOString();
             for (const store of stores) {
                 try {
                     if (hasFreeShipping && !hasDiscount) {
-                        const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        const result = await ShopifyService_1.default.createFreeShippingCodeGraphQL(store.id, {
                             title: `Affiliate Shipping Code: ${code.code}`,
-                            valueType: "percentage",
-                            value: -100,
-                            targetType: "shipping_line",
+                            code: code.code,
                             startsAt: new Date().toISOString(),
-                            endsAt: code.validUntil.toISOString(),
-                            usageLimit,
+                            endsAt: reactivateEndsAt,
                             oncePerCustomer,
+                            combinesWith: {
+                                orderDiscounts: true,
+                                productDiscounts: true,
+                            },
                         });
-                        const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code.code);
-                        shopifyPriceRuleIds[store.id] = priceRule.id;
-                        shopifyDiscountIds[store.id] = discountCode.id;
+                        shopifyPriceRuleIds[store.id] = result.graphqlId;
+                        shopifyDiscountIds[store.id] = result.graphqlId;
                         syncedStores.push(store.id);
-                        console.log(`✅ Reactivated shipping code "${code.code}" on ${store.name}`);
+                        console.log(`✅ Reactivated shipping code "${code.code}" on ${store.name} via GraphQL`);
                     }
                     else {
-                        const shopifyValue = hasDiscount ? -discountValue : -0.01;
-                        const priceRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                        const result = await ShopifyService_1.default.createDiscountCodeGraphQL(store.id, {
                             title: `Affiliate Code: ${code.code}`,
+                            code: code.code,
                             valueType,
-                            value: shopifyValue,
+                            value: hasDiscount ? discountValue : 0.01,
                             startsAt: new Date().toISOString(),
-                            endsAt: code.validUntil.toISOString(),
-                            usageLimit,
+                            endsAt: reactivateEndsAt,
                             oncePerCustomer,
+                            combinesWith: { shippingDiscounts: true },
                         });
-                        const discountCode = await ShopifyService_1.default.createDiscountCode(store.id, priceRule.id, code.code);
-                        shopifyPriceRuleIds[store.id] = priceRule.id;
-                        shopifyDiscountIds[store.id] = discountCode.id;
+                        shopifyPriceRuleIds[store.id] = result.graphqlId;
+                        shopifyDiscountIds[store.id] = result.graphqlId;
                         syncedStores.push(store.id);
                         if (hasFreeShipping && hasDiscount) {
                             try {
-                                const shippingRule = await ShopifyService_1.default.createPriceRule(store.id, {
+                                const shipResult = await ShopifyService_1.default.createFreeShippingCodeGraphQL(store.id, {
                                     title: `Auto Free Shipping (Affiliate: ${code.code})`,
-                                    valueType: "percentage",
-                                    value: -100,
-                                    targetType: "shipping_line",
+                                    code: `${code.code}-SHIP`,
                                     startsAt: new Date().toISOString(),
-                                    endsAt: code.validUntil.toISOString(),
+                                    endsAt: reactivateEndsAt,
                                     oncePerCustomer: false,
+                                    combinesWith: {
+                                        orderDiscounts: true,
+                                        productDiscounts: true,
+                                    },
                                 });
-                                shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
+                                shopifyPriceRuleIds[`${store.id}-shipping`] = shipResult.graphqlId;
                             }
                             catch (fsErr) {
                                 console.warn(`⚠️ Failed to recreate auto free shipping for ${store.name}:`, fsErr.message);
                                 shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
                             }
                         }
-                        console.log(`✅ Reactivated code "${code.code}" on ${store.name}`);
+                        console.log(`✅ Reactivated code "${code.code}" on ${store.name} via GraphQL`);
                     }
                 }
                 catch (err) {

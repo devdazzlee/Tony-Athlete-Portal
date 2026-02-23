@@ -395,14 +395,14 @@ router.delete(
 
       for (const coupon of syncedCoupons) {
         if (coupon.shopifyPriceRuleIds) {
-          const priceRuleIds = coupon.shopifyPriceRuleIds as Record<string, number>;
-          for (const [key, priceRuleId] of Object.entries(priceRuleIds)) {
+          const ids = coupon.shopifyPriceRuleIds as Record<string, any>;
+          for (const [key, idValue] of Object.entries(ids)) {
             const actualStoreId = key.replace(/-shipping$/, "");
             try {
-              await shopifyService.deletePriceRule(actualStoreId, priceRuleId);
-              console.log(`✅ Deleted Shopify price rule for "${coupon.code}" from store ${actualStoreId}`);
+              await shopifyService.deleteDiscountSmart(actualStoreId, idValue);
+              console.log(`✅ Deleted Shopify discount for "${coupon.code}" from store ${actualStoreId}`);
             } catch (err: any) {
-              console.error(`❌ Failed to delete Shopify price rule for "${coupon.code}" from ${actualStoreId}:`, err.message);
+              console.error(`❌ Failed to delete Shopify discount for "${coupon.code}" from ${actualStoreId}:`, err.message);
               shopifyErrors.push(`${coupon.code} on ${actualStoreId}: ${err.message}`);
             }
           }
@@ -590,17 +590,21 @@ router.post(
       }
 
       // Calculate expiration
-      const validUntil = validatedData.expiresAt
-        ? new Date(validatedData.expiresAt)
-        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default 1 year
+      // If no expiry date is set, the code should NOT expire
+      const hasExpiry = !!validatedData.expiresAt;
+      const validUntil = hasExpiry
+        ? new Date(validatedData.expiresAt!)
+        : new Date('2099-12-31T23:59:59.999Z'); // Far future = no expiry
+      const shopifyEndsAt = hasExpiry ? validUntil.toISOString() : null; // null = no expiry in Shopify
 
       const affiliateName = `${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() || "Unknown";
       const codeDescription = validatedData.description || `Discount code for ${affiliateName} - ${discountStr}`;
 
-      // ----- Sync to Shopify (all stores) -----
+      // ----- Sync to Shopify via GraphQL (all stores) -----
+      // GraphQL is the ONLY way to properly set combinesWith — REST silently ignores it
       let syncedToShopify = false;
-      let shopifyPriceRuleIds: Record<string, number> = {};
-      let shopifyDiscountIds: Record<string, number> = {};
+      let shopifyPriceRuleIds: Record<string, any> = {};
+      let shopifyDiscountIds: Record<string, any> = {};
       let syncedStores: string[] = [];
       const shopifyErrors: string[] = [];
 
@@ -610,70 +614,55 @@ router.post(
       for (const store of stores) {
         try {
           if (hasFreeShipping && discountValue <= 0) {
-            // FREE SHIPPING ONLY — create shipping_line price rule
-            const priceRule = await shopifyService.createPriceRule(store.id, {
+            // FREE SHIPPING ONLY — create via GraphQL
+            const result = await shopifyService.createFreeShippingCodeGraphQL(store.id, {
               title: `Affiliate Code: ${normalizedCode} (Free Shipping)`,
-              valueType: "percentage",
-              value: -100,
-              targetType: "shipping_line",
+              code: normalizedCode,
               startsAt: new Date().toISOString(),
-              endsAt: validUntil.toISOString(),
-              usageLimit: undefined,
+              endsAt: shopifyEndsAt,
               oncePerCustomer: false,
+              combinesWith: {
+                orderDiscounts: true,
+                productDiscounts: true,
+              },
             });
 
-            const discCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              normalizedCode
-            );
-
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discCode.id;
+            shopifyPriceRuleIds[store.id] = result.graphqlId;
+            shopifyDiscountIds[store.id] = result.graphqlId;
             syncedStores.push(store.id);
-
-            console.log(`✅ Synced free shipping code "${normalizedCode}" to ${store.name}`);
           } else if (hasFreeShipping && discountValue > 0) {
-            // DISCOUNT + FREE SHIPPING — need two price rules on Shopify
-            const shopifyValue = -discountValue;
+            // DISCOUNT + FREE SHIPPING — need two codes on Shopify
 
-            // 1. Create product discount code
-            const priceRule = await shopifyService.createPriceRule(store.id, {
+            // 1. Create product discount code via GraphQL
+            const discResult = await shopifyService.createDiscountCodeGraphQL(store.id, {
               title: `Affiliate Code: ${normalizedCode}`,
+              code: normalizedCode,
               valueType: discountType,
-              value: shopifyValue,
+              value: discountValue,
               startsAt: new Date().toISOString(),
-              endsAt: validUntil.toISOString(),
-              usageLimit: undefined,
+              endsAt: shopifyEndsAt,
               oncePerCustomer: false,
+              combinesWith: { shippingDiscounts: true },
             });
 
-            const discCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              normalizedCode
-            );
+            shopifyPriceRuleIds[store.id] = discResult.graphqlId;
+            shopifyDiscountIds[store.id] = discResult.graphqlId;
 
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discCode.id;
-
-            // 2. Create AUTOMATIC free shipping rule (no code — Shopify auto-applies at checkout)
+            // 2. Create separate free shipping code via GraphQL
             try {
-              const shippingRule = await shopifyService.createPriceRule(store.id, {
+              const shipResult = await shopifyService.createFreeShippingCodeGraphQL(store.id, {
                 title: `Auto Free Shipping (Affiliate: ${normalizedCode})`,
-                valueType: "percentage",
-                value: -100,
-                targetType: "shipping_line",
+                code: `${normalizedCode}-SHIP`,
                 startsAt: new Date().toISOString(),
-                endsAt: validUntil.toISOString(),
-                // No usageLimit — auto-applies to all orders during the period
+                endsAt: shopifyEndsAt,
                 oncePerCustomer: false,
+                combinesWith: {
+                  orderDiscounts: true,
+                  productDiscounts: true,
+                },
               });
 
-              // Do NOT create a discount code — this is an automatic discount
-              shopifyPriceRuleIds[`${store.id}-shipping`] = shippingRule.id;
-
-              console.log(`✅ Synced discount "${normalizedCode}" + automatic free shipping to ${store.name}`);
+              shopifyPriceRuleIds[`${store.id}-shipping`] = shipResult.graphqlId;
             } catch (fsErr: any) {
               console.warn(`⚠️ Discount synced but auto free shipping failed for ${store.name}:`, fsErr.message);
               shopifyErrors.push(`${store.name} (free shipping): ${fsErr.message}`);
@@ -681,30 +670,21 @@ router.post(
 
             syncedStores.push(store.id);
           } else {
-            // DISCOUNT ONLY (no free shipping)
-            const shopifyValue = discountValue > 0 ? -discountValue : -0.01;
-
-            const priceRule = await shopifyService.createPriceRule(store.id, {
+            // DISCOUNT ONLY (no free shipping) — for follower codes, unlimited use, no expiry
+            const result = await shopifyService.createDiscountCodeGraphQL(store.id, {
               title: `Affiliate Code: ${normalizedCode}`,
+              code: normalizedCode,
               valueType: discountType,
-              value: shopifyValue,
+              value: discountValue,
               startsAt: new Date().toISOString(),
-              endsAt: validUntil.toISOString(),
-              usageLimit: undefined,
+              endsAt: shopifyEndsAt,
               oncePerCustomer: false,
+              combinesWith: { shippingDiscounts: true },
             });
 
-            const discCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              normalizedCode
-            );
-
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discCode.id;
+            shopifyPriceRuleIds[store.id] = result.graphqlId;
+            shopifyDiscountIds[store.id] = result.graphqlId;
             syncedStores.push(store.id);
-
-            console.log(`✅ Synced discount code "${normalizedCode}" to ${store.name} (${store.country})`);
           }
         } catch (err: any) {
           console.error(`❌ Failed to sync code "${normalizedCode}" to ${store.name}:`, err.message);
@@ -1098,11 +1078,11 @@ router.post(
         }
 
         // Create discount code if provided (DB only inside transaction)
+        // Follower discount codes should NOT expire by default
         let createdCouponId: string | null = null;
         if (data.discountCode && data.discountValue !== undefined) {
           const normalizedCode = data.discountCode.trim().toUpperCase().replace(/\s+/g, "-");
-          const validUntil = new Date();
-          validUntil.setFullYear(validUntil.getFullYear() + 1);
+          const validUntil = new Date('2099-12-31T23:59:59.999Z'); // No expiry for follower codes
           
           const coupon = await tx.coupon.create({
             data: {
@@ -1129,11 +1109,9 @@ router.post(
 
       if (result.createdCouponId && data.discountCode && data.discountValue !== undefined) {
         const normalizedCode = data.discountCode.trim().toUpperCase().replace(/\s+/g, "-");
-        const validUntil = new Date();
-        validUntil.setFullYear(validUntil.getFullYear() + 1);
 
-        const shopifyPriceRuleIds: Record<string, number> = {};
-        const shopifyDiscountIds: Record<string, number> = {};
+        const shopifyPriceRuleIds: Record<string, any> = {};
+        const shopifyDiscountIds: Record<string, any> = {};
         const syncedStores: string[] = [];
         const shopifyErrors: string[] = [];
 
@@ -1141,28 +1119,23 @@ router.post(
 
         for (const store of stores) {
           try {
-            const shopifyValue = data.discountValue > 0 ? -data.discountValue : -0.01;
-
-            const priceRule = await shopifyService.createPriceRule(store.id, {
+            // Follower discount codes: no expiry, unlimited use — created via GraphQL
+            const result2 = await shopifyService.createDiscountCodeGraphQL(store.id, {
               title: `Affiliate Code: ${normalizedCode}`,
+              code: normalizedCode,
               valueType: "percentage",
-              value: shopifyValue,
+              value: data.discountValue > 0 ? data.discountValue : 0.01,
               startsAt: new Date().toISOString(),
-              endsAt: validUntil.toISOString(),
+              endsAt: null, // No expiry for follower codes
               oncePerCustomer: false,
+              combinesWith: { shippingDiscounts: true },
             });
 
-            const discountCode = await shopifyService.createDiscountCode(
-              store.id,
-              priceRule.id,
-              normalizedCode
-            );
-
-            shopifyPriceRuleIds[store.id] = priceRule.id;
-            shopifyDiscountIds[store.id] = discountCode.id;
+            shopifyPriceRuleIds[store.id] = result2.graphqlId;
+            shopifyDiscountIds[store.id] = result2.graphqlId;
             syncedStores.push(store.id);
 
-            console.log(`✅ Synced new affiliate code "${normalizedCode}" to ${store.name}`);
+            console.log(`✅ Synced new affiliate code "${normalizedCode}" to ${store.name} via GraphQL`);
           } catch (err: any) {
             console.error(`❌ Failed to sync code "${normalizedCode}" to ${store.name}:`, err.message);
             shopifyErrors.push(`${store.name}: ${err.message}`);

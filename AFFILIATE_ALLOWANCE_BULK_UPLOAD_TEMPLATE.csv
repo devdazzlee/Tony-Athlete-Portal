@@ -1,0 +1,2 @@
+affiliateId,affiliateEmail,code,allowanceAmount,discountType,discountValue,freeShipping,syncToShopify,description
+,affiliate@example.com,,200,fixed_amount,20,true,true,

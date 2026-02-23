@@ -240,6 +240,173 @@ class ShopifyService {
   }
 
   /**
+   * Make authenticated GraphQL API request to Shopify
+   */
+  private async makeGraphQLRequest<T = any>(
+    storeId: string,
+    query: string,
+    variables?: Record<string, any>
+  ): Promise<T> {
+    const store = this.stores.get(storeId);
+    if (!store) {
+      throw new Error(`Store not found: ${storeId}`);
+    }
+
+    const myshopifyDomain = this.getMyshopifyDomain(store.domain);
+    const url = `https://${myshopifyDomain}/admin/api/${this.apiVersion}/graphql.json`;
+
+    const body: any = { query };
+    if (variables) {
+      body.variables = variables;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': store.accessToken,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Shopify GraphQL Error [${store.name}]:`, response.status, errorText);
+        throw new Error(`Shopify GraphQL Error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json() as any;
+      if (data.errors) {
+        console.error(`Shopify GraphQL Errors [${store.name}]:`, JSON.stringify(data.errors));
+        throw new Error(`Shopify GraphQL Error: ${JSON.stringify(data.errors)}`);
+      }
+
+      return data as T;
+    } catch (error) {
+      console.error(`Shopify GraphQL Request Failed [${store.name}]:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update discount combination settings via GraphQL API
+   * 
+   * The REST Price Rules API does NOT support combines_with — only the GraphQL API does.
+   * Call this AFTER creating the price rule + discount code via REST.
+   */
+  async updateDiscountCombinations(
+    storeId: string,
+    discountCode: string,
+    combinesWith: {
+      orderDiscounts?: boolean;
+      productDiscounts?: boolean;
+      shippingDiscounts?: boolean;
+    }
+  ): Promise<void> {
+    try {
+      // Step 1: Find the discount by code using GraphQL
+      const findQuery = `
+        query findDiscount($query: String!) {
+          codeDiscountNodes(first: 1, query: $query) {
+            nodes {
+              id
+              codeDiscount {
+                ... on DiscountCodeBasic {
+                  __typename
+                }
+                ... on DiscountCodeFreeShipping {
+                  __typename
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const findResult = await this.makeGraphQLRequest(storeId, findQuery, {
+        query: `code:${discountCode}`,
+      });
+
+      const nodes = findResult?.data?.codeDiscountNodes?.nodes;
+      if (!nodes || nodes.length === 0) {
+        console.warn(`⚠️ Could not find discount "${discountCode}" via GraphQL for combination update`);
+        return;
+      }
+
+      const node = nodes[0];
+      const discountType = node.codeDiscount?.__typename;
+      const discountId = node.id;
+
+      const combinesWithInput = {
+        orderDiscounts: combinesWith.orderDiscounts ?? false,
+        productDiscounts: combinesWith.productDiscounts ?? false,
+        shippingDiscounts: combinesWith.shippingDiscounts ?? false,
+      };
+
+      // Step 2: Update combination settings based on discount type
+      if (discountType === 'DiscountCodeBasic') {
+        const mutation = `
+          mutation updateBasicDiscount($id: ID!, $discount: DiscountCodeBasicInput!) {
+            discountCodeBasicUpdate(id: $id, basicCodeDiscount: $discount) {
+              codeDiscountNode {
+                id
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `;
+
+        const result = await this.makeGraphQLRequest(storeId, mutation, {
+          id: discountId,
+          discount: { combinesWith: combinesWithInput },
+        });
+
+        const userErrors = result?.data?.discountCodeBasicUpdate?.userErrors;
+        if (userErrors?.length > 0) {
+          console.error(`❌ GraphQL userErrors updating "${discountCode}" combinations:`, userErrors);
+        } else {
+          console.log(`✅ Updated combinations for "${discountCode}" (basic discount)`);
+        }
+      } else if (discountType === 'DiscountCodeFreeShipping') {
+        const mutation = `
+          mutation updateFreeShippingDiscount($id: ID!, $discount: DiscountCodeFreeShippingInput!) {
+            discountCodeFreeShippingUpdate(id: $id, freeShippingCodeDiscount: $discount) {
+              codeDiscountNode {
+                id
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `;
+
+        const result = await this.makeGraphQLRequest(storeId, mutation, {
+          id: discountId,
+          discount: { combinesWith: combinesWithInput },
+        });
+
+        const userErrors = result?.data?.discountCodeFreeShippingUpdate?.userErrors;
+        if (userErrors?.length > 0) {
+          console.error(`❌ GraphQL userErrors updating "${discountCode}" combinations:`, userErrors);
+        } else {
+          console.log(`✅ Updated combinations for "${discountCode}" (free shipping discount)`);
+        }
+      } else {
+        console.warn(`⚠️ Unknown discount type "${discountType}" for "${discountCode}", skipping combination update`);
+      }
+    } catch (error: any) {
+      // Don't throw — combination update is best-effort, the discount was already created
+      console.error(`⚠️ Failed to update combinations for "${discountCode}":`, error.message);
+    }
+  }
+
+  /**
    * Convert custom domain to myshopify domain
    */
   private getMyshopifyDomain(domain: string): string {
@@ -474,7 +641,7 @@ class ShopifyService {
       valueType: 'percentage' | 'fixed_amount';
       value: number; // negative for discounts (e.g., -10 for 10% off)
       startsAt?: string;
-      endsAt?: string;
+      endsAt?: string | null; // null = no expiry
       usageLimit?: number;
       oncePerCustomer?: boolean;
       targetType?: 'line_item' | 'shipping_line'; // 'shipping_line' for free shipping
@@ -492,11 +659,14 @@ class ShopifyService {
         value: isShippingDiscount ? '-100.0' : options.value.toString(),
         customer_selection: 'all',
         starts_at: options.startsAt || new Date().toISOString(),
-        ends_at: options.endsAt || null,
+        ends_at: options.endsAt === undefined ? null : options.endsAt,
         usage_limit: options.usageLimit || null,
         once_per_customer: options.oncePerCustomer || false,
       },
     };
+
+    // NOTE: Combination settings (combinesWith) are NOT supported by the REST Price Rules API.
+    // Use updateDiscountCombinations() via GraphQL AFTER creating the discount code.
 
     const response = await this.makeRequest<{ price_rule: ShopifyPriceRule }>(
       storeId,
@@ -605,6 +775,252 @@ class ShopifyService {
    */
   async deletePriceRule(storeId: string, priceRuleId: number): Promise<void> {
     await this.makeRequest(storeId, `/price_rules/${priceRuleId}.json`, 'DELETE');
+  }
+
+  // ==================== GRAPHQL DISCOUNT CREATION ====================
+
+  /**
+   * Create a basic discount code (percentage or fixed amount) entirely via GraphQL.
+   * This is the ONLY way to set combinesWith properly — the REST API ignores it,
+   * and GraphQL cannot modify discounts created via REST.
+   */
+  async createDiscountCodeGraphQL(
+    storeId: string,
+    options: {
+      title: string;
+      code: string;
+      valueType: 'percentage' | 'fixed_amount';
+      value: number; // positive value: 10 = 10% or $10
+      startsAt?: string;
+      endsAt?: string | null;
+      usageLimit?: number;
+      oncePerCustomer?: boolean;
+      combinesWith?: {
+        orderDiscounts?: boolean;
+        productDiscounts?: boolean;
+        shippingDiscounts?: boolean;
+      };
+    }
+  ): Promise<{ graphqlId: string; code: string }> {
+    const mutation = `
+      mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+        discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+          codeDiscountNode {
+            id
+            codeDiscount {
+              ... on DiscountCodeBasic {
+                title
+                startsAt
+                endsAt
+                combinesWith {
+                  orderDiscounts
+                  productDiscounts
+                  shippingDiscounts
+                }
+              }
+            }
+          }
+          userErrors {
+            field
+            code
+            message
+          }
+        }
+      }
+    `;
+
+    // Build customerGets based on value type
+    let customerGetsValue: any;
+    if (options.valueType === 'percentage') {
+      customerGetsValue = {
+        percentage: options.value / 100, // Shopify expects 0.10 for 10%
+      };
+    } else {
+      customerGetsValue = {
+        discountAmount: {
+          amount: options.value.toString(),
+          appliesOnEachItem: false,
+        },
+      };
+    }
+
+    const variables: any = {
+      basicCodeDiscount: {
+        title: options.title,
+        code: options.code,
+        startsAt: options.startsAt || new Date().toISOString(),
+        customerGets: {
+          value: customerGetsValue,
+          items: { all: true },
+        },
+        customerSelection: { all: true },
+        combinesWith: {
+          orderDiscounts: options.combinesWith?.orderDiscounts ?? false,
+          productDiscounts: options.combinesWith?.productDiscounts ?? false,
+          shippingDiscounts: options.combinesWith?.shippingDiscounts ?? false,
+        },
+        appliesOncePerCustomer: options.oncePerCustomer ?? false,
+      },
+    };
+
+    // Only set endsAt if explicitly provided (null = no expiry)
+    if (options.endsAt !== undefined && options.endsAt !== null) {
+      variables.basicCodeDiscount.endsAt = options.endsAt;
+    }
+
+    // Usage limit
+    if (options.usageLimit) {
+      variables.basicCodeDiscount.usageLimit = options.usageLimit;
+    }
+
+    const result = await this.makeGraphQLRequest(storeId, mutation, variables);
+
+    const userErrors = result?.data?.discountCodeBasicCreate?.userErrors;
+    if (userErrors?.length > 0) {
+      const errorMsg = userErrors.map((e: any) => `${e.field?.join('.')}: ${e.message}`).join('; ');
+      throw new Error(`Shopify GraphQL Error creating discount: ${errorMsg}`);
+    }
+
+    const node = result?.data?.discountCodeBasicCreate?.codeDiscountNode;
+    if (!node?.id) {
+      throw new Error('Shopify GraphQL returned no discount node after creation');
+    }
+
+    console.log(`✅ [GraphQL] Created basic discount "${options.code}" on ${storeId} (combines: ${JSON.stringify(options.combinesWith || {})})`);
+
+    return {
+      graphqlId: node.id,
+      code: options.code,
+    };
+  }
+
+  /**
+   * Create a free shipping discount code entirely via GraphQL.
+   * This correctly sets combinesWith during creation.
+   */
+  async createFreeShippingCodeGraphQL(
+    storeId: string,
+    options: {
+      title: string;
+      code: string;
+      startsAt?: string;
+      endsAt?: string | null;
+      usageLimit?: number;
+      oncePerCustomer?: boolean;
+      combinesWith?: {
+        orderDiscounts?: boolean;
+        productDiscounts?: boolean;
+        shippingDiscounts?: boolean;
+      };
+    }
+  ): Promise<{ graphqlId: string; code: string }> {
+    const mutation = `
+      mutation discountCodeFreeShippingCreate($freeShippingCodeDiscount: DiscountCodeFreeShippingInput!) {
+        discountCodeFreeShippingCreate(freeShippingCodeDiscount: $freeShippingCodeDiscount) {
+          codeDiscountNode {
+            id
+            codeDiscount {
+              ... on DiscountCodeFreeShipping {
+                title
+                startsAt
+                endsAt
+                combinesWith {
+                  orderDiscounts
+                  productDiscounts
+                  shippingDiscounts
+                }
+              }
+            }
+          }
+          userErrors {
+            field
+            code
+            message
+          }
+        }
+      }
+    `;
+
+    const variables: any = {
+      freeShippingCodeDiscount: {
+        title: options.title,
+        code: options.code,
+        startsAt: options.startsAt || new Date().toISOString(),
+        destination: { all: true },
+        customerSelection: { all: true },
+        combinesWith: {
+          orderDiscounts: options.combinesWith?.orderDiscounts ?? false,
+          productDiscounts: options.combinesWith?.productDiscounts ?? false,
+          shippingDiscounts: options.combinesWith?.shippingDiscounts ?? false,
+        },
+        appliesOncePerCustomer: options.oncePerCustomer ?? false,
+      },
+    };
+
+    // Only set endsAt if explicitly provided
+    if (options.endsAt !== undefined && options.endsAt !== null) {
+      variables.freeShippingCodeDiscount.endsAt = options.endsAt;
+    }
+
+    // Usage limit
+    if (options.usageLimit) {
+      variables.freeShippingCodeDiscount.usageLimit = options.usageLimit;
+    }
+
+    const result = await this.makeGraphQLRequest(storeId, mutation, variables);
+
+    const userErrors = result?.data?.discountCodeFreeShippingCreate?.userErrors;
+    if (userErrors?.length > 0) {
+      const errorMsg = userErrors.map((e: any) => `${e.field?.join('.')}: ${e.message}`).join('; ');
+      throw new Error(`Shopify GraphQL Error creating free shipping discount: ${errorMsg}`);
+    }
+
+    const node = result?.data?.discountCodeFreeShippingCreate?.codeDiscountNode;
+    if (!node?.id) {
+      throw new Error('Shopify GraphQL returned no discount node after free shipping creation');
+    }
+
+    console.log(`✅ [GraphQL] Created free shipping discount "${options.code}" on ${storeId} (combines: ${JSON.stringify(options.combinesWith || {})})`);
+
+    return {
+      graphqlId: node.id,
+      code: options.code,
+    };
+  }
+
+  /**
+   * Delete a discount code via GraphQL (by node ID).
+   * Uses Shopify's generic discountCodeDelete mutation.
+   */
+  async deleteDiscountGraphQL(storeId: string, graphqlId: string): Promise<void> {
+    const mutation = `
+      mutation deleteDiscount($id: ID!) {
+        discountCodeDelete(id: $id) {
+          deletedCodeDiscountId
+          userErrors { field message }
+        }
+      }
+    `;
+
+    const result = await this.makeGraphQLRequest(storeId, mutation, { id: graphqlId });
+    const errors = result?.data?.discountCodeDelete?.userErrors;
+    if (errors?.length > 0) {
+      throw new Error(`Failed to delete discount: ${errors.map((e: any) => e.message).join('; ')}`);
+    }
+
+    console.log(`✅ [GraphQL] Deleted discount ${graphqlId} from ${storeId}`);
+  }
+
+  /**
+   * Smart delete: handles both GraphQL IDs (string starting with "gid://") 
+   * and REST price rule IDs (numbers) for backward compatibility.
+   */
+  async deleteDiscountSmart(storeId: string, idOrPriceRuleId: string | number): Promise<void> {
+    if (typeof idOrPriceRuleId === 'string' && idOrPriceRuleId.startsWith('gid://')) {
+      await this.deleteDiscountGraphQL(storeId, idOrPriceRuleId);
+    } else {
+      await this.deletePriceRule(storeId, Number(idOrPriceRuleId));
+    }
   }
 
   // ==================== WEBHOOK METHODS ====================

@@ -1,0 +1,5 @@
+affiliateId,affiliateEmail,code,allowanceAmount,discountType,discountValue,freeShipping,syncToShopify,description
+cmi3epivb0002b1s5e7187813,,TESTBULK001,200,fixed_amount,20,true,true,Allowance $200 with $20 off plus shipping code
+,losog46884@chaineor.com,TESTBULK002,150,percentage,15,false,true,Allowance $150 with 15 percent off only
+cmi3epivb0002b1s5e7187813,,TESTBULK003,100,fixed_amount,0,true,true,Allowance with no product discount and free shipping
+,losog46884@chaineor.com,TESTBULK004,250,fixed_amount,25,true,false,Dry-run style row without Shopify sync

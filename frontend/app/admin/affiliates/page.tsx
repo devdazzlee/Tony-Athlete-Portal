@@ -156,6 +156,12 @@ export default function AffiliatesManagementPage() {
   });
   const [existingDiscountCodes, setExistingDiscountCodes] = useState<any[]>([]);
   const [existingReferralCodes, setExistingReferralCodes] = useState<any[]>([]);
+  const [deleteCodeModal, setDeleteCodeModal] = useState<{
+    isOpen: boolean;
+    codeId: string | null;
+    codeName: string | null;
+  }>({ isOpen: false, codeId: null, codeName: null });
+  const [isDeletingCode, setIsDeletingCode] = useState(false);
 
   useEffect(() => {
     fetchAffiliates();
@@ -314,6 +320,11 @@ export default function AffiliatesManagementPage() {
   const handleEditAffiliate = async (affiliate: Affiliate) => {
     // Prevent multiple clicks - if already loading, ignore
     if (isEditLoading) return;
+
+    // Keep list unfiltered when opening edit.
+    // Some browsers aggressively autofill the first text input (search box) with email values.
+    setSearchQuery("");
+    setCurrentPage(1);
     
     setIsEditLoading(true);
     setSelectedAffiliate(affiliate);
@@ -528,6 +539,33 @@ export default function AffiliatesManagementPage() {
       toast.error("Failed to delete affiliate");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCodeClick = (codeId: string, codeName: string) => {
+    setDeleteCodeModal({ isOpen: true, codeId, codeName });
+  };
+
+  const handleDeleteCodeConfirm = async () => {
+    if (!deleteCodeModal.codeId) return;
+
+    setIsDeletingCode(true);
+    try {
+      const response = await apiClient.delete(`/admin/affiliate-codes/${deleteCodeModal.codeId}`);
+      const data = response.data;
+      if (data.shopifyErrors && data.shopifyErrors.length > 0) {
+        toast.warning(data.message);
+      } else {
+        toast.success(data.message || "Discount code deleted successfully");
+      }
+      // Remove the deleted code from local state
+      setExistingDiscountCodes((prev) => prev.filter((c) => c.id !== deleteCodeModal.codeId));
+      setDeleteCodeModal({ isOpen: false, codeId: null, codeName: null });
+    } catch (error: any) {
+      console.error("Error deleting discount code:", error);
+      toast.error(error.response?.data?.error || "Failed to delete discount code");
+    } finally {
+      setIsDeletingCode(false);
     }
   };
 
@@ -746,6 +784,13 @@ export default function AffiliatesManagementPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                    id="affiliate-search"
+                    name="affiliate-search"
+                    type="search"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="Search affiliate name or email..."
                   value={searchQuery}
                   onChange={(e) => {
@@ -908,8 +953,8 @@ export default function AffiliatesManagementPage() {
                                   </>
                                 ) : (
                                   <>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Edit
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
                                   </>
                                 )}
                               </DropdownMenuItem>
@@ -1030,8 +1075,8 @@ export default function AffiliatesManagementPage() {
                                   </>
                                 ) : (
                                   <>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Edit
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
                                   </>
                                 )}
                               </DropdownMenuItem>
@@ -1280,6 +1325,23 @@ export default function AffiliatesManagementPage() {
                           <Badge variant={code.status === "ACTIVE" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
                           {code.status}
                         </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                  onClick={() => handleDeleteCodeClick(code.id, code.code)}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p className="text-xs">Delete code{code.syncedToShopify ? " (also removes from Shopify)" : ""}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </div>
                     ))}
@@ -1407,13 +1469,32 @@ export default function AffiliatesManagementPage() {
               {/* Change Password */}
               <div className="space-y-2 border-t pt-3">
                 <Label className="text-sm font-semibold">Change Password</Label>
+                {/* Prevent browser/password-manager from autofilling unrelated inputs (like top search). */}
+                <input
+                  type="text"
+                  name="fake-username"
+                  autoComplete="username"
+                  className="hidden"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+                <input
+                  type="password"
+                  name="fake-password"
+                  autoComplete="new-password"
+                  className="hidden"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="newPassword">New Password</Label>
                     <div className="relative">
                       <Input
                         id="newPassword"
+                        name="newPassword"
                         type={showNewPassword ? "text" : "password"}
+                        autoComplete="new-password"
                         placeholder="At least 8 characters"
                         value={editForm.newPassword}
                         onChange={(e) =>
@@ -1438,7 +1519,9 @@ export default function AffiliatesManagementPage() {
                     <div className="relative">
                       <Input
                         id="confirmPassword"
+                        name="confirmPassword"
                         type={showConfirmPassword ? "text" : "password"}
+                        autoComplete="new-password"
                         placeholder="Re-enter new password"
                         value={editForm.confirmPassword}
                         onChange={(e) =>
@@ -1470,16 +1553,16 @@ export default function AffiliatesManagementPage() {
               variant="outline" 
               onClick={() => {
                 if (!isEditLoading) {
-                  setEditDialogOpen(false);
-                  // Reset fields when closing
-                  setEditForm((prev) => ({
-                    ...prev,
-                    discountCode: "",
-                    discountValue: "",
-                    discountExpiresAt: "",
+                setEditDialogOpen(false);
+                // Reset fields when closing
+                setEditForm((prev) => ({
+                  ...prev,
+                  discountCode: "",
+                  discountValue: "",
+                  discountExpiresAt: "",
                     newPassword: "",
                     confirmPassword: "",
-                  }));
+                }));
                   setSelectedAffiliate(null);
                   setSelectedAffiliateDetails(null);
                 }
@@ -1761,6 +1844,24 @@ export default function AffiliatesManagementPage() {
         itemName={deleteModal.affiliateName || undefined}
         description="This action cannot be undone. All associated data, commissions, and links will be permanently removed."
         isLoading={isDeleting}
+      />
+
+      {/* Delete Discount Code Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteCodeModal.isOpen}
+        onClose={() =>
+          setDeleteCodeModal({
+            isOpen: false,
+            codeId: null,
+            codeName: null,
+          })
+        }
+        onConfirm={handleDeleteCodeConfirm}
+        title="Delete Discount Code?"
+        message="Are you sure you want to delete this discount code? It will be removed from the database and from Shopify (if synced)."
+        itemName={deleteCodeModal.codeName || undefined}
+        description="This action cannot be undone. The code will no longer work for customers."
+        isLoading={isDeletingCode}
       />
     </div>
   );

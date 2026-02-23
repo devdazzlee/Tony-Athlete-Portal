@@ -203,25 +203,43 @@ router.post("/discounts/:discountId/sync", authenticateToken, requireAdmin, asyn
 
     // Parse discount value
     const discountValue = parseFloat(coupon.discount.replace(/[^0-9.]/g, ""));
+    const isShippingCode = coupon.freeShipping === true && discountValue <= 0;
+    const isFarFuture = coupon.validUntil.getFullYear() >= 2090;
+    const syncEndsAt = isFarFuture ? null : coupon.validUntil.toISOString();
 
-    // Create price rule first
-    const priceRule = await shopifyService.createPriceRule(storeId, {
-      title: `Affiliate Code: ${coupon.code}`,
-      valueType: coupon.discount.includes("%") ? "percentage" : "fixed_amount",
-      value: -discountValue,
-      startsAt: new Date().toISOString(),
-      endsAt: coupon.validUntil.toISOString(),
-      usageLimit: coupon.maxUsage || undefined,
-    });
+    let graphqlId: string;
 
-    // Create discount code
-    const discountCode = await shopifyService.createDiscountCode(
-      storeId,
-      priceRule.id,
-      coupon.code
-    );
+    if (isShippingCode) {
+      // Free shipping code via GraphQL
+      const result = await shopifyService.createFreeShippingCodeGraphQL(storeId, {
+        title: `Affiliate Shipping Code: ${coupon.code}`,
+        code: coupon.code,
+        startsAt: new Date().toISOString(),
+        endsAt: syncEndsAt,
+        oncePerCustomer: false,
+        combinesWith: {
+          orderDiscounts: true,
+          productDiscounts: true,
+        },
+      });
+      graphqlId = result.graphqlId;
+    } else {
+      // Basic discount code via GraphQL
+      const result = await shopifyService.createDiscountCodeGraphQL(storeId, {
+        title: `Affiliate Code: ${coupon.code}`,
+        code: coupon.code,
+        valueType: coupon.discount.includes("%") ? "percentage" : "fixed_amount",
+        value: discountValue > 0 ? discountValue : 0.01,
+        startsAt: new Date().toISOString(),
+        endsAt: syncEndsAt,
+        usageLimit: coupon.maxUsage || undefined,
+        oncePerCustomer: !!coupon.maxUsage,
+        combinesWith: { shippingDiscounts: true },
+      });
+      graphqlId = result.graphqlId;
+    }
 
-    // Update coupon with Shopify IDs
+    // Update coupon with GraphQL IDs
     const existingPriceRuleIds = (coupon.shopifyPriceRuleIds as any) || {};
     const existingDiscountIds = (coupon.shopifyDiscountIds as any) || {};
     const existingSyncedStores = coupon.syncedStores || [];
@@ -230,13 +248,13 @@ router.post("/discounts/:discountId/sync", authenticateToken, requireAdmin, asyn
       where: { id: discountId },
       data: {
         syncedToShopify: true,
-        shopifyPriceRuleIds: { ...existingPriceRuleIds, [storeId]: priceRule.id },
-        shopifyDiscountIds: { ...existingDiscountIds, [storeId]: discountCode.id },
+        shopifyPriceRuleIds: { ...existingPriceRuleIds, [storeId]: graphqlId },
+        shopifyDiscountIds: { ...existingDiscountIds, [storeId]: graphqlId },
         syncedStores: [...new Set([...existingSyncedStores, storeId])],
       },
     });
 
-    res.json({ success: true, message: "Discount code synced to Shopify" });
+    res.json({ success: true, message: "Discount code synced to Shopify via GraphQL" });
   } catch (error: any) {
     console.error("Error syncing discount:", error);
     res.status(500).json({ error: error.message || "Failed to sync discount code" });
@@ -266,22 +284,42 @@ router.post("/discounts/sync-all", authenticateToken, requireAdmin, async (req: 
       try {
         const discountValue = parseFloat(coupon.discount.replace(/[^0-9.]/g, ""));
 
-        // Create price rule first
-        const priceRule = await shopifyService.createPriceRule(storeId, {
-          title: `Affiliate Code: ${coupon.code}`,
-          valueType: coupon.discount.includes("%") ? "percentage" : "fixed_amount",
-          value: -discountValue,
-          startsAt: new Date().toISOString(),
-          endsAt: coupon.validUntil.toISOString(),
-          usageLimit: coupon.maxUsage || undefined,
-        });
+        // Determine expiry — far future means no expiry
+        const isFarFuture = coupon.validUntil.getFullYear() >= 2090;
+        const syncEndsAt = isFarFuture ? null : coupon.validUntil.toISOString();
+        const isShippingCode = coupon.freeShipping === true && discountValue <= 0;
 
-        // Create discount code
-        const discountCode = await shopifyService.createDiscountCode(
-          storeId,
-          priceRule.id,
-          coupon.code
-        );
+        let graphqlId: string;
+
+        if (isShippingCode) {
+          // Free shipping code via GraphQL
+          const result = await shopifyService.createFreeShippingCodeGraphQL(storeId, {
+            title: `Affiliate Shipping Code: ${coupon.code}`,
+            code: coupon.code,
+            startsAt: new Date().toISOString(),
+            endsAt: syncEndsAt,
+            oncePerCustomer: false,
+            combinesWith: {
+              orderDiscounts: true,
+              productDiscounts: true,
+            },
+          });
+          graphqlId = result.graphqlId;
+        } else {
+          // Basic discount code via GraphQL
+          const result = await shopifyService.createDiscountCodeGraphQL(storeId, {
+            title: `Affiliate Code: ${coupon.code}`,
+            code: coupon.code,
+            valueType: coupon.discount.includes("%") ? "percentage" : "fixed_amount",
+            value: discountValue > 0 ? discountValue : 0.01,
+            startsAt: new Date().toISOString(),
+            endsAt: syncEndsAt,
+            usageLimit: coupon.maxUsage || undefined,
+            oncePerCustomer: !!coupon.maxUsage,
+            combinesWith: { shippingDiscounts: true },
+          });
+          graphqlId = result.graphqlId;
+        }
 
         // Update coupon
         const existingPriceRuleIds = (coupon.shopifyPriceRuleIds as any) || {};
@@ -292,8 +330,8 @@ router.post("/discounts/sync-all", authenticateToken, requireAdmin, async (req: 
           where: { id: coupon.id },
           data: {
             syncedToShopify: true,
-            shopifyPriceRuleIds: { ...existingPriceRuleIds, [storeId]: priceRule.id },
-            shopifyDiscountIds: { ...existingDiscountIds, [storeId]: discountCode.id },
+            shopifyPriceRuleIds: { ...existingPriceRuleIds, [storeId]: graphqlId },
+            shopifyDiscountIds: { ...existingDiscountIds, [storeId]: graphqlId },
             syncedStores: [...new Set([...existingSyncedStores, storeId])],
           },
         });
