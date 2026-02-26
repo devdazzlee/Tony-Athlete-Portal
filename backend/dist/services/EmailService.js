@@ -674,7 +674,7 @@ The TC Nutrition Team
         });
     }
     async sendOfferCreatedEmail(email, firstName, offerDetails) {
-        const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/links`;
+        const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard`;
         const html = `
       <!DOCTYPE html>
       <html>
@@ -984,6 +984,120 @@ The TC Nutrition Team
         await this.sendEmail({
             to: email,
             subject: `🎁 New Offer Available: ${offerDetails.offerName} - ${offerDetails.commissionRate}% Commission`,
+            html,
+            text,
+        });
+    }
+    async sendAffiliateDiscountAssignedEmail(email, firstName, codes) {
+        if (!email || !email.trim()) {
+            console.warn("sendAffiliateDiscountAssignedEmail skipped: missing recipient email");
+            return;
+        }
+        if (!codes || codes.length === 0)
+            return;
+        const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard`;
+        const formatDate = (date) => {
+            if (!date)
+                return "No expiry";
+            const parsed = typeof date === "string" ? new Date(date) : date;
+            return isNaN(parsed.getTime())
+                ? "No expiry"
+                : parsed.toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                });
+        };
+        const codeRowsHtml = codes
+            .map((code) => {
+            const allowanceText = typeof code.allowanceAmount === "number"
+                ? `$${code.allowanceAmount.toFixed(0)} monthly allowance`
+                : "";
+            const perks = [
+                code.discountText || "Custom discount",
+                code.freeShipping ? "Free shipping" : "",
+                allowanceText,
+            ]
+                .filter(Boolean)
+                .join(" • ");
+            return `
+          <div class="code-row">
+            <div class="code-left">
+              <div class="code">${code.code}</div>
+              <div class="perks">${perks || "Discount code"}</div>
+              ${code.description ? `<div class="note">${code.description}</div>` : ""}
+            </div>
+            <div class="code-right">
+              <div class="label">Expires</div>
+              <div class="value">${formatDate(code.expiresAt)}</div>
+            </div>
+          </div>
+        `;
+        })
+            .join("");
+        const textList = codes
+            .map((code) => {
+            const parts = [
+                code.discountText || "Discount code",
+                code.freeShipping ? "Free shipping" : "",
+                typeof code.allowanceAmount === "number"
+                    ? `$${code.allowanceAmount.toFixed(0)} allowance`
+                    : "",
+            ].filter(Boolean);
+            return `- ${code.code}: ${parts.join(" | ") || "Discount code"} (Expires: ${formatDate(code.expiresAt)})`;
+        })
+            .join("\n");
+        const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>New Discount Codes Added</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; margin: 0; padding: 0; color: #0f172a; }
+            .container { max-width: 640px; margin: 0 auto; padding: 28px 22px; }
+            .card { background: #ffffff; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); padding: 28px; }
+            h1 { margin: 0 0 10px 0; font-size: 24px; color: #0f172a; }
+            p { color: #334155; line-height: 1.6; margin: 0 0 14px 0; }
+            .code-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #e2e8f0; }
+            .code-row:last-child { border-bottom: none; }
+            .code-left { max-width: 70%; }
+            .code { font-family: 'Courier New', monospace; font-weight: 700; background: #0f172a; color: #fff; display: inline-block; padding: 8px 12px; border-radius: 8px; letter-spacing: 0.5px; }
+            .perks { margin-top: 8px; color: #0ea5e9; font-weight: 600; }
+            .note { margin-top: 6px; color: #64748b; font-size: 13px; }
+            .code-right { text-align: right; }
+            .label { color: #94a3b8; font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
+            .value { font-weight: 700; color: #0f172a; margin-top: 4px; }
+            .cta { text-align: center; margin-top: 24px; }
+            .button { display: inline-block; padding: 14px 22px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff !important; text-decoration: none; border-radius: 10px; font-weight: 700; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25); }
+            .footer { margin-top: 22px; color: #94a3b8; font-size: 12px; text-align: center; line-height: 1.6; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="card">
+              <h1>New discount codes added 🎉</h1>
+              <p>Hi <strong>${firstName}</strong>,</p>
+              <p>We just added new discount code${codes.length > 1 ? "s" : ""} to your affiliate account. You can start using them right away.</p>
+              ${codeRowsHtml}
+              <div class="cta">
+                <a href="${dashboardUrl}" class="button">View my codes</a>
+              </div>
+              <p style="color:#475569; font-size:14px; margin-top:16px;">Tip: Share these codes with your audience or use them during checkout. If a code has free shipping, stack it with the discount when needed.</p>
+            </div>
+            <div class="footer">
+              <div>TC Nutrition Athlete Portal</div>
+              <div>This is an automated message. No reply needed.</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+        const text = `Hi ${firstName},\n\nNew discount code${codes.length > 1 ? "s" : ""} have been added to your account:\n${textList}\n\nView your codes: ${dashboardUrl}\n\nTC Nutrition`;
+        await this.sendEmail({
+            to: email,
+            subject: codes.length > 1 ? `New discount codes added to your account` : `Your new discount code: ${codes[0].code}`,
             html,
             text,
         });

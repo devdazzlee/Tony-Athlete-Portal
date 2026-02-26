@@ -45,6 +45,7 @@ const csv_parser_1 = __importDefault(require("csv-parser"));
 const stream_1 = require("stream");
 const auth_1 = require("../middleware/auth");
 const ShopifyService_1 = __importDefault(require("../services/ShopifyService"));
+const EmailService_1 = __importDefault(require("../services/EmailService"));
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
 const upload = (0, multer_1.default)({
@@ -338,6 +339,37 @@ router.post("/generate", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADM
                 },
             },
         });
+        if (affiliate.user?.email) {
+            try {
+                const codesForEmail = [
+                    {
+                        code,
+                        discountText: discountText,
+                        allowanceAmount: data.allowanceAmount,
+                        freeShipping: false,
+                        expiresAt: endOfMonth,
+                        description,
+                    },
+                ];
+                if (shippingCode) {
+                    codesForEmail.push({
+                        code: shippingCode,
+                        discountText: "Free shipping",
+                        allowanceAmount: undefined,
+                        freeShipping: true,
+                        expiresAt: endOfMonth,
+                        description: shippingDescription || undefined,
+                    });
+                }
+                await EmailService_1.default.sendAffiliateDiscountAssignedEmail(affiliate.user.email, affiliate.user.firstName, codesForEmail);
+            }
+            catch (emailErr) {
+                console.warn("Failed to send affiliate code email:", emailErr);
+            }
+        }
+        else {
+            console.warn("Skipping affiliate code email: affiliate missing email address");
+        }
         if (shippingCode) {
             await prisma.coupon.create({
                 data: {
@@ -571,6 +603,37 @@ router.post("/import", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                         },
                     });
                     shippingCreated++;
+                }
+                if (affiliate.user?.email) {
+                    try {
+                        const codesForEmail = [
+                            {
+                                code: allowanceCode,
+                                discountText,
+                                allowanceAmount,
+                                freeShipping: false,
+                                expiresAt: endOfMonth,
+                                description,
+                            },
+                        ];
+                        if (shippingCode) {
+                            codesForEmail.push({
+                                code: shippingCode,
+                                discountText: "Free shipping",
+                                allowanceAmount: undefined,
+                                freeShipping: true,
+                                expiresAt: endOfMonth,
+                                description: shippingDescription || undefined,
+                            });
+                        }
+                        await EmailService_1.default.sendAffiliateDiscountAssignedEmail(affiliate.user.email, affiliate.user.firstName || "there", codesForEmail);
+                    }
+                    catch (emailErr) {
+                        errors.push(`${rowLabel}: Email failed - ${emailErr?.message || emailErr}`);
+                    }
+                }
+                else {
+                    errors.push(`${rowLabel}: Email skipped (affiliate missing email)`);
                 }
                 imported++;
             }

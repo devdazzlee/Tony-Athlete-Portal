@@ -7,6 +7,7 @@ import csv from "csv-parser";
 import { Readable } from "stream";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import shopifyService from "../services/ShopifyService";
+import emailService from "../services/EmailService";
 
 const router: Router = Router();
 const prisma = new PrismaClient();
@@ -371,6 +372,44 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
       },
     });
 
+    // Send notification email to affiliate with their new code(s)
+    if (affiliate.user?.email) {
+      try {
+        const codesForEmail = [
+          {
+            code,
+            discountText: discountText,
+            allowanceAmount: data.allowanceAmount,
+            freeShipping: false,
+            expiresAt: endOfMonth,
+            description,
+          },
+        ];
+
+        if (shippingCode) {
+          codesForEmail.push({
+            code: shippingCode,
+            discountText: "Free shipping",
+            allowanceAmount: undefined,
+            freeShipping: true,
+            expiresAt: endOfMonth,
+            description: shippingDescription || undefined,
+          });
+        }
+
+        await emailService.sendAffiliateDiscountAssignedEmail(
+          affiliate.user.email,
+          affiliate.user.firstName,
+          codesForEmail
+        );
+      } catch (emailErr) {
+        console.warn("Failed to send affiliate code email:", emailErr);
+        // Do not fail request if email fails
+      }
+    } else {
+      console.warn("Skipping affiliate code email: affiliate missing email address");
+    }
+
     if (shippingCode) {
       await prisma.coupon.create({
         data: {
@@ -659,6 +698,43 @@ router.post(
               },
             });
             shippingCreated++;
+          }
+
+          // Send notification email for this row (only if affiliate email present)
+          if (affiliate.user?.email) {
+            try {
+              const codesForEmail = [
+                {
+                  code: allowanceCode,
+                  discountText,
+                  allowanceAmount,
+                  freeShipping: false,
+                  expiresAt: endOfMonth,
+                  description,
+                },
+              ];
+
+              if (shippingCode) {
+                codesForEmail.push({
+                  code: shippingCode,
+                  discountText: "Free shipping",
+                  allowanceAmount: undefined,
+                  freeShipping: true,
+                  expiresAt: endOfMonth,
+                  description: shippingDescription || undefined,
+                });
+              }
+
+              await emailService.sendAffiliateDiscountAssignedEmail(
+                affiliate.user.email,
+                affiliate.user.firstName || "there",
+                codesForEmail
+              );
+            } catch (emailErr) {
+              errors.push(`${rowLabel}: Email failed - ${emailErr?.message || emailErr}`);
+            }
+          } else {
+            errors.push(`${rowLabel}: Email skipped (affiliate missing email)`);
           }
 
           imported++;

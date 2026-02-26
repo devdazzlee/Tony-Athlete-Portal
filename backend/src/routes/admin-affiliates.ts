@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import shopifyService from "../services/ShopifyService";
+import emailService from "../services/EmailService";
 
 const router: Router = express.Router();
 const prisma = new PrismaClient();
@@ -550,7 +551,7 @@ router.post(
         where: { id },
         include: {
           user: {
-            select: { firstName: true, lastName: true },
+            select: { firstName: true, lastName: true, email: true },
           },
         },
       });
@@ -718,6 +719,31 @@ router.post(
         : syncedToShopify
           ? `Code "${normalizedCode}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
           : `Code "${normalizedCode}" created in database (Shopify sync unavailable)`;
+
+      // Notify affiliate about the new discount code
+      if (affiliate.user?.email) {
+        try {
+          await emailService.sendAffiliateDiscountAssignedEmail(
+            affiliate.user.email,
+            affiliate.user.firstName,
+            [
+              {
+                code: normalizedCode,
+                discountText: discountStr,
+                freeShipping: validatedData.freeShipping,
+                allowanceAmount: undefined,
+                expiresAt: validUntil,
+                description: codeDescription,
+              },
+            ]
+          );
+        } catch (emailErr) {
+          console.warn("Failed to send affiliate discount email:", emailErr);
+          // Don't fail response on email issue
+        }
+      } else {
+        console.warn("Skipping email: affiliate missing email address");
+      }
 
       res.json({
         success: true,

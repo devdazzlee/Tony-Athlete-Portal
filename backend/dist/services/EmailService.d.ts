@@ -4,6 +4,14 @@ interface EmailOptions {
     html: string;
     text?: string;
 }
+interface AffiliateDiscountCodeInfo {
+    code: string;
+    discountText?: string;
+    allowanceAmount?: number;
+    freeShipping?: boolean;
+    expiresAt?: Date | string | null;
+    description?: string | null;
+}
 declare class EmailService {
     private transporter;
     constructor();
@@ -28,6 +36,7 @@ declare class EmailService {
         endDate: string;
         referralCodes: string[];
     }): Promise<void>;
+    sendAffiliateDiscountAssignedEmail(email: string, firstName: string, codes: AffiliateDiscountCodeInfo[]): Promise<void>;
     static generateToken(): string;
     static generateTokenExpiry(): Date;
 }

@@ -42,6 +42,7 @@ const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const ShopifyService_1 = __importDefault(require("../services/ShopifyService"));
+const EmailService_1 = __importDefault(require("../services/EmailService"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN", "MANAGER"]), async (req, res) => {
@@ -454,7 +455,7 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
             where: { id },
             include: {
                 user: {
-                    select: { firstName: true, lastName: true },
+                    select: { firstName: true, lastName: true, email: true },
                 },
             },
         });
@@ -594,6 +595,26 @@ router.post("/:id/discount-code", auth_1.authenticateToken, (0, auth_1.requireRo
             : syncedToShopify
                 ? `Code "${normalizedCode}" created and synced to Shopify (${syncedStores.length} store${syncedStores.length > 1 ? "s" : ""})`
                 : `Code "${normalizedCode}" created in database (Shopify sync unavailable)`;
+        if (affiliate.user?.email) {
+            try {
+                await EmailService_1.default.sendAffiliateDiscountAssignedEmail(affiliate.user.email, affiliate.user.firstName, [
+                    {
+                        code: normalizedCode,
+                        discountText: discountStr,
+                        freeShipping: validatedData.freeShipping,
+                        allowanceAmount: undefined,
+                        expiresAt: validUntil,
+                        description: codeDescription,
+                    },
+                ]);
+            }
+            catch (emailErr) {
+                console.warn("Failed to send affiliate discount email:", emailErr);
+            }
+        }
+        else {
+            console.warn("Skipping email: affiliate missing email address");
+        }
         res.json({
             success: true,
             message: responseMessage,
