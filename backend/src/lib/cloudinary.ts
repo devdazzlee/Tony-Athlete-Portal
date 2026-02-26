@@ -2,9 +2,9 @@ import { v2 as cloudinary } from 'cloudinary';
 
 // Cloudinary Configuration
 cloudinary.config({
-  cloud_name: 'dkblutnml',
-  api_key: '739218772994437',
-  api_secret: '1VUEHmzT8P-XE28-RGkKbT3Z_oM',
+  cloud_name: 'dbjdvnp8z',
+  api_key: '829432148956711',
+  api_secret: 'FUc38-e070Z7dXRVOObYZz0wOpU',
   secure: true
 });
 
