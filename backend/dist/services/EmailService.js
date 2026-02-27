@@ -1070,7 +1070,7 @@ The TC Nutrition Team
             .label { color: #94a3b8; font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
             .value { font-weight: 700; color: #0f172a; margin-top: 4px; }
             .cta { text-align: center; margin-top: 24px; }
-            .button { display: inline-block; padding: 14px 22px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff !important; text-decoration: none; border-radius: 10px; font-weight: 700; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25); }
+            .button { display: inline-block; padding: 14px 22px; background: #E43133; color: #fff !important; text-decoration: none; border-radius: 10px; font-weight: 700; box-shadow: 0 8px 18px rgba(228, 49, 51, 0.25); }
             .footer { margin-top: 22px; color: #94a3b8; font-size: 12px; text-align: center; line-height: 1.6; }
           </style>
         </head>
@@ -1084,7 +1084,6 @@ The TC Nutrition Team
               <div class="cta">
                 <a href="${dashboardUrl}" class="button">View my codes</a>
               </div>
-              <p style="color:#475569; font-size:14px; margin-top:16px;">Tip: Share these codes with your audience or use them during checkout. If a code has free shipping, stack it with the discount when needed.</p>
             </div>
             <div class="footer">
               <div>TC Nutrition Athlete Portal</div>
