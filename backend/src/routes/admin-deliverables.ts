@@ -2,6 +2,7 @@ import express, { Router } from "express";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import emailService from "../services/EmailService";
 
 const router: Router = express.Router();
 const prisma = new PrismaClient();
@@ -187,6 +188,29 @@ router.patch(
         },
       });
 
+      await prisma.notification.create({
+        data: {
+          userId: updatedSubmission.userId,
+          type: "INFO",
+          title: "Deliverable approved",
+          message: comment?.trim()
+            ? `Your deliverable was approved. Admin comment: ${comment.trim()}`
+            : "Your deliverable was approved.",
+          data: {
+            deliverableId: updatedSubmission.id,
+            category: "DELIVERABLE_RESPONSE",
+          } as any,
+        },
+      });
+
+      if (updatedSubmission.user?.email) {
+        await emailService.sendEmail({
+          to: updatedSubmission.user.email,
+          subject: "Deliverable approved",
+          html: `<p>Your deliverable submission has been approved.</p><p>${comment ? `Admin comment: ${comment}` : ""}</p>`,
+        });
+      }
+
       res.json({
         message: "Deliverable approved successfully",
         submission: updatedSubmission,
@@ -242,6 +266,27 @@ router.patch(
           },
         },
       });
+
+      await prisma.notification.create({
+        data: {
+          userId: updatedSubmission.userId,
+          type: "WARNING",
+          title: "Deliverable needs updates",
+          message: `Your deliverable was rejected. Admin comment: ${comment}`,
+          data: {
+            deliverableId: updatedSubmission.id,
+            category: "DELIVERABLE_RESPONSE",
+          } as any,
+        },
+      });
+
+      if (updatedSubmission.user?.email) {
+        await emailService.sendEmail({
+          to: updatedSubmission.user.email,
+          subject: "Deliverable feedback from admin",
+          html: `<p>Your deliverable needs updates.</p><p>Admin comment: ${comment}</p>`,
+        });
+      }
 
       res.json({
         message: "Deliverable rejected successfully",

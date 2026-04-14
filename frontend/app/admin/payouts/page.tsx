@@ -92,6 +92,7 @@ export default function PayoutsManagementPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Payout | null>(
     null
   );
+  const [isExportingPendingTotals, setIsExportingPendingTotals] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10, // 10 per page as requested
@@ -198,6 +199,30 @@ export default function PayoutsManagementPage() {
     toast.success("Payouts data refreshed");
   };
 
+  const exportPendingTotals = async () => {
+    try {
+      setIsExportingPendingTotals(true);
+      const response = await apiClient.get("/admin/payouts/export-pending-totals", {
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `pending-payout-totals-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Pending payout totals exported");
+    } catch (error) {
+      console.error("Error exporting pending totals:", error);
+      toast.error("Failed to export pending totals");
+    } finally {
+      setIsExportingPendingTotals(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusLower = status.toLowerCase();
     const variants = {
@@ -283,6 +308,14 @@ export default function PayoutsManagementPage() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            variant="outline"
+            onClick={exportPendingTotals}
+            disabled={isExportingPendingTotals || isTableLoading}
+            className="w-full sm:w-auto"
+          >
+            {isExportingPendingTotals ? "Exporting..." : "Export Pending Totals"}
+          </Button>
           <Button
             variant="outline"
             onClick={handleRefresh}

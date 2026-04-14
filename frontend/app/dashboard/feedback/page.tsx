@@ -14,27 +14,55 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
+import { config } from "@/config/config";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 export default function FeedbackPage() {
   const [feedback, setFeedback] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const uploadPhoto = async () => {
+    if (!photoFile) return null;
+    setIsUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", photoFile);
+      const response = await fetch(`${config.apiUrl}/upload/deliverable`, {
+        method: "POST",
+        headers: getAuthHeaders({ contentType: null }),
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error("Failed to upload feedback photo");
+      }
+      const data = await response.json();
+      return data.url as string;
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
+      const photoUrl = await uploadPhoto();
       await apiClient.post("/athlete/feedback", { 
         feedback,
         name: name.trim() || undefined,
         email: email.trim() || undefined,
+        photoUrl: photoUrl || undefined,
       });
       toast.success("Feedback submitted successfully!");
       setFeedback("");
       setName("");
       setEmail("");
+      setPhotoFile(null);
     } catch (error: any) {
       console.error("Error submitting feedback:", error);
       toast.error("Failed to submit feedback. Please try again.");
@@ -102,12 +130,24 @@ export default function FeedbackPage() {
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="photo" className="text-gray-700">
+                  Photo <span className="text-gray-500 text-sm">(Optional)</span>
+                </Label>
+                <Input
+                  id="photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                  className="bg-white border-gray-300 text-gray-900"
+                />
+              </div>
               <Button
                 type="submit"
-                disabled={isSubmitting || !feedback.trim()}
+                disabled={isSubmitting || isUploadingPhoto || !feedback.trim()}
                 className="w-full bg-gray-900 text-white hover:bg-gray-800 text-base font-medium py-6"
               >
-                {isSubmitting ? "Submitting..." : "Submit Feedback"}
+                {isSubmitting || isUploadingPhoto ? "Submitting..." : "Submit Feedback"}
               </Button>
             </form>
           </CardContent>

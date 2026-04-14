@@ -153,6 +153,7 @@ export default function AffiliatesManagementPage() {
     tiktok: "",
     other: "",
     spendingLimit: "",
+    deliverablesNote: "",
   });
   const [existingDiscountCodes, setExistingDiscountCodes] = useState<any[]>([]);
   const [existingReferralCodes, setExistingReferralCodes] = useState<any[]>([]);
@@ -239,6 +240,7 @@ export default function AffiliatesManagementPage() {
         spendingLimit: createForm.spendingLimit
           ? parseFloat(createForm.spendingLimit)
           : undefined,
+        deliverablesNote: createForm.deliverablesNote || undefined,
       });
 
       // Show appropriate success message with Shopify sync status
@@ -264,6 +266,7 @@ export default function AffiliatesManagementPage() {
           tiktok: "",
           other: "",
           spendingLimit: "",
+          deliverablesNote: "",
         });
         
         // Reset password visibility
@@ -1598,6 +1601,7 @@ export default function AffiliatesManagementPage() {
               tiktok: "",
               other: "",
               spendingLimit: "",
+              deliverablesNote: "",
             });
             setShowPassword(false);
           }
@@ -1720,6 +1724,22 @@ export default function AffiliatesManagementPage() {
                 <p className="text-xs text-muted-foreground">
                   Monthly product allowance amount for this affiliate. Leave empty to set no allowance.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-deliverablesNote">
+                  Deliverable Requirements
+                </Label>
+                <Textarea
+                  id="create-deliverablesNote"
+                  placeholder="Enter custom deliverable requirements for this affiliate"
+                  value={createForm.deliverablesNote}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      deliverablesNote: e.target.value,
+                    })
+                  }
+                />
               </div>
             </div>
 

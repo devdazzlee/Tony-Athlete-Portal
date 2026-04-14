@@ -69,12 +69,13 @@ router.get("/profile", async (req: any, res) => {
 
     const socialMedia = affiliate.socialMedia as any || {};
     
-    // Get ALL active coupons (discount codes) assigned to this affiliate
+    // Get audience-facing discount codes (exclude personal allowance codes)
     const coupons = await prisma.coupon.findMany({
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
-        isAffiliate: true, // Only get affiliate allowance codes
+        isAffiliate: false,
+        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
       },
       orderBy: {
         createdAt: "desc",
@@ -83,8 +84,14 @@ router.get("/profile", async (req: any, res) => {
 
     // Format discount codes with descriptions
     const discountCodes = coupons.map((coupon) => {
-      const discountValue = parseFloat(coupon.discount) || 0;
-      const valueText = discountValue > 0 ? `${discountValue}% off` : "";
+      const discountValue = parseFloat((coupon.discount || "").replace(/[^0-9.]/g, "")) || 0;
+      const isFixedAmount =
+        coupon.discount.includes("$") || /\$\s*\d+/.test(coupon.description || "");
+      const valueText = discountValue > 0
+        ? isFixedAmount
+          ? `$${discountValue} off`
+          : `${discountValue}% off`
+        : "";
       const shippingText = coupon.freeShipping ? "Free Shipping" : "";
       const combinedValue = [valueText, shippingText].filter(Boolean).join(" + ");
 
@@ -516,6 +523,29 @@ router.post("/deliverables", async (req: any, res) => {
       )
     );
 
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        prisma.notification.create({
+          data: {
+            userId: admin.id,
+            type: "INFO",
+            title: "New deliverable submission",
+            message: `${affiliate.id} submitted ${data.links.length} deliverable(s) for ${data.month}.`,
+            data: {
+              affiliateId: affiliate.id,
+              month: data.month,
+              submittedCount: data.links.length,
+              category: "DELIVERABLE_SUBMISSION",
+            } as any,
+          },
+        })
+      )
+    );
+
     res.json({
       message: "Deliverables submitted successfully",
       deliverables,
@@ -576,6 +606,7 @@ router.get("/deliverables", async (req: any, res) => {
 const feedbackSchema = z.object({
   feedback: z.string().min(1),
   name: z.string().optional(),
+  photoUrl: z.string().url().optional(),
   email: z.preprocess(
     (val) => (val === "" ? undefined : val),
     z.string().email().optional()
@@ -600,6 +631,7 @@ router.post("/feedback", async (req: any, res) => {
         resource: "Feedback",
         details: {
           feedback: data.feedback,
+          photoUrl: data.photoUrl || null,
           anonymous: isAnonymous,
           name: hasName ? data.name?.trim() : undefined,
           email: hasEmail ? data.email?.trim() : undefined,
@@ -609,6 +641,28 @@ router.post("/feedback", async (req: any, res) => {
       },
     });
 
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        prisma.notification.create({
+          data: {
+            userId: admin.id,
+            type: "INFO",
+            title: "New affiliate feedback",
+            message: `A new general feedback submission was received.`,
+            data: {
+              affiliateId: null,
+              category: "GENERAL_FEEDBACK",
+              hasPhoto: Boolean(data.photoUrl),
+            } as any,
+          },
+        })
+      )
+    );
+
     res.json({ message: "Feedback submitted successfully" });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -616,6 +670,42 @@ router.post("/feedback", async (req: any, res) => {
     }
     console.error("Error submitting feedback:", error);
     res.status(500).json({ error: "Failed to submit feedback" });
+  }
+});
+
+router.get("/dashboard-notifications", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const activities = await prisma.activity.findMany({
+      where: {
+        userId,
+        action: "deliverable_submitted",
+        adminComment: { not: null },
+      },
+      orderBy: { reviewedAt: "desc" },
+      take: 10,
+    });
+
+    const items = activities.map((activity) => {
+      const details = (activity.details as any) || {};
+      return {
+        id: activity.id,
+        type: "DELIVERABLE_COMMENT",
+        title: "Deliverable review update",
+        message: activity.adminComment || "Your deliverable has a new admin comment.",
+        month: details.month || null,
+        platform: details.customPlatformName || details.platform || null,
+        reviewedAt: activity.reviewedAt,
+      };
+    });
+
+    res.json({
+      unreadCount: items.length,
+      items,
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard notifications:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard notifications" });
   }
 });
 

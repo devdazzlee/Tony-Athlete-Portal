@@ -34,27 +34,42 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
       where: {
         affiliateId: affiliate.id,
         isAffiliate: true, // Only fetch affiliate allowance codes
+        status: "ACTIVE",
+        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
       },
       orderBy: { createdAt: "desc" },
     });
 
     // Convert coupons to referral code format
-    const couponCodesFormatted = affiliateCoupons.map((coupon) => ({
-      id: coupon.id,
-      code: coupon.code,
-      commissionRate: parseFloat(coupon.discount) || 0, // Use discount value as display
-      productId: null,
-      maxUses: coupon.maxUsage || 1,
-      currentUses: coupon.usage,
-      expiresAt: coupon.validUntil.toISOString(),
-      isActive: coupon.status === "ACTIVE",
-      createdAt: coupon.createdAt.toISOString(),
-      type: "COUPON", // Add type to distinguish
-      description: coupon.description,
-      freeShipping: coupon.freeShipping,
-      syncedToShopify: coupon.syncedToShopify || false,
-      syncedStores: coupon.syncedStores || [],
-    }));
+    const couponCodesFormatted = affiliateCoupons
+      .filter((coupon) =>
+        coupon.maxUsage ? coupon.usage < coupon.maxUsage : true
+      )
+      .map((coupon) => {
+        const numericDiscount = parseFloat((coupon.discount || "").replace(/[^0-9.]/g, "")) || 0;
+        const isFixedAmount =
+          coupon.discount.includes("$") ||
+          /\$\s*\d+/.test(coupon.description || "");
+
+        return {
+          id: coupon.id,
+          code: coupon.code,
+          commissionRate: numericDiscount,
+          amountLabel: isFixedAmount ? `$${numericDiscount} off` : `${numericDiscount}% off`,
+          discountType: isFixedAmount ? "FIXED_AMOUNT" : "PERCENTAGE",
+          productId: null,
+          maxUses: coupon.maxUsage || null,
+          currentUses: coupon.usage,
+          expiresAt: coupon.validUntil.toISOString(),
+          isActive: coupon.status === "ACTIVE",
+          createdAt: coupon.createdAt.toISOString(),
+          type: "COUPON", // Add type to distinguish
+          description: coupon.description,
+          freeShipping: coupon.freeShipping,
+          syncedToShopify: coupon.syncedToShopify || false,
+          syncedStores: coupon.syncedStores || [],
+        };
+      });
 
     // Combine both types of codes
     const allCodes = [...referralCodes, ...couponCodesFormatted];

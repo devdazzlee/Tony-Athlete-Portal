@@ -402,4 +402,88 @@ router.get(
   }
 );
 
+router.get(
+  "/export-pending-totals",
+  authenticateToken,
+  requireRole(["ADMIN", "MANAGER"]),
+  async (_req: any, res) => {
+    try {
+      const [pendingPayouts, approvedCommissions, affiliates] = await Promise.all([
+        prisma.payout.findMany({
+          where: { status: { in: ["PENDING", "PROCESSING"] } },
+          select: { affiliateId: true, amount: true },
+        }),
+        prisma.affiliateOrder.findMany({
+          where: { status: "APPROVED" },
+          select: { affiliateId: true, commissionAmount: true },
+        }),
+        prisma.affiliateProfile.findMany({
+          include: {
+            user: {
+              select: { firstName: true, lastName: true, email: true },
+            },
+          },
+        }),
+      ]);
+
+      const totalsByAffiliate = new Map<
+        string,
+        { payoutAmount: number; approvedCommissionAmount: number }
+      >();
+
+      for (const payout of pendingPayouts) {
+        const current = totalsByAffiliate.get(payout.affiliateId) || {
+          payoutAmount: 0,
+          approvedCommissionAmount: 0,
+        };
+        current.payoutAmount += payout.amount || 0;
+        totalsByAffiliate.set(payout.affiliateId, current);
+      }
+
+      for (const commission of approvedCommissions) {
+        const current = totalsByAffiliate.get(commission.affiliateId) || {
+          payoutAmount: 0,
+          approvedCommissionAmount: 0,
+        };
+        current.approvedCommissionAmount += commission.commissionAmount || 0;
+        totalsByAffiliate.set(commission.affiliateId, current);
+      }
+
+      const rows = Array.from(totalsByAffiliate.entries()).map(([affiliateId, totals]) => {
+        const affiliate = affiliates.find((a) => a.id === affiliateId);
+        const name = affiliate?.user
+          ? `${affiliate.user.firstName} ${affiliate.user.lastName}`.trim()
+          : "Unknown";
+        const email = affiliate?.user?.email || "";
+        const totalPending = totals.payoutAmount + totals.approvedCommissionAmount;
+        return { affiliateId, name, email, ...totals, totalPending };
+      });
+
+      const csv = [
+        "affiliate_id,affiliate_name,email,pending_payout_amount,approved_commission_amount,total_pending_amount",
+        ...rows.map((row) =>
+          [
+            row.affiliateId,
+            `"${row.name.replace(/"/g, '""')}"`,
+            `"${row.email.replace(/"/g, '""')}"`,
+            row.payoutAmount.toFixed(2),
+            row.approvedCommissionAmount.toFixed(2),
+            row.totalPending.toFixed(2),
+          ].join(",")
+        ),
+      ].join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="pending-payout-totals-${new Date().toISOString().slice(0, 10)}.csv"`
+      );
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting pending payout totals:", error);
+      res.status(500).json({ error: "Failed to export pending payout totals" });
+    }
+  }
+);
+
 export default router;

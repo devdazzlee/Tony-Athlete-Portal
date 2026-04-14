@@ -46,6 +46,14 @@ interface Submission {
   reviewedAt?: string | null;
 }
 
+interface AllowanceCode {
+  id: string;
+  code: string;
+  amountLabel?: string;
+  commissionRate?: number;
+  description?: string;
+}
+
 export default function DeliverablesPage() {
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -63,10 +71,12 @@ export default function DeliverablesPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deliverablesNote, setDeliverablesNote] = useState<string | null>(null);
+  const [allowanceCodes, setAllowanceCodes] = useState<AllowanceCode[]>([]);
 
   useEffect(() => {
     fetchSubmissions();
     fetchDeliverablesNote();
+    fetchAllowanceCodes();
   }, [month]);
 
   const fetchDeliverablesNote = async () => {
@@ -88,6 +98,17 @@ export default function DeliverablesPage() {
       toast.error("Failed to load submissions");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllowanceCodes = async () => {
+    try {
+      const response = await apiClient.get("/referral/codes");
+      const codes = (response.data || []).filter((item: any) => item.type === "COUPON");
+      setAllowanceCodes(codes);
+    } catch (error: any) {
+      console.error("Error fetching allowance codes:", error);
+      setAllowanceCodes([]);
     }
   };
 
@@ -249,6 +270,36 @@ export default function DeliverablesPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="bg-white border-gray-200">
+        <CardHeader>
+          <CardTitle className="text-gray-900">Monthly Allowance Code</CardTitle>
+          <CardDescription className="text-gray-600">
+            This is your unique allowance code, do not share it with others
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {allowanceCodes.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No active monthly allowance code right now.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {allowanceCodes.map((code) => (
+                <div
+                  key={code.id}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between"
+                >
+                  <span className="font-mono text-sm font-semibold text-gray-900">{code.code}</span>
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                    {code.amountLabel || `${code.commissionRate || 0}% off`}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Submit Deliverable */}

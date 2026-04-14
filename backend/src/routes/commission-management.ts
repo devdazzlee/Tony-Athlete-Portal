@@ -75,6 +75,13 @@ const affiliateTotalsQuerySchema = z.object({
   affiliateId: z.string(),
 });
 
+const manualCommissionSchema = z.object({
+  affiliateId: z.string().min(1),
+  amount: z.number().positive(),
+  source: z.string().optional(),
+  notes: z.string().optional(),
+});
+
 // Get all commissions with filtering
 router.get("/", authenticateToken, async (req: any, res) => {
   try {
@@ -883,6 +890,57 @@ router.get("/analytics", authenticateToken, async (req: any, res) => {
   } catch (error) {
     console.error("Error fetching commission analytics:", error);
     res.status(500).json({ error: "Failed to fetch commission analytics" });
+  }
+});
+
+router.post("/manual", authenticateToken, async (req: any, res) => {
+  try {
+    if (req.user.role !== "ADMIN" && req.user.role !== "MANAGER") {
+      return res.status(403).json({
+        error: "Only admins and managers can add manual commissions",
+      });
+    }
+
+    const data = manualCommissionSchema.parse(req.body);
+    const affiliate = await prisma.affiliateProfile.findUnique({
+      where: { id: data.affiliateId },
+    });
+    if (!affiliate) {
+      return res.status(404).json({ error: "Affiliate not found" });
+    }
+
+    const stamp = Date.now();
+    const order = await prisma.affiliateOrder.create({
+      data: {
+        affiliateId: data.affiliateId,
+        referralCode: "MANUAL_ADJUSTMENT",
+        storeId: "manual",
+        orderId: `manual-${stamp}`,
+        customerName: "Manual Commission",
+        customerEmail: "manual@system.local",
+        orderValue: data.amount,
+        currency: "USD",
+        commissionRate: 100,
+        commissionAmount: data.amount,
+        status: "APPROVED",
+        note: data.notes || data.source || "Manually added by admin",
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Manual commission added successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Error adding manual commission:", error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: error.errors,
+      });
+    }
+    res.status(500).json({ error: "Failed to add manual commission" });
   }
 });
 

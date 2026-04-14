@@ -20,8 +20,7 @@ import {
   Check,
   Target,
   Tag,
-  ShoppingBag,
-  AlertCircle,
+  Bell,
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
@@ -33,8 +32,9 @@ import { Label } from "@/components/ui/label";
 export default function DashboardPage() {
   const { user } = useAuth();
   const [isSavingSocials, setIsSavingSocials] = useState(false);
-  const [copiedAllowanceCode, setCopiedAllowanceCode] = useState<string | null>(null);
-  const copiedAllowanceCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copiedAudienceCode, setCopiedAudienceCode] = useState<string | null>(null);
+  const copiedAudienceCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dashboardNotifications, setDashboardNotifications] = useState<any[]>([]);
   const [profileData, setProfileData] = useState({
     instagram: null as string | null,
     tiktok: null as string | null,
@@ -58,7 +58,6 @@ export default function DashboardPage() {
     },
     previousMonths: [] as any[],
   });
-  const [referralCodes, setReferralCodes] = useState<any[]>([]);
   const [referralStats, setReferralStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,17 +65,17 @@ export default function DashboardPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [profileRes, summaryRes, referralCodesRes, referralStatsRes] = await Promise.all([
+      const [profileRes, summaryRes, referralStatsRes, notificationsRes] = await Promise.all([
         apiClient.get("/athlete/profile"),
         apiClient.get("/athlete/commission-summary").catch(() => ({ data: { currentMonth: { month: "", status: "Pending", totalOrders: 0, totalUnits: 0, commission: "$0.00" }, previousMonths: [] } })),
-        apiClient.get("/referral/codes").catch(() => ({ data: [] })),
         apiClient.get("/referral/stats").catch(() => ({ data: null })),
+        apiClient.get("/athlete/dashboard-notifications").catch(() => ({ data: { items: [] } })),
       ]);
 
       setProfileData(profileRes.data);
       setCommissionSummary(summaryRes.data);
-      setReferralCodes(referralCodesRes.data);
       setReferralStats(referralStatsRes.data);
+      setDashboardNotifications(notificationsRes.data.items || []);
     } catch (error: any) {
       console.error("Error fetching dashboard data:", error);
       toast.error("Failed to load dashboard data");
@@ -115,8 +114,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     return () => {
-      if (copiedAllowanceCodeTimeoutRef.current) {
-        clearTimeout(copiedAllowanceCodeTimeoutRef.current);
+      if (copiedAudienceCodeTimeoutRef.current) {
+        clearTimeout(copiedAudienceCodeTimeoutRef.current);
       }
     };
   }, []);
@@ -207,6 +206,28 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {dashboardNotifications.length > 0 && (
+          <Card className="bg-white border-gray-200 mb-6">
+            <CardHeader>
+              <CardTitle className="text-gray-900 flex items-center gap-2">
+                <Bell className="h-5 w-5 text-blue-600" />
+                Notifications
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Updates from admin about your deliverables
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {dashboardNotifications.slice(0, 3).map((item) => (
+                <div key={item.id} className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-sm font-medium text-blue-900">{item.title}</p>
+                  <p className="text-sm text-blue-800">{item.message}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
       </div>
 
       {/* Your Profile Section */}
@@ -268,17 +289,17 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Allowance Code & Monthly Allowance Information Card */}
+          {/* Audience Discount Codes Card */}
           <Card className="bg-white border-gray-200 overflow-hidden">
             <CardHeader className="pb-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <CardTitle className="text-gray-900 flex items-center gap-2">
                     <Tag className="h-5 w-5 text-purple-600" />
-                    Your Discount Codes
+                    Audience Discount Code
                   </CardTitle>
                   <CardDescription className="text-gray-600">
-                    Personal discount codes assigned to your account
+                    Share these codes with your audience
                   </CardDescription>
                 </div>
                 <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
@@ -288,17 +309,15 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-900">Your Discount Codes</div>
+                <div className="text-sm font-semibold text-gray-900">Audience Discount Codes</div>
                 <Badge variant="outline" className="text-[11px]">
-                  {referralCodes.filter((c) => c.type === "COUPON").length} codes
+                  {profileData.discountCodes.length} codes
                 </Badge>
               </div>
 
-              {referralCodes.filter((c) => c.type === "COUPON").length > 0 ? (
+              {profileData.discountCodes.length > 0 ? (
                 <div className="space-y-3">
-                  {referralCodes
-                    .filter((c) => c.type === "COUPON")
-                    .map((code: any, index: number) => (
+                  {profileData.discountCodes.map((code: any, index: number) => (
                       <div
                         key={index}
                         className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100/60 transition-colors"
@@ -315,25 +334,25 @@ export default function DashboardPage() {
 
                           <div className="flex items-center gap-2 shrink-0">
                             <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs">
-                              {code.commissionRate}% OFF
+                              {code.value}
                             </Badge>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={async () => {
-                                await copyToClipboard(code.code, "Allowance code");
+                                await copyToClipboard(code.code, "Audience code");
 
-                                setCopiedAllowanceCode(code.code);
-                                if (copiedAllowanceCodeTimeoutRef.current) {
-                                  clearTimeout(copiedAllowanceCodeTimeoutRef.current);
+                                setCopiedAudienceCode(code.code);
+                                if (copiedAudienceCodeTimeoutRef.current) {
+                                  clearTimeout(copiedAudienceCodeTimeoutRef.current);
                                 }
-                                copiedAllowanceCodeTimeoutRef.current = setTimeout(() => {
-                                  setCopiedAllowanceCode(null);
+                                copiedAudienceCodeTimeoutRef.current = setTimeout(() => {
+                                  setCopiedAudienceCode(null);
                                 }, 1500);
                               }}
                               className="h-9 px-3"
                             >
-                              {copiedAllowanceCode === code.code ? (
+                              {copiedAudienceCode === code.code ? (
                                 <>
                                   <Check className="h-4 w-4 mr-2" />
                                   Copied
@@ -349,24 +368,8 @@ export default function DashboardPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 mt-3">
-                          {code.syncedToShopify ? (
-                            <Badge className="bg-green-100 text-green-800 border-green-200 text-[11px]">
-                              <ShoppingBag className="w-3 h-3 mr-1" />
-                              Synced to Shopify
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-[11px]">
-                              <AlertCircle className="w-3 h-3 mr-1" />
-                              Not Synced
-                            </Badge>
-                          )}
-                          {code.freeShipping && (
-                            <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[11px]">
-                              Free Shipping
-                            </Badge>
-                          )}
                           <Badge variant="outline" className="text-[11px]">
-                            {code.currentUses} uses
+                            Shareable code
                           </Badge>
                         </div>
                       </div>

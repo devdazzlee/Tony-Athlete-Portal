@@ -362,6 +362,18 @@ export default function AdminDeliverablesPage() {
                         </div>
                       </div>
 
+                      <div className="pt-1">
+                        <a
+                          href={submission.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          Open post
+                          <ExternalLink size={14} />
+                        </a>
+                      </div>
+
                       <div className="pt-2 border-t text-xs text-muted-foreground">
                         Submitted: {new Date(submission.submittedAt).toLocaleDateString()}
                       </div>
@@ -424,6 +436,9 @@ export default function AdminDeliverablesPage() {
                       Platform
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                      Post URL
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Submitted
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -455,6 +470,17 @@ export default function AdminDeliverablesPage() {
                         <Badge className="bg-gray-200 text-gray-700 border-gray-300">
                           {submission.platform}
                         </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <a
+                          href={submission.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm"
+                        >
+                          Open post
+                          <ExternalLink size={14} />
+                        </a>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(submission.submittedAt).toLocaleDateString()}

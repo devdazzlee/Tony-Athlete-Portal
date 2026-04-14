@@ -126,6 +126,13 @@ export default function AffiliateCodesPage() {
   }>({ isOpen: false, codeId: null, codeName: null });
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const formatDiscountLabel = (discount: string, description?: string) => {
+    const numericDiscount = parseFloat((discount || "").replace(/[^0-9.]/g, "")) || 0;
+    const isFixedAmount =
+      (discount || "").includes("$") || /\$\s*\d+/.test(description || "");
+    return isFixedAmount ? `$${numericDiscount} off` : `${numericDiscount}% off`;
+  };
+
   const [stats, setStats] = useState<{
     totalCodes: number;
     activeCodes: number;
@@ -617,7 +624,9 @@ export default function AffiliateCodesPage() {
                           {parseFloat(code.discount) > 0 && (
                             <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-md">
                               <DollarSign size={12} />
-                              <span className="font-medium">{code.discount}% off</span>
+                              <span className="font-medium">
+                                {formatDiscountLabel(code.discount, code.description)}
+                              </span>
                             </span>
                           )}
                           {code.freeShipping && (
@@ -748,7 +757,9 @@ export default function AffiliateCodesPage() {
                           {parseFloat(code.discount) > 0 ? (
                             <span className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 px-2 py-1 rounded-md w-fit">
                             <DollarSign size={14} />
-                              <span className="font-medium">{code.discount}% off</span>
+                              <span className="font-medium">
+                                {formatDiscountLabel(code.discount, code.description)}
+                              </span>
                           </span>
                           ) : null}
                           {code.freeShipping ? (
@@ -1297,7 +1308,9 @@ export default function AffiliateCodesPage() {
                   {parseFloat(editingCode.discount) > 0 && (
                     <div className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 px-2 py-1 rounded-md w-fit">
                       <DollarSign size={14} />
-                      <span className="font-medium">{editingCode.discount}% off</span>
+                      <span className="font-medium">
+                        {formatDiscountLabel(editingCode.discount, editingCode.description)}
+                      </span>
                     </div>
                   )}
                   {editingCode.freeShipping && (

@@ -1044,6 +1044,7 @@ router.post(
         tiktok: z.string().optional(),
         other: z.string().optional(),
         spendingLimit: z.number().min(0).nullable().optional(),
+        deliverablesNote: z.string().optional(),
       });
 
       const data = schema.parse(req.body);
@@ -1083,6 +1084,7 @@ router.post(
             commissionRate: data.commissionRate,
             paymentMethod: "PAYPAL", // Default payment method
             spendingLimit: data.spendingLimit || null,
+            deliverablesNote: data.deliverablesNote || null,
             socialMedia: {
               instagram: data.instagram || null,
               tiktok: data.tiktok || null,

@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { AdminLoading } from "@/components/ui/loading";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Textarea } from "@/components/ui/textarea";
 
 interface AffiliateOption {
   id: string;
@@ -179,6 +180,12 @@ export default function CommissionsPage() {
   });
 
   const [topAffiliatesModalOpen, setTopAffiliatesModalOpen] = useState(false);
+  const [manualCommission, setManualCommission] = useState({
+    affiliateId: "",
+    amount: "",
+    notes: "",
+  });
+  const [isAddingManualCommission, setIsAddingManualCommission] = useState(false);
 
   const formatMethodLabel = (method?: string | null) => {
     if (!method) return "Not Set";
@@ -563,6 +570,33 @@ export default function CommissionsPage() {
     }
   };
 
+  const addManualCommission = async () => {
+    if (!manualCommission.affiliateId || !manualCommission.amount) {
+      toast.error("Select an affiliate and enter an amount");
+      return;
+    }
+    try {
+      setIsAddingManualCommission(true);
+      await apiClient.post("/commission-management/manual", {
+        affiliateId: manualCommission.affiliateId,
+        amount: Number(manualCommission.amount),
+        notes: manualCommission.notes || undefined,
+      });
+      toast.success("Manual commission added");
+      setManualCommission({ affiliateId: "", amount: "", notes: "" });
+      await fetchCommissions();
+      await fetchAnalytics();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Failed to add manual commission"
+      );
+    } finally {
+      setIsAddingManualCommission(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants = {
       PENDING: "secondary",
@@ -811,6 +845,71 @@ export default function CommissionsPage() {
           </Card>
         </div>
       )}
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Manual Commission Adjustment</CardTitle>
+          <CardDescription>
+            Add a one-off commission amount directly to an affiliate account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div className="space-y-1">
+              <Label>Affiliate</Label>
+              <Select
+                value={manualCommission.affiliateId || "none"}
+                onValueChange={(value) =>
+                  setManualCommission((prev) => ({
+                    ...prev,
+                    affiliateId: value === "none" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select affiliate" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select affiliate</SelectItem>
+                  {affiliates.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Amount ($)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={manualCommission.amount}
+                onChange={(e) =>
+                  setManualCommission((prev) => ({ ...prev, amount: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label>Notes (Optional)</Label>
+              <Textarea
+                value={manualCommission.notes}
+                onChange={(e) =>
+                  setManualCommission((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                className="min-h-[44px]"
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <Button onClick={addManualCommission} disabled={isAddingManualCommission}>
+              {isAddingManualCommission ? "Adding..." : "Add Manual Commission"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>
