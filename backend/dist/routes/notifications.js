@@ -3,13 +3,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
+const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
+router.use(auth_1.authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const { userId, type, status = 'all', page = 1, limit = 20, userRole } = req.query;
-        const filters = {};
-        if (userId) {
+        const authUser = req.user;
+        const filters = {
+            userId: authUser?.id,
+        };
+        if (userId && authUser?.role === "ADMIN") {
             filters.userId = userId;
         }
         if (userRole) {
@@ -62,14 +67,15 @@ router.get('/', async (req, res) => {
 router.get('/counts', async (req, res) => {
     try {
         const { userId, userRole } = req.query;
-        const filters = {};
-        if (userId)
+        const authUser = req.user;
+        const filters = { userId: authUser?.id };
+        if (userId && authUser?.role === "ADMIN")
             filters.userId = userId;
         if (userRole)
             filters.userRole = userRole;
         const [totalCount, unreadCount, systemCount, paymentCount, affiliateCount, conversionCount, alertCount] = await Promise.all([
             prisma.notification.count({ where: filters }),
-            prisma.notification.count({ where: { ...filters, isRead: false } }),
+            prisma.notification.count({ where: { ...filters, read: false } }),
             prisma.notification.count({ where: { ...filters, type: 'system' } }),
             prisma.notification.count({ where: { ...filters, type: 'payment' } }),
             prisma.notification.count({ where: { ...filters, type: 'affiliate' } }),
@@ -153,9 +159,20 @@ router.post('/', async (req, res) => {
         res.status(400).json({ error: 'Failed to create notification' });
     }
 });
-router.put('/:id/read', async (req, res) => {
+const markNotificationAsRead = async (req, res) => {
     try {
         const { id } = req.params;
+        const authUser = req.user;
+        const existing = await prisma.notification.findUnique({
+            where: { id },
+            select: { id: true, userId: true },
+        });
+        if (!existing) {
+            return res.status(404).json({ error: "Notification not found" });
+        }
+        if (authUser?.role !== "ADMIN" && existing.userId !== authUser?.id) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
         const notification = await prisma.notification.update({
             where: { id },
             data: {
@@ -168,12 +185,15 @@ router.put('/:id/read', async (req, res) => {
         console.error('Error marking notification as read:', error);
         res.status(500).json({ error: 'Failed to mark notification as read' });
     }
-});
-router.put('/mark-all-read', async (req, res) => {
+};
+router.put('/:id/read', markNotificationAsRead);
+router.patch('/:id/read', markNotificationAsRead);
+const markAllNotificationsAsRead = async (req, res) => {
     try {
         const { userId, userRole } = req.body;
-        const filters = { isRead: false };
-        if (userId)
+        const authUser = req.user;
+        const filters = { read: false, userId: authUser?.id };
+        if (userId && authUser?.role === "ADMIN")
             filters.userId = userId;
         if (userRole)
             filters.userRole = userRole;
@@ -192,10 +212,23 @@ router.put('/mark-all-read', async (req, res) => {
         console.error('Error marking all notifications as read:', error);
         res.status(500).json({ error: 'Failed to mark all notifications as read' });
     }
-});
+};
+router.put('/mark-all-read', markAllNotificationsAsRead);
+router.post('/mark-all-read', markAllNotificationsAsRead);
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const authUser = req.user;
+        const existing = await prisma.notification.findUnique({
+            where: { id },
+            select: { id: true, userId: true },
+        });
+        if (!existing) {
+            return res.status(404).json({ error: "Notification not found" });
+        }
+        if (authUser?.role !== "ADMIN" && existing.userId !== authUser?.id) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
         await prisma.notification.delete({
             where: { id }
         });
@@ -209,8 +242,9 @@ router.delete('/:id', async (req, res) => {
 router.delete('/clear-all', async (req, res) => {
     try {
         const { userId, userRole, olderThan } = req.query;
-        const filters = {};
-        if (userId)
+        const authUser = req.user;
+        const filters = { userId: authUser?.id };
+        if (userId && authUser?.role === "ADMIN")
             filters.userId = userId;
         if (userRole)
             filters.userRole = userRole;

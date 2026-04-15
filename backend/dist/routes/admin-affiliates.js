@@ -840,6 +840,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
             tiktok: zod_1.z.string().optional(),
             other: zod_1.z.string().optional(),
             spendingLimit: zod_1.z.number().min(0).nullable().optional(),
+            deliverablesNote: zod_1.z.string().optional(),
         });
         const data = schema.parse(req.body);
         const existingUser = await prisma.user.findUnique({
@@ -868,6 +869,7 @@ router.post("/create", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN
                     commissionRate: data.commissionRate,
                     paymentMethod: "PAYPAL",
                     spendingLimit: data.spendingLimit || null,
+                    deliverablesNote: data.deliverablesNote || null,
                     socialMedia: {
                         instagram: data.instagram || null,
                         tiktok: data.tiktok || null,

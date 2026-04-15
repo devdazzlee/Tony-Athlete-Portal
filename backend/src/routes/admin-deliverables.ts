@@ -204,11 +204,24 @@ router.patch(
       });
 
       if (updatedSubmission.user?.email) {
-        await emailService.sendEmail({
-          to: updatedSubmission.user.email,
-          subject: "Deliverable approved",
-          html: `<p>Your deliverable submission has been approved.</p><p>${comment ? `Admin comment: ${comment}` : ""}</p>`,
-        });
+        try {
+          const sent = await emailService.sendDeliverableReviewEmail(
+            updatedSubmission.user.email,
+            updatedSubmission.user.firstName || "Athlete",
+            "APPROVED",
+            comment || null
+          );
+          if (!sent) {
+            console.warn(
+              `Deliverable approval email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`
+            );
+          }
+        } catch (emailError) {
+          console.error(
+            `Failed to send deliverable approval email for submission ${updatedSubmission.id}:`,
+            emailError
+          );
+        }
       }
 
       res.json({
@@ -281,11 +294,24 @@ router.patch(
       });
 
       if (updatedSubmission.user?.email) {
-        await emailService.sendEmail({
-          to: updatedSubmission.user.email,
-          subject: "Deliverable feedback from admin",
-          html: `<p>Your deliverable needs updates.</p><p>Admin comment: ${comment}</p>`,
-        });
+        try {
+          const sent = await emailService.sendDeliverableReviewEmail(
+            updatedSubmission.user.email,
+            updatedSubmission.user.firstName || "Athlete",
+            "REJECTED",
+            comment
+          );
+          if (!sent) {
+            console.warn(
+              `Deliverable rejection email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`
+            );
+          }
+        } catch (emailError) {
+          console.error(
+            `Failed to send deliverable rejection email for submission ${updatedSubmission.id}:`,
+            emailError
+          );
+        }
       }
 
       res.json({

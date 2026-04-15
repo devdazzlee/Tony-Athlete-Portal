@@ -62,6 +62,7 @@ const shopify_1 = __importDefault(require("./routes/shopify"));
 const manager_shopify_1 = __importDefault(require("./routes/manager-shopify"));
 const admin_shopify_1 = __importDefault(require("./routes/admin-shopify"));
 const payment_1 = __importDefault(require("./routes/payment"));
+const email_health_1 = __importDefault(require("./routes/email-health"));
 const ShopifySyncScheduler_1 = __importDefault(require("./services/ShopifySyncScheduler"));
 dotenv_1.default.config();
 const isProduction = process.env.NODE_ENV === "production";
@@ -202,6 +203,7 @@ app.use("/api/shopify", shopify_1.default);
 app.use("/api/manager/shopify", manager_shopify_1.default);
 app.use("/api/admin/shopify", admin_shopify_1.default);
 app.use("/api/payment", payment_1.default);
+app.use("/api/email/health", email_health_1.default);
 io.on("connection", (socket) => {
     logger.info(`Client connected: ${socket.id}`);
     socket.on("join_affiliate", (affiliateId) => {

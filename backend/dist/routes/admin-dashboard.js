@@ -270,6 +270,59 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
             requestDate: payout.createdAt.toISOString().split("T")[0],
             email: payout.affiliate?.user?.email || "",
         }));
+        const approvedUnpaidCommissions = await prisma.affiliateOrder.groupBy({
+            by: ["affiliateId"],
+            where: { status: "APPROVED" },
+            _sum: { commissionAmount: true },
+            _count: { id: true },
+        });
+        const affiliateIds = approvedUnpaidCommissions.map((row) => row.affiliateId);
+        const approvedAffiliates = await prisma.affiliateProfile.findMany({
+            where: { id: { in: affiliateIds } },
+            include: {
+                user: {
+                    select: { firstName: true, lastName: true, email: true },
+                },
+            },
+        });
+        const commissionPendingPayouts = approvedUnpaidCommissions
+            .filter((row) => (row._sum.commissionAmount || 0) > 0)
+            .map((row) => {
+            const aff = approvedAffiliates.find((a) => a.id === row.affiliateId);
+            return {
+                id: `COMM-APPROVED-${row.affiliateId}`,
+                affiliate: aff?.user
+                    ? `${aff.user.firstName} ${aff.user.lastName}`
+                    : "Unknown",
+                amount: row._sum.commissionAmount || 0,
+                method: "Commission Balance",
+                status: "pending",
+                requestDate: new Date().toISOString().split("T")[0],
+                email: aff?.user?.email || "",
+            };
+        });
+        const mergedPendingPayouts = [...pendingPayouts, ...commissionPendingPayouts];
+        const [newDeliverablesCount, deliverableResponsesCount, feedbackCount] = await Promise.all([
+            prisma.activity.count({
+                where: {
+                    action: "deliverable_submitted",
+                    OR: [{ status: "PENDING" }, { status: null }],
+                },
+            }),
+            prisma.notification.count({
+                where: {
+                    type: { in: ["INFO", "WARNING"] },
+                    data: {
+                        path: ["category"],
+                        equals: "DELIVERABLE_RESPONSE",
+                    },
+                    read: false,
+                },
+            }),
+            prisma.activity.count({
+                where: { action: "feedback_submitted" },
+            }),
+        ]);
         res.json({
             statistics: {
                 totalAffiliates,
@@ -310,19 +363,28 @@ router.get("/overview", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMI
             },
             dailyPerformance,
             topAffiliates: sortedTopAffiliates,
-            pendingPayouts,
+            pendingPayouts: mergedPendingPayouts,
             systemAlerts: [
                 {
                     type: "warning",
-                    title: `${pendingAffiliates} Pending Affiliate Applications`,
-                    description: "Review and approve new affiliate applications to grow your program.",
-                    time: "2 hours ago",
+                    title: `${newDeliverablesCount} new deliverable submissions`,
+                    description: "Review pending deliverables from affiliates.",
+                    time: "Live",
+                    actionUrl: "/admin/deliverables?status=PENDING",
                 },
                 {
                     type: "info",
-                    title: "Monthly Payout Processing",
-                    description: `Process monthly payouts for ${activeAffiliates} affiliates.`,
-                    time: "1 day ago",
+                    title: `${deliverableResponsesCount} deliverable responses pending follow-up`,
+                    description: "Recent admin feedback and reviews are ready to check.",
+                    time: "Live",
+                    actionUrl: "/admin/deliverables?status=REJECTED",
+                },
+                {
+                    type: "info",
+                    title: `${feedbackCount} general feedback submissions`,
+                    description: "Review feedback sent from affiliates.",
+                    time: "Live",
+                    actionUrl: "/admin/feedback",
                 },
             ],
         });

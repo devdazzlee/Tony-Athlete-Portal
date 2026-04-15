@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
+const EmailService_1 = __importDefault(require("../services/EmailService"));
 const router = express_1.default.Router();
 const prisma = new client_1.PrismaClient();
 router.get("/", auth_1.authenticateToken, (0, auth_1.requireRole)(["ADMIN"]), async (req, res) => {
@@ -150,6 +151,31 @@ router.patch("/:id/approve", auth_1.authenticateToken, (0, auth_1.requireRole)([
                 },
             },
         });
+        await prisma.notification.create({
+            data: {
+                userId: updatedSubmission.userId,
+                type: "INFO",
+                title: "Deliverable approved",
+                message: comment?.trim()
+                    ? `Your deliverable was approved. Admin comment: ${comment.trim()}`
+                    : "Your deliverable was approved.",
+                data: {
+                    deliverableId: updatedSubmission.id,
+                    category: "DELIVERABLE_RESPONSE",
+                },
+            },
+        });
+        if (updatedSubmission.user?.email) {
+            try {
+                const sent = await EmailService_1.default.sendDeliverableReviewEmail(updatedSubmission.user.email, updatedSubmission.user.firstName || "Athlete", "APPROVED", comment || null);
+                if (!sent) {
+                    console.warn(`Deliverable approval email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`);
+                }
+            }
+            catch (emailError) {
+                console.error(`Failed to send deliverable approval email for submission ${updatedSubmission.id}:`, emailError);
+            }
+        }
         res.json({
             message: "Deliverable approved successfully",
             submission: updatedSubmission,
@@ -195,6 +221,29 @@ router.patch("/:id/reject", auth_1.authenticateToken, (0, auth_1.requireRole)(["
                 },
             },
         });
+        await prisma.notification.create({
+            data: {
+                userId: updatedSubmission.userId,
+                type: "WARNING",
+                title: "Deliverable needs updates",
+                message: `Your deliverable was rejected. Admin comment: ${comment}`,
+                data: {
+                    deliverableId: updatedSubmission.id,
+                    category: "DELIVERABLE_RESPONSE",
+                },
+            },
+        });
+        if (updatedSubmission.user?.email) {
+            try {
+                const sent = await EmailService_1.default.sendDeliverableReviewEmail(updatedSubmission.user.email, updatedSubmission.user.firstName || "Athlete", "REJECTED", comment);
+                if (!sent) {
+                    console.warn(`Deliverable rejection email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`);
+                }
+            }
+            catch (emailError) {
+                console.error(`Failed to send deliverable rejection email for submission ${updatedSubmission.id}:`, emailError);
+            }
+        }
         res.json({
             message: "Deliverable rejected successfully",
             submission: updatedSubmission,

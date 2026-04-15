@@ -6,19 +6,73 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmailService = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const crypto_1 = __importDefault(require("crypto"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 class EmailService {
     constructor() {
+        this.strictMode = process.env.EMAIL_STRICT === "true";
+        const smtpUser = process.env.SMTP_USER || process.env.SENDER_EMAIL || "";
+        const smtpPassRaw = process.env.SMTP_PASS || process.env.SENDER_APP_CODE || "";
+        const smtpPass = smtpPassRaw.replace(/\s+/g, "");
+        this.emailEnabled = Boolean(smtpUser && smtpPass);
+        if (!this.emailEnabled) {
+            this.transporter = null;
+            console.warn("[EmailService] SMTP credentials are missing. Email sending is disabled.");
+            return;
+        }
         this.transporter = nodemailer_1.default.createTransport({
             host: process.env.SMTP_HOST || "smtp.gmail.com",
             port: parseInt(process.env.SMTP_PORT || "587"),
             secure: process.env.SMTP_SECURE === "true",
             auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
+                user: smtpUser,
+                pass: smtpPass,
             },
         });
     }
+    isEmailEnabled() {
+        return this.emailEnabled;
+    }
+    async verifyConnection() {
+        const smtpUser = process.env.SMTP_USER || process.env.SENDER_EMAIL || "";
+        const smtpPassRaw = process.env.SMTP_PASS || process.env.SENDER_APP_CODE || "";
+        const config = {
+            host: process.env.SMTP_HOST || "smtp.gmail.com",
+            port: parseInt(process.env.SMTP_PORT || "587"),
+            secure: process.env.SMTP_SECURE === "true",
+            userConfigured: Boolean(smtpUser),
+            passConfigured: Boolean(smtpPassRaw),
+            fromConfigured: Boolean(process.env.SMTP_FROM),
+        };
+        if (!this.emailEnabled || !this.transporter) {
+            return {
+                enabled: false,
+                verified: false,
+                config,
+                error: "SMTP credentials are missing (SMTP_USER/SMTP_PASS or SENDER_EMAIL/SENDER_APP_CODE).",
+            };
+        }
+        try {
+            await this.transporter.verify();
+            return {
+                enabled: true,
+                verified: true,
+                config,
+            };
+        }
+        catch (error) {
+            return {
+                enabled: true,
+                verified: false,
+                config,
+                error: error?.message || "SMTP verification failed",
+            };
+        }
+    }
     async sendEmail(options) {
+        if (!this.emailEnabled || !this.transporter) {
+            return false;
+        }
         try {
             const mailOptions = {
                 from: process.env.SMTP_FROM || '"TC Nutrition Athlete Portal" <noreply@tcnutrition.com>',
@@ -29,10 +83,14 @@ class EmailService {
             };
             await this.transporter.sendMail(mailOptions);
             console.log(`Email sent successfully to ${options.to}`);
+            return true;
         }
         catch (error) {
             console.error("Error sending email:", error);
-            throw new Error("Failed to send email");
+            if (this.strictMode) {
+                throw new Error("Failed to send email");
+            }
+            return false;
         }
     }
     async sendVerificationEmail(email, firstName, verificationToken) {
@@ -1097,6 +1155,75 @@ The TC Nutrition Team
         await this.sendEmail({
             to: email,
             subject: codes.length > 1 ? `New discount codes added to your account` : `Your new discount code: ${codes[0].code}`,
+            html,
+            text,
+        });
+    }
+    async sendDeliverableReviewEmail(email, firstName, status, adminComment) {
+        const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/deliverables`;
+        const isApproved = status === "APPROVED";
+        const subject = isApproved
+            ? "Deliverable approved - TC Nutrition Athlete Portal"
+            : "Deliverable needs updates - TC Nutrition Athlete Portal";
+        const accent = isApproved ? "#16a34a" : "#dc2626";
+        const statusLabel = isApproved ? "Approved" : "Needs Updates";
+        const intro = isApproved
+            ? "Great news! Your deliverable submission has been approved."
+            : "Your deliverable submission was reviewed and needs a few updates.";
+        const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>${subject}</title>
+          <style>
+            body { margin: 0; padding: 0; background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; }
+            .container { max-width: 680px; margin: 0 auto; padding: 28px 18px; }
+            .card { background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 24px rgba(15,23,42,0.06); }
+            .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 24px; text-align: center; color: #fff; }
+            .brand { font-size: 26px; font-weight: 800; letter-spacing: 0.2px; }
+            .brand-sub { margin-top: 6px; font-size: 13px; color: #cbd5e1; }
+            .content { padding: 26px 24px; }
+            .badge { display: inline-block; padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; background: ${accent}; }
+            h2 { margin: 14px 0 8px; font-size: 24px; line-height: 1.25; }
+            p { margin: 0 0 14px; color: #334155; line-height: 1.7; font-size: 15px; }
+            .comment { margin: 14px 0 18px; border: 1px solid #e2e8f0; border-left: 4px solid ${accent}; border-radius: 10px; background: #f8fafc; padding: 14px; }
+            .comment-title { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+            .button { display: inline-block; padding: 13px 22px; border-radius: 10px; background: #E43133; color: #fff !important; text-decoration: none; font-weight: 700; box-shadow: 0 8px 18px rgba(228,49,51,0.25); }
+            .footer { padding: 18px 24px 24px; text-align: center; color: #64748b; font-size: 12px; line-height: 1.7; border-top: 1px solid #e2e8f0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="card">
+              <div class="header">
+                <div class="brand">🎯 TC Nutrition</div>
+                <div class="brand-sub">Athlete Portal</div>
+              </div>
+              <div class="content">
+                <span class="badge">${statusLabel}</span>
+                <h2>Hello ${firstName || "Athlete"},</h2>
+                <p>${intro}</p>
+                ${adminComment
+            ? `<div class="comment"><p class="comment-title">Admin Comment</p><p>${adminComment}</p></div>`
+            : ""}
+                <p>You can review your deliverables and submission history in your dashboard.</p>
+                <a href="${dashboardUrl}" class="button">View Deliverables</a>
+              </div>
+              <div class="footer">
+                <div>TC Nutrition Athlete Portal</div>
+                <div>© ${new Date().getFullYear()} TC Nutrition. All rights reserved.</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+        const text = `Hi ${firstName || "Athlete"},\n\n${intro}\n${adminComment ? `\nAdmin comment: ${adminComment}\n` : "\n"}\nView deliverables: ${dashboardUrl}\n\nTC Nutrition Athlete Portal`;
+        return this.sendEmail({
+            to: email,
+            subject,
             html,
             text,
         });

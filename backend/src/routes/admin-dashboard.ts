@@ -467,18 +467,21 @@ router.get(
             title: `${newDeliverablesCount} new deliverable submissions`,
             description: "Review pending deliverables from affiliates.",
             time: "Live",
+            actionUrl: "/admin/deliverables?status=PENDING",
           },
           {
             type: "info",
             title: `${deliverableResponsesCount} deliverable responses pending follow-up`,
             description: "Recent admin feedback and reviews are ready to check.",
             time: "Live",
+            actionUrl: "/admin/deliverables?status=REJECTED",
           },
           {
             type: "info",
             title: `${feedbackCount} general feedback submissions`,
             description: "Review feedback sent from affiliates.",
             time: "Live",
+            actionUrl: "/admin/feedback",
           },
         ],
       });

@@ -1,1 +1,1 @@
-{"version":3,"file":"athlete.d.ts","sourceRoot":"","sources":["../../src/routes/athlete.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAO1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AA8kDxC,eAAe,MAAM,CAAC"}
+{"version":3,"file":"athlete.d.ts","sourceRoot":"","sources":["../../src/routes/athlete.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAO1C,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AAsrDxC,eAAe,MAAM,CAAC"}

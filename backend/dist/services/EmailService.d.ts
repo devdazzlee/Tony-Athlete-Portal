@@ -4,6 +4,19 @@ interface EmailOptions {
     html: string;
     text?: string;
 }
+interface EmailHealthResult {
+    enabled: boolean;
+    verified: boolean;
+    config: {
+        host: string;
+        port: number;
+        secure: boolean;
+        userConfigured: boolean;
+        passConfigured: boolean;
+        fromConfigured: boolean;
+    };
+    error?: string;
+}
 interface AffiliateDiscountCodeInfo {
     code: string;
     discountText?: string;
@@ -14,8 +27,12 @@ interface AffiliateDiscountCodeInfo {
 }
 declare class EmailService {
     private transporter;
+    private emailEnabled;
+    private strictMode;
     constructor();
-    sendEmail(options: EmailOptions): Promise<void>;
+    isEmailEnabled(): boolean;
+    verifyConnection(): Promise<EmailHealthResult>;
+    sendEmail(options: EmailOptions): Promise<boolean>;
     sendVerificationEmail(email: string, firstName: string, verificationToken: string): Promise<void>;
     sendWelcomeEmail(email: string, firstName: string): Promise<void>;
     sendPasswordResetEmail(email: string, firstName: string, resetToken: string): Promise<void>;
@@ -37,6 +54,7 @@ declare class EmailService {
         referralCodes: string[];
     }): Promise<void>;
     sendAffiliateDiscountAssignedEmail(email: string, firstName: string, codes: AffiliateDiscountCodeInfo[]): Promise<void>;
+    sendDeliverableReviewEmail(email: string, firstName: string, status: "APPROVED" | "REJECTED", adminComment?: string | null): Promise<boolean>;
     static generateToken(): string;
     static generateTokenExpiry(): Date;
 }

@@ -61,6 +61,7 @@ import shopifyRoutes from "./routes/shopify"; // Shopify integration routes
 import managerShopifyRoutes from "./routes/manager-shopify"; // Manager Shopify routes
 import adminShopifyRoutes from "./routes/admin-shopify"; // Admin Shopify routes
 import paymentRoutes from "./routes/payment"; // Payment routes (Stripe)
+import emailHealthRoutes from "./routes/email-health"; // Email health check route
 import shopifySyncScheduler from "./services/ShopifySyncScheduler"; // Shopify auto-sync scheduler
 
 // Load environment variables
@@ -243,6 +244,7 @@ app.use("/api/shopify", shopifyRoutes); // Shopify integration routes
 app.use("/api/manager/shopify", managerShopifyRoutes); // Manager Shopify routes
 app.use("/api/admin/shopify", adminShopifyRoutes); // Admin Shopify routes
 app.use("/api/payment", paymentRoutes); // Payment routes (Stripe)
+app.use("/api/email/health", emailHealthRoutes); // Email SMTP health route
 
 // WebSocket connection handling
 io.on("connection", (socket) => {

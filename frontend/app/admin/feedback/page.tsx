@@ -65,6 +65,7 @@ interface Feedback {
   submittedAt: string;
   name: string | null;
   email: string | null;
+  photoUrl: string | null;
   user: {
     id: string;
     email: string;
@@ -636,6 +637,25 @@ export default function AdminFeedbackPage() {
                   )}
                 </div>
               </div>
+
+              {selectedFeedback.photoUrl && (
+                <div className="space-y-2">
+                  <Label>Attached Photo</Label>
+                  <a
+                    href={selectedFeedback.photoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block rounded-lg border overflow-hidden hover:opacity-90 transition-opacity"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedFeedback.photoUrl}
+                      alt="Feedback attachment"
+                      className="w-full max-h-[360px] object-contain bg-gray-50"
+                    />
+                  </a>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

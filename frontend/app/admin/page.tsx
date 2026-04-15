@@ -35,6 +35,7 @@ import {
   RefreshCw,
   Tag,
   Link2,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
@@ -341,6 +342,48 @@ export default function AdminDashboardPage() {
         </div>
 
       {/* KPI Tiles */}
+      <Card className="bg-white border-gray-200">
+        <CardHeader>
+          <CardTitle className="flex items-center text-gray-900">
+            <Bell className="h-5 w-5 mr-2" />
+            Program Overview Notifications
+          </CardTitle>
+          <p className="text-sm text-gray-600">
+            New deliverables, response follow-ups, and feedback updates
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {dashboardData.systemAlerts.map((alert, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() =>
+                  alert.actionUrl ? router.push(alert.actionUrl) : undefined
+                }
+                className={`w-full text-left p-4 rounded-lg border transition-colors ${
+                  alert.type === "warning"
+                    ? "bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100"
+                    : alert.type === "info"
+                    ? "bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
+                    : "bg-green-50 border-green-200 text-green-800 hover:bg-green-100"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <h4 className="font-medium mb-1">{alert.title}</h4>
+                    <p className="text-sm opacity-90 mb-1">{alert.description}</p>
+                    <p className="text-xs opacity-75">{alert.time}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 mt-1 opacity-70" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* KPI Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPITile
           title="Total Affiliates"
@@ -536,53 +579,6 @@ export default function AdminDashboardPage() {
           onEdit={(row) => setSelectedPayout(row)}
         />
 
-      {/* System Alerts */}
-      <Card className="bg-white border-gray-200">
-        <CardHeader>
-          <CardTitle className="flex items-center text-gray-900">
-            <Bell className="h-5 w-5 mr-2" />
-            System Alerts
-          </CardTitle>
-          <p className="text-sm text-gray-600">
-            Important notifications and system updates
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {dashboardData.systemAlerts.map((alert, index) => (
-              <div
-                key={index}
-                className={`p-4 rounded-lg border ${
-                  alert.type === "warning"
-                    ? "bg-yellow-50 border-yellow-200 text-yellow-800"
-                    : alert.type === "info"
-                    ? "bg-blue-50 border-blue-200 text-blue-800"
-                    : "bg-green-50 border-green-200 text-green-800"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-medium mb-1">{alert.title}</h4>
-                    <p className="text-sm opacity-90 mb-2">
-                      {alert.description}
-                    </p>
-                    <p className="text-xs opacity-75">{alert.time}</p>
-                  </div>
-                  <div
-                    className={`w-2 h-2 rounded-full mt-1 ${
-                      alert.type === "warning"
-                        ? "bg-yellow-600"
-                        : alert.type === "info"
-                        ? "bg-blue-600"
-                        : "bg-green-600"
-                    }`}
-                  ></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -98,6 +98,7 @@ router.get(
           // Include name and email from details for direct access
           name: hasName ? details.name : null,
           email: hasEmail ? details.email : null,
+          photoUrl: details?.photoUrl || null,
           ipAddress: activity.ipAddress,
           userAgent: activity.userAgent,
         };
@@ -242,6 +243,7 @@ router.get(
         // Include name and email from details for direct access
         name: hasName ? details.name : null,
         email: hasEmail ? details.email : null,
+        photoUrl: details?.photoUrl || null,
         ipAddress: activity.ipAddress,
         userAgent: activity.userAgent,
       };

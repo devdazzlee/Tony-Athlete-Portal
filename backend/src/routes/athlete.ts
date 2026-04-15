@@ -75,7 +75,7 @@ router.get("/profile", async (req: any, res) => {
         affiliateId: affiliate.id,
         status: "ACTIVE",
         isAffiliate: false,
-        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+        validUntil: { gt: new Date() },
       },
       orderBy: {
         createdAt: "desc",
@@ -624,7 +624,7 @@ router.post("/feedback", async (req: any, res) => {
     const isAnonymous = !hasName && !hasEmail;
 
     // Store feedback in Activity table
-    await prisma.activity.create({
+    const feedbackActivity = await prisma.activity.create({
       data: {
         userId,
         action: "feedback_submitted",
@@ -646,21 +646,35 @@ router.post("/feedback", async (req: any, res) => {
       select: { id: true },
     });
     await Promise.all(
-      admins.map((admin) =>
-        prisma.notification.create({
-          data: {
+      admins.map(async (admin) => {
+        const existing = await prisma.notification.findFirst({
+          where: {
             userId: admin.id,
-            type: "INFO",
             title: "New affiliate feedback",
-            message: `A new general feedback submission was received.`,
             data: {
-              affiliateId: null,
-              category: "GENERAL_FEEDBACK",
-              hasPhoto: Boolean(data.photoUrl),
-            } as any,
-          },
-        })
-      )
+              path: ["feedbackId"],
+              equals: feedbackActivity.id,
+            },
+          } as any,
+        });
+
+        if (!existing) {
+          await prisma.notification.create({
+            data: {
+              userId: admin.id,
+              type: "INFO",
+              title: "New affiliate feedback",
+              message: `A new general feedback submission was received.`,
+              data: {
+                affiliateId: null,
+                category: "GENERAL_FEEDBACK",
+                hasPhoto: Boolean(data.photoUrl),
+                feedbackId: feedbackActivity.id,
+              } as any,
+            },
+          });
+        }
+      })
     );
 
     res.json({ message: "Feedback submitted successfully" });

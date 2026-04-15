@@ -35,7 +35,7 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
         affiliateId: affiliate.id,
         isAffiliate: true, // Only fetch affiliate allowance codes
         status: "ACTIVE",
-        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+        validUntil: { gt: new Date() },
       },
       orderBy: { createdAt: "desc" },
     });

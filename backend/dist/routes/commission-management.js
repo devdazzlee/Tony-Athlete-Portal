@@ -71,6 +71,12 @@ const commissionQuerySchema = zod_1.z.object({
 const affiliateTotalsQuerySchema = zod_1.z.object({
     affiliateId: zod_1.z.string(),
 });
+const manualCommissionSchema = zod_1.z.object({
+    affiliateId: zod_1.z.string().min(1),
+    amount: zod_1.z.number().positive(),
+    source: zod_1.z.string().optional(),
+    notes: zod_1.z.string().optional(),
+});
 router.get("/", auth_1.authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== "ADMIN") {
@@ -719,6 +725,54 @@ router.get("/analytics", auth_1.authenticateToken, async (req, res) => {
     catch (error) {
         console.error("Error fetching commission analytics:", error);
         res.status(500).json({ error: "Failed to fetch commission analytics" });
+    }
+});
+router.post("/manual", auth_1.authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== "ADMIN" && req.user.role !== "MANAGER") {
+            return res.status(403).json({
+                error: "Only admins and managers can add manual commissions",
+            });
+        }
+        const data = manualCommissionSchema.parse(req.body);
+        const affiliate = await prisma_1.prisma.affiliateProfile.findUnique({
+            where: { id: data.affiliateId },
+        });
+        if (!affiliate) {
+            return res.status(404).json({ error: "Affiliate not found" });
+        }
+        const stamp = Date.now();
+        const order = await prisma_1.prisma.affiliateOrder.create({
+            data: {
+                affiliateId: data.affiliateId,
+                referralCode: "MANUAL_ADJUSTMENT",
+                storeId: "manual",
+                orderId: `manual-${stamp}`,
+                customerName: "Manual Commission",
+                customerEmail: "manual@system.local",
+                orderValue: data.amount,
+                currency: "USD",
+                commissionRate: 100,
+                commissionAmount: data.amount,
+                status: "APPROVED",
+                note: data.notes || data.source || "Manually added by admin",
+            },
+        });
+        res.json({
+            success: true,
+            message: "Manual commission added successfully",
+            order,
+        });
+    }
+    catch (error) {
+        console.error("Error adding manual commission:", error);
+        if (error instanceof zod_1.z.ZodError) {
+            return res.status(400).json({
+                error: "Invalid request data",
+                details: error.errors,
+            });
+        }
+        res.status(500).json({ error: "Failed to add manual commission" });
     }
 });
 router.patch("/affiliate/:affiliateId/rate", auth_1.authenticateToken, async (req, res) => {
