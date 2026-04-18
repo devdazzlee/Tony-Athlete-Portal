@@ -126,6 +126,9 @@ const adminNavItems = [
 
 ### **4. Bulk Actions UI**
 
+
+
+
 **Current:** Some pages have bulk actions, some don't
 **Recommendation:** Standardize across all pages
 
