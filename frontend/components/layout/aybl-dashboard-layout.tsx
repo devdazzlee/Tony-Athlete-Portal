@@ -186,13 +186,13 @@ export default function TCNutritionDashboardLayout({
     try {
       await apiClient.patch(`/notifications/${notificationId}/read`);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)),
       );
     } catch (error) {
       console.error("Error marking notification as read:", error);
       // Update locally anyway
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)),
       );
     }
   };
@@ -243,25 +243,29 @@ export default function TCNutritionDashboardLayout({
     router.push("/dashboard/settings/profile");
   };
 
-  const SidebarContent = ({ showCollapseButton = false }: { showCollapseButton?: boolean }) => (
+  const SidebarContent = ({
+    showCollapseButton = false,
+  }: {
+    showCollapseButton?: boolean;
+  }) => (
     <div className="flex h-full flex-col bg-white text-gray-900 border-r border-gray-200">
       {/* Logo */}
       <div className="flex h-16 items-center justify-center px-6 border-b border-gray-200">
         <Link href="/dashboard" className="flex items-center space-x-2">
           {sidebarCollapsed ? (
-            <Image 
-              src="/sidebar.png" 
-              alt="TC Nutrition compact" 
-              width={120} 
+            <Image
+              src="/sidebar.png"
+              alt="TC Nutrition compact"
+              width={120}
               height={36}
               className="h-auto w-[120px] min-w-[120px] max-h-10 object-contain"
               priority
             />
           ) : (
-            <Image 
-              src="/logo.png" 
-              alt="TC Nutrition" 
-              width={180} 
+            <Image
+              src="/logo.png"
+              alt="TC Nutrition"
+              width={180}
               height={50}
               className="h-auto w-[180px] max-h-12 object-contain"
               priority
@@ -288,12 +292,14 @@ export default function TCNutritionDashboardLayout({
               className={cn(
                 "w-full justify-start h-10 px-3 text-left font-normal text-gray-700 hover:text-gray-900 hover:bg-gray-100",
                 isItemActive && "bg-gray-100 text-gray-900",
-                sidebarCollapsed && "justify-center px-2"
+                sidebarCollapsed && "justify-center px-2",
               )}
               title={sidebarCollapsed ? item.title : undefined}
             >
               <Link href={item.href}>
-                <item.icon className={cn("h-4 w-4", !sidebarCollapsed && "mr-3")} />
+                <item.icon
+                  className={cn("h-4 w-4", !sidebarCollapsed && "mr-3")}
+                />
                 {!sidebarCollapsed && item.title}
               </Link>
             </Button>
@@ -306,10 +312,12 @@ export default function TCNutritionDashboardLayout({
   return (
     <div className="h-screen flex overflow-hidden bg-gray-50">
       {/* Desktop Sidebar */}
-      <div className={cn(
-        "hidden md:flex md:flex-col transition-all duration-300",
-        sidebarCollapsed ? "md:w-20" : "md:w-64"
-      )}>
+      <div
+        className={cn(
+          "hidden md:flex md:flex-col transition-all duration-300",
+          sidebarCollapsed ? "md:w-20" : "md:w-64",
+        )}
+      >
         <div className="flex flex-col flex-grow">
           <SidebarContent showCollapseButton={false} />
         </div>
@@ -337,7 +345,7 @@ export default function TCNutritionDashboardLayout({
               >
                 <PanelLeft className="h-5 w-5" />
               </Button>
-              
+
               {/* Mobile Sidebar Toggle */}
               <Sheet>
                 <SheetTrigger asChild>
@@ -359,7 +367,8 @@ export default function TCNutritionDashboardLayout({
               {/* Welcome Message */}
               <div className="hidden md:flex items-center space-x-2 text-gray-900">
                 <span className="text-sm">
-                  Welcome, {user ? `${user.firstName} ${user.lastName}` : "User"}
+                  Welcome,{" "}
+                  {user ? `${user.firstName} ${user.lastName}` : "User"}
                 </span>
               </div>
 
@@ -377,7 +386,10 @@ export default function TCNutritionDashboardLayout({
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 bg-white border-gray-200">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-80 bg-white border-gray-200"
+                >
                   <DropdownMenuLabel className="text-gray-900 flex items-center justify-between">
                     <span>Notifications</span>
                     {unreadCount > 0 && (
@@ -402,7 +414,7 @@ export default function TCNutritionDashboardLayout({
                           key={notification.id}
                           className={cn(
                             "px-3 py-2 hover:bg-gray-100 transition-colors border-b border-gray-100",
-                            !notification.read && "bg-blue-50/50"
+                            !notification.read && "bg-blue-50/50",
                           )}
                         >
                           <div className="flex items-start gap-3">
@@ -461,8 +473,6 @@ export default function TCNutritionDashboardLayout({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              
-              
               {/* Account Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -474,8 +484,13 @@ export default function TCNutritionDashboardLayout({
                     <ChevronDown className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200">
-                  <DropdownMenuLabel className="text-gray-900">My Account</DropdownMenuLabel>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-56 bg-white border-gray-200"
+                >
+                  <DropdownMenuLabel className="text-gray-900">
+                    My Account
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-gray-200" />
                   <DropdownMenuItem
                     onClick={handleProfileClick}
@@ -509,13 +524,13 @@ export default function TCNutritionDashboardLayout({
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto bg-white text-gray-900 flex flex-col">
-          <div className="flex-1">
-            {children}
-          </div>
+          <div className="flex-1">{children}</div>
           <footer className="border-t border-gray-200 px-4 sm:px-6 py-4 bg-white mt-auto">
             <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between text-gray-600 text-sm gap-2 sm:gap-0">
-              <div className="text-center sm:text-left">TC Nutrition Athlete Portal</div>
-              <div className="text-center sm:text-right">© 2025 RK Brands Ltd. All rights reserved.</div>
+              <div className="text-center sm:text-left">
+                TC Nutrition Athlete Portal
+              </div>
+              {/* <div className="text-center sm:text-right">© 2025 RK Brands Ltd. All rights reserved.</div> */}
             </div>
           </footer>
         </main>

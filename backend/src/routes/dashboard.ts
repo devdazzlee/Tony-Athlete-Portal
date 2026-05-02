@@ -19,7 +19,10 @@ router.get("/overview", authenticateToken, async (req: any, res) => {
       include: {
         user: true,
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: now },
+          },
         },
       },
     });
@@ -204,7 +207,10 @@ router.get("/real-time-stats", authenticateToken, async (req: any, res) => {
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: now },
+          },
         },
       },
     });

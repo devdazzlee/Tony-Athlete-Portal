@@ -195,7 +195,10 @@ router.get(
 
       // Get discount codes for this affiliate
       const discountCodes = await prisma.coupon.findMany({
-        where: { affiliateId: affiliate.id },
+        where: {
+          affiliateId: affiliate.id,
+          validUntil: { gt: new Date() },
+        },
         orderBy: { createdAt: "desc" },
       });
 

@@ -546,6 +546,7 @@ export class LinksService {
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
+        validUntil: { gt: new Date() },
       },
       orderBy: { createdAt: "desc" },
     });

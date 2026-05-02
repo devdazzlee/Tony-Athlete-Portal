@@ -224,11 +224,12 @@ router.get("/coupons", async (req: any, res) => {
       return res.status(404).json({ error: "Affiliate profile not found" });
     }
 
-    // Get ALL active coupons (discount codes) assigned to this affiliate
+    // Get active, unexpired coupons assigned to this affiliate
     const coupons = await prisma.coupon.findMany({
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
+        validUntil: { gt: new Date() },
       },
       orderBy: {
         createdAt: "desc",
@@ -243,6 +244,7 @@ router.get("/coupons", async (req: any, res) => {
         description: coupon.description,
         freeShipping: coupon.freeShipping,
         status: coupon.status,
+        validUntil: coupon.validUntil,
       })),
     });
   } catch (error) {
@@ -261,7 +263,10 @@ router.get("/performance", async (req: any, res) => {
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: new Date() },
+          },
         },
       },
     });
@@ -697,21 +702,26 @@ router.get("/dashboard-notifications", async (req: any, res) => {
         adminComment: { not: null },
       },
       orderBy: { reviewedAt: "desc" },
-      take: 10,
     });
 
-    const items = activities.map((activity) => {
-      const details = (activity.details as any) || {};
-      return {
-        id: activity.id,
-        type: "DELIVERABLE_COMMENT",
-        title: "Deliverable review update",
-        message: activity.adminComment || "Your deliverable has a new admin comment.",
-        month: details.month || null,
-        platform: details.customPlatformName || details.platform || null,
-        reviewedAt: activity.reviewedAt,
-      };
-    });
+    const items = activities
+      .filter((activity) => {
+        const details = (activity.details as any) || {};
+        return !details.dashboardNotificationDismissedAt;
+      })
+      .slice(0, 10)
+      .map((activity) => {
+        const details = (activity.details as any) || {};
+        return {
+          id: activity.id,
+          type: "DELIVERABLE_COMMENT",
+          title: "Deliverable review update",
+          message: activity.adminComment || "Your deliverable has a new admin comment.",
+          month: details.month || null,
+          platform: details.customPlatformName || details.platform || null,
+          reviewedAt: activity.reviewedAt,
+        };
+      });
 
     res.json({
       unreadCount: items.length,
@@ -723,17 +733,61 @@ router.get("/dashboard-notifications", async (req: any, res) => {
   }
 });
 
+router.delete("/dashboard-notifications/:id", async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const activity = await prisma.activity.findFirst({
+      where: {
+        id,
+        userId,
+        action: "deliverable_submitted",
+        adminComment: { not: null },
+      },
+      select: {
+        id: true,
+        details: true,
+      },
+    });
+
+    if (!activity) {
+      return res.status(404).json({ error: "Notification not found" });
+    }
+
+    const details = (activity.details as any) || {};
+
+    await prisma.activity.update({
+      where: { id: activity.id },
+      data: {
+        details: {
+          ...details,
+          dashboardNotificationDismissedAt: new Date().toISOString(),
+        } as any,
+      },
+    });
+
+    res.json({ message: "Notification dismissed successfully" });
+  } catch (error) {
+    console.error("Error dismissing dashboard notification:", error);
+    res.status(500).json({ error: "Failed to dismiss notification" });
+  }
+});
+
 // Get orders list
 router.get("/orders", async (req: any, res) => {
   try {
     const userId = req.user.id;
-    const { limit = 50, offset = 0, storeId } = req.query;
+    const { limit = 50, offset = 0, storeId, month } = req.query;
 
     const affiliate = await prisma.affiliateProfile.findFirst({
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: new Date() },
+          },
         },
       },
     });
@@ -749,13 +803,39 @@ router.get("/orders", async (req: any, res) => {
     if (storeId && storeId !== "all") {
       whereClause.storeId = storeId;
     }
+    if (typeof month === "string" && month !== "all") {
+      const [yearValue, monthValue] = month.split("-").map(Number);
+      if (
+        Number.isNaN(yearValue) ||
+        Number.isNaN(monthValue) ||
+        monthValue < 1 ||
+        monthValue > 12
+      ) {
+        return res.status(400).json({ error: "Invalid month filter" });
+      }
 
-    const orders = await prisma.affiliateOrder.findMany({
+      const monthStart = new Date(yearValue, monthValue - 1, 1);
+      const monthEnd = new Date(yearValue, monthValue, 0, 23, 59, 59, 999);
+      whereClause.OR = [
+        { orderCreatedAt: { gte: monthStart, lte: monthEnd } },
+        {
+          orderCreatedAt: null,
+          createdAt: { gte: monthStart, lte: monthEnd },
+        },
+      ];
+    }
+
+    const queryOptions: any = {
       where: whereClause,
-      orderBy: { orderCreatedAt: "desc" },
-      take: parseInt(limit as string),
+      orderBy: [{ orderCreatedAt: "desc" }, { createdAt: "desc" }],
       skip: parseInt(offset as string),
-    });
+    };
+
+    if (limit !== "all") {
+      queryOptions.take = parseInt(limit as string);
+    }
+
+    const orders = await prisma.affiliateOrder.findMany(queryOptions);
 
     // Get store names mapping
     const stores = shopifyService.getAllStores();
@@ -767,13 +847,15 @@ router.get("/orders", async (req: any, res) => {
       const shippingAddress = order.shippingAddress as any;
 
       return {
-      id: order.orderId,
+        id: order.orderId,
+        orderNumber: order.shopifyOrderNumber || order.orderId,
         shopifyOrderNumber: order.shopifyOrderNumber,
+        orderDate: (order.orderCreatedAt || order.createdAt).toISOString(),
         placedOn: (order.orderCreatedAt || order.createdAt).toLocaleString(),
         orderTotal: `${currencySymbol}${order.orderValue.toFixed(2)}`,
         orderValue: order.orderValue,
         currency: order.currency,
-      items: (order.items as any)?.length || 0,
+        items: (order.items as any)?.length || 0,
         date: (order.orderCreatedAt || order.createdAt).toLocaleString(),
         storeId: order.storeId,
         store: storeName,
@@ -785,14 +867,14 @@ router.get("/orders", async (req: any, res) => {
         discountCode: order.referralCode,
         customerEmail: order.customerEmail,
         customerName: order.customerName,
-      shipping: {
+        shipping: {
           address: shippingAddress ? 
             `${shippingAddress.address1 || ""} ${shippingAddress.address2 || ""}, ${shippingAddress.city || ""}, ${shippingAddress.province || ""} ${shippingAddress.zip || ""}, ${shippingAddress.country || ""}`.trim() 
             : null,
-        method: "Standard",
-        timeframe: "3-5 Working Days",
-      },
-      orderItems: (order.items as any) || [],
+          method: "Standard",
+          timeframe: "3-5 Working Days",
+        },
+        orderItems: (order.items as any) || [],
       };
     });
 
@@ -1149,7 +1231,10 @@ router.get("/commission-summary", async (req: any, res) => {
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: new Date() },
+          },
         },
       },
     });
@@ -1295,7 +1380,10 @@ router.get("/shop", async (req: any, res) => {
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: new Date() },
+          },
         },
       },
     });
@@ -1448,6 +1536,7 @@ router.get("/shop/products/:storeId", async (req: any, res) => {
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
+        validUntil: { gt: new Date() },
       },
       select: {
         code: true,
@@ -1480,7 +1569,10 @@ router.post("/sync-orders", async (req: any, res) => {
       where: { userId },
       include: {
         coupons: {
-          where: { status: "ACTIVE" },
+          where: {
+            status: "ACTIVE",
+            validUntil: { gt: new Date() },
+          },
         },
       },
     });

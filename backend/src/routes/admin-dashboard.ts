@@ -236,6 +236,7 @@ router.get(
             where: {
               affiliateId: affiliate.id,
               status: "ACTIVE",
+              validUntil: { gt: new Date() },
             },
             select: { code: true },
           });
@@ -395,28 +396,17 @@ router.get(
 
       const mergedPendingPayouts = [...pendingPayouts, ...commissionPendingPayouts];
 
-      const [newDeliverablesCount, deliverableResponsesCount, feedbackCount] =
-        await Promise.all([
-          prisma.activity.count({
-            where: {
-              action: "deliverable_submitted",
-              OR: [{ status: "PENDING" }, { status: null }],
-            },
-          }),
-          prisma.notification.count({
-            where: {
-              type: { in: ["INFO", "WARNING"] },
-              data: {
-                path: ["category"],
-                equals: "DELIVERABLE_RESPONSE",
-              },
-              read: false,
-            } as any,
-          }),
-          prisma.activity.count({
-            where: { action: "feedback_submitted" },
-          }),
-        ]);
+      const [newDeliverablesCount, feedbackCount] = await Promise.all([
+        prisma.activity.count({
+          where: {
+            action: "deliverable_submitted",
+            OR: [{ status: "PENDING" }, { status: null }],
+          },
+        }),
+        prisma.activity.count({
+          where: { action: "feedback_submitted" },
+        }),
+      ]);
 
       res.json({
         statistics: {
@@ -468,13 +458,6 @@ router.get(
             description: "Review pending deliverables from affiliates.",
             time: "Live",
             actionUrl: "/admin/deliverables?status=PENDING",
-          },
-          {
-            type: "info",
-            title: `${deliverableResponsesCount} deliverable responses pending follow-up`,
-            description: "Recent admin feedback and reviews are ready to check.",
-            time: "Live",
-            actionUrl: "/admin/deliverables?status=REJECTED",
           },
           {
             type: "info",

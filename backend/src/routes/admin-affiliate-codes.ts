@@ -76,6 +76,24 @@ const parseCsvBoolean = (value?: string) => {
   return ["true", "1", "yes", "y"].includes(value.trim().toLowerCase());
 };
 
+const getNextFifteenthExpiration = (from = new Date()) => {
+  const expiration = new Date(
+    from.getFullYear(),
+    from.getMonth(),
+    15,
+    23,
+    59,
+    59,
+    999
+  );
+
+  if (from.getTime() > expiration.getTime()) {
+    expiration.setMonth(expiration.getMonth() + 1);
+  }
+
+  return expiration;
+};
+
 // Get all affiliate codes with filtering and pagination
 router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
   try {
@@ -86,9 +104,11 @@ router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, 
       status,
       affiliateId,
     } = req.query;
+    const now = new Date();
 
     const filters: any = {
       isAffiliate: true, // Only fetch affiliate allowance codes
+      validUntil: { gt: now },
     };
 
     if (search) {
@@ -133,7 +153,7 @@ router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, 
 
     // Add expiration status and usage info
     const codesWithStatus = codes.map((code) => {
-      const isExpired = code.validUntil < new Date();
+      const isExpired = code.validUntil <= now;
       const isUsed = code.maxUsage ? code.usage >= code.maxUsage : false;
       return {
         ...code,
@@ -245,9 +265,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
     // Generate a separate shipping code if needed
     const shippingCode = data.freeShipping ? await generateUniqueShippingCode(code) : null;
 
-    // Calculate end of current month
-    const now = new Date();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const expirationDate = getNextFifteenthExpiration();
 
     // Create description
     const discountText = data.discountValue > 0
@@ -259,10 +277,10 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
 
     const description =
       data.description ||
-      `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${endOfMonth.toLocaleDateString()}`;
+      `Affiliate allowance code for ${affiliate.user.firstName} ${affiliate.user.lastName} - $${data.allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${expirationDate.toLocaleDateString()}`;
 
     const shippingDescription = shippingCode
-      ? `Free shipping code for ${affiliate.user.firstName} ${affiliate.user.lastName} (paired with ${code}) - Expires ${endOfMonth.toLocaleDateString()}`
+      ? `Free shipping code for ${affiliate.user.firstName} ${affiliate.user.lastName} (paired with ${code}) - Expires ${expirationDate.toLocaleDateString()}`
       : null;
 
     // ----- Sync to Shopify (both USA and Canada stores) -----
@@ -290,7 +308,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
             valueType: data.discountType,
             value: data.discountValue > 0 ? data.discountValue : 0.01,
             startsAt: new Date().toISOString(),
-            endsAt: endOfMonth.toISOString(),
+            endsAt: expirationDate.toISOString(),
             oncePerCustomer: true,
             combinesWith: { shippingDiscounts: true },
           });
@@ -312,7 +330,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
               title: `Affiliate Shipping Code: ${shippingCode}`,
               code: shippingCode,
               startsAt: new Date().toISOString(),
-              endsAt: endOfMonth.toISOString(),
+              endsAt: expirationDate.toISOString(),
               oncePerCustomer: false,
               combinesWith: {
                 orderDiscounts: true,
@@ -345,7 +363,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
         description,
         discount: data.discountValue.toString(),
         affiliateId: data.affiliateId,
-        validUntil: endOfMonth,
+        validUntil: expirationDate,
         maxUsage: null, // Unlimited total uses - Shopify enforces oncePerCustomer: true
         usage: 0,
         status: "ACTIVE",
@@ -381,7 +399,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
             discountText: discountText,
             allowanceAmount: data.allowanceAmount,
             freeShipping: false,
-            expiresAt: endOfMonth,
+            expiresAt: expirationDate,
             description,
           },
         ];
@@ -392,7 +410,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
             discountText: "Free shipping",
             allowanceAmount: undefined,
             freeShipping: true,
-            expiresAt: endOfMonth,
+            expiresAt: expirationDate,
             description: shippingDescription || undefined,
           });
         }
@@ -417,7 +435,7 @@ router.post("/generate", authenticateToken, requireRole(["ADMIN"]), async (req: 
           description: shippingDescription || `Free shipping code for ${affiliate.user.firstName} ${affiliate.user.lastName}`,
           discount: "0",
           affiliateId: data.affiliateId,
-          validUntil: endOfMonth,
+          validUntil: expirationDate,
           maxUsage: null, // Unlimited use for shipping code
           usage: 0,
           status: "ACTIVE",
@@ -569,16 +587,7 @@ router.post(
             throw new Error("Affiliate not found");
           }
 
-          const now = new Date();
-          const endOfMonth = new Date(
-            now.getFullYear(),
-            now.getMonth() + 1,
-            0,
-            23,
-            59,
-            59,
-            999
-          );
+          const expirationDate = getNextFifteenthExpiration();
 
           const discountText = discountValue > 0
             ? discountType === "percentage"
@@ -591,11 +600,11 @@ router.post(
           const description =
             row.description?.trim() ||
             `Affiliate allowance code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() +
-              ` - $${allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${endOfMonth.toLocaleDateString()}`;
+              ` - $${allowanceAmount} allowance - ${discountText}${shippingNote} - Expires ${expirationDate.toLocaleDateString()}`;
 
           const shippingDescription = shippingCode
             ? `Free shipping code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim() +
-              ` (paired with ${allowanceCode}) - Expires ${endOfMonth.toLocaleDateString()}`
+              ` (paired with ${allowanceCode}) - Expires ${expirationDate.toLocaleDateString()}`
             : null;
 
           let allowanceSyncedToShopify = false;
@@ -619,7 +628,7 @@ router.post(
                   valueType: discountType,
                   value: discountValue > 0 ? discountValue : 0.01,
                   startsAt: new Date().toISOString(),
-                  endsAt: endOfMonth.toISOString(),
+                  endsAt: expirationDate.toISOString(),
                   oncePerCustomer: true,
                   combinesWith: { shippingDiscounts: true },
                 });
@@ -638,7 +647,7 @@ router.post(
                     title: `Affiliate Shipping Code: ${shippingCode}`,
                     code: shippingCode,
                     startsAt: new Date().toISOString(),
-                    endsAt: endOfMonth.toISOString(),
+                    endsAt: expirationDate.toISOString(),
                     oncePerCustomer: false,
                     combinesWith: {
                       orderDiscounts: true,
@@ -665,7 +674,7 @@ router.post(
               description,
               discount: discountValue.toString(),
               affiliateId: affiliate.id,
-              validUntil: endOfMonth,
+              validUntil: expirationDate,
               maxUsage: null, // Unlimited total uses - Shopify enforces oncePerCustomer: true
               usage: 0,
               status: "ACTIVE",
@@ -685,7 +694,7 @@ router.post(
                 description: shippingDescription || `Free shipping code for ${affiliate.user?.firstName || ""} ${affiliate.user?.lastName || ""}`.trim(),
                 discount: "0",
                 affiliateId: affiliate.id,
-                validUntil: endOfMonth,
+                validUntil: expirationDate,
                 maxUsage: null,
                 usage: 0,
                 status: "ACTIVE",
@@ -709,7 +718,7 @@ router.post(
                   discountText,
                   allowanceAmount,
                   freeShipping: false,
-                  expiresAt: endOfMonth,
+                  expiresAt: expirationDate,
                   description,
                 },
               ];
@@ -720,7 +729,7 @@ router.post(
                   discountText: "Free shipping",
                   allowanceAmount: undefined,
                   freeShipping: true,
-                  expiresAt: endOfMonth,
+                  expiresAt: expirationDate,
                   description: shippingDescription || undefined,
                 });
               }
@@ -1010,23 +1019,26 @@ router.patch("/:id/status", authenticateToken, requireRole(["ADMIN"]), async (re
 router.get("/stats/overview", authenticateToken, requireRole(["ADMIN"]), async (req: Request, res: Response) => {
   try {
     const { affiliateId } = req.query;
+    const now = new Date();
 
     const filters: any = { isAffiliate: true };
     if (affiliateId) {
       filters.affiliateId = affiliateId;
     }
 
-    const totalCodes = await prisma.coupon.count({ where: filters });
+    const visibleFilters = { ...filters, validUntil: { gt: now } };
+
+    const totalCodes = await prisma.coupon.count({ where: visibleFilters });
     const activeCodes = await prisma.coupon.count({
-      where: { ...filters, status: "ACTIVE" },
+      where: { ...visibleFilters, status: "ACTIVE" },
     });
     const usedCodes = await prisma.coupon.count({
-      where: { ...filters, usage: { gt: 0 } },
+      where: { ...visibleFilters, usage: { gt: 0 } },
     });
     const expiredCodes = await prisma.coupon.count({
       where: {
         ...filters,
-        validUntil: { lt: new Date() },
+        validUntil: { lte: now },
       },
     });
 

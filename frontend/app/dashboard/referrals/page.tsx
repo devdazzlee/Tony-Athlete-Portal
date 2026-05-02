@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { DataLoading, DashboardLoading } from "@/components/ui/loading";
 import {
   Card,
@@ -20,6 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { DeleteConfirmationModal } from "@/components/modals/delete-confirmation-modal";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -42,6 +50,7 @@ import {
   Edit,
   Trash2,
   RefreshCw,
+  ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -74,6 +83,20 @@ interface ReferralStats {
     referrals: number;
     commissions: number;
   }>;
+}
+
+interface AffiliateSale {
+  id: string;
+  orderNumber?: string | null;
+  shopifyOrderNumber?: string | null;
+  orderDate?: string | null;
+  date?: string;
+  orderTotal: string;
+  orderValue: number;
+  currency: string;
+  commission: string;
+  commissionAmount: number;
+  status: string;
 }
 
 export default function ReferralsPage() {
@@ -109,6 +132,9 @@ export default function ReferralsPage() {
     discountCodeUsage: 0,
   });
   const [refreshingPerformance, setRefreshingPerformance] = useState(false);
+  const [salesOrders, setSalesOrders] = useState<AffiliateSale[]>([]);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [salesMonth, setSalesMonth] = useState("all");
 
   const dateRangeMap: Record<string, string> = {
     Yesterday: "yesterday",
@@ -116,6 +142,23 @@ export default function ReferralsPage() {
     "Last 30 days": "last_30_days",
     "Last 6 months": "last_6_months",
   };
+
+  const salesMonthOptions = useMemo(() => {
+    const now = new Date();
+    const options = [{ value: "all", label: "All months" }];
+
+    for (let index = 0; index < 24; index += 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - index, 1);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const label = date.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      });
+      options.push({ value, label });
+    }
+
+    return options;
+  }, []);
 
   // Form state for creating referral code
   type NewReferralCode = {
@@ -156,6 +199,10 @@ export default function ReferralsPage() {
     fetchReferralData();
   }, []);
 
+  useEffect(() => {
+    fetchSalesOrders();
+  }, [salesMonth]);
+
   // Fetch performance data when dateRange changes
   useEffect(() => {
     fetchPerformanceData();
@@ -190,6 +237,26 @@ export default function ReferralsPage() {
       setPerformanceData(performanceRes.data);
     } catch (error) {
       console.error("Error fetching performance data:", error);
+    }
+  };
+
+  const fetchSalesOrders = async () => {
+    try {
+      setSalesLoading(true);
+      const params = new URLSearchParams({ limit: "all" });
+
+      if (salesMonth !== "all") {
+        params.set("month", salesMonth);
+      }
+
+      const response = await apiClient.get(`/athlete/orders?${params.toString()}`);
+      setSalesOrders(response.data || []);
+    } catch (error) {
+      console.error("Error fetching sales orders:", error);
+      toast.error("Failed to load sales");
+      setSalesOrders([]);
+    } finally {
+      setSalesLoading(false);
     }
   };
 
@@ -360,9 +427,69 @@ export default function ReferralsPage() {
     return <Badge variant="default">Active</Badge>;
   };
 
+  const getSaleStatusBadge = (status?: string) => {
+    const normalizedStatus = (status || "PENDING").toUpperCase();
+
+    if (["APPROVED", "PAID", "COMPLETED"].includes(normalizedStatus)) {
+      return <Badge className="bg-green-100 text-green-800 border-green-200">{normalizedStatus}</Badge>;
+    }
+
+    if (["CANCELLED", "CANCELED", "REFUNDED", "REJECTED"].includes(normalizedStatus)) {
+      return <Badge className="bg-red-100 text-red-800 border-red-200">{normalizedStatus}</Badge>;
+    }
+
+    if (normalizedStatus === "PENDING") {
+      return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">{normalizedStatus}</Badge>;
+    }
+
+    return <Badge className="bg-gray-100 text-gray-800 border-gray-200">{normalizedStatus}</Badge>;
+  };
+
+  const formatMoney = (amount: number, currency = "USD") =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+    }).format(amount || 0);
+
+  const formatSaleDate = (value?: string | null) => {
+    if (!value) {
+      return { date: "Unknown", time: "" };
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return { date: value, time: "" };
+    }
+
+    return {
+      date: date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+      time: date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    };
+  };
+
+  const salesSummary = useMemo(() => {
+    const currency = salesOrders[0]?.currency || "USD";
+    return {
+      sales: salesOrders.length,
+      revenue: salesOrders.reduce((sum, order) => sum + (order.orderValue || 0), 0),
+      commission: salesOrders.reduce(
+        (sum, order) => sum + (order.commissionAmount || 0),
+        0
+      ),
+      currency,
+    };
+  }, [salesOrders]);
+
   const handleRefreshAll = async () => {
     setRefreshingPerformance(true);
-    await Promise.all([fetchPerformanceData(), fetchReferralData()]);
+    await Promise.all([fetchPerformanceData(), fetchReferralData(), fetchSalesOrders()]);
     setRefreshingPerformance(false);
     toast.success("Data refreshed");
   };
@@ -486,6 +613,106 @@ export default function ReferralsPage() {
             </Card>
           </div>
         )}
+
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle className="text-gray-900 flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5 text-blue-600" />
+                Sales
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                View-only orders attributed to your codes.
+              </CardDescription>
+            </div>
+            <Select value={salesMonth} onValueChange={setSalesMonth}>
+              <SelectTrigger className="w-full bg-white border-gray-300 text-gray-900 sm:w-[220px]">
+                <SelectValue placeholder="Filter by month" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200 max-h-[320px]">
+                {salesMonthOptions.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    className="text-gray-900"
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="p-4 border-b sm:border-b-0 sm:border-r border-gray-200">
+                <p className="text-2xl font-semibold text-gray-900">{salesSummary.sales}</p>
+                <p className="text-sm text-gray-500">Sales</p>
+              </div>
+              <div className="p-4 border-b sm:border-b-0 sm:border-r border-gray-200">
+                <p className="text-2xl font-semibold text-gray-900">
+                  {formatMoney(salesSummary.revenue, salesSummary.currency)}
+                </p>
+                <p className="text-sm text-gray-500">Revenue</p>
+              </div>
+              <div className="p-4">
+                <p className="text-2xl font-semibold text-gray-900">
+                  {formatMoney(salesSummary.commission, salesSummary.currency)}
+                </p>
+                <p className="text-sm text-gray-500">Commission</p>
+              </div>
+            </div>
+
+            {salesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-6 w-6 animate-spin text-gray-700" />
+              </div>
+            ) : salesOrders.length === 0 ? (
+              <div className="text-center py-10 text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg">
+                {salesMonth === "all"
+                  ? "No sales found."
+                  : "No sales found for this month."}
+              </div>
+            ) : (
+              <Table className="min-w-[720px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-gray-700">Order Date</TableHead>
+                    <TableHead className="text-gray-700">Order Number</TableHead>
+                    <TableHead className="text-gray-700 text-right">Amount</TableHead>
+                    <TableHead className="text-gray-700 text-right">Commission</TableHead>
+                    <TableHead className="text-gray-700">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {salesOrders.map((sale) => {
+                    const saleDate = formatSaleDate(sale.orderDate || sale.date);
+
+                    return (
+                      <TableRow key={sale.id}>
+                        <TableCell>
+                          <div className="font-medium text-gray-900">{saleDate.date}</div>
+                          {saleDate.time && (
+                            <div className="text-xs text-gray-500">{saleDate.time}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium text-blue-700">
+                          {sale.orderNumber || sale.shopifyOrderNumber || sale.id}
+                        </TableCell>
+                        <TableCell className="text-right text-gray-900">
+                          {sale.orderTotal || formatMoney(sale.orderValue, sale.currency)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-gray-900">
+                          {sale.commission || formatMoney(sale.commissionAmount, sale.currency)}
+                        </TableCell>
+                        <TableCell>{getSaleStatusBadge(sale.status)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* ===== PERFORMANCE METRICS SECTION ===== */}

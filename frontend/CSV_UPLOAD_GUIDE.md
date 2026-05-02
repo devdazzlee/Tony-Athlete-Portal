@@ -115,7 +115,7 @@ The following values are accepted for boolean fields (`freeShipping`, `syncToSho
 
 4. **Shopify Sync**: By default, codes are synced to Shopify. Set `syncToShopify` to `false` to skip Shopify sync.
 
-5. **Expiration**: All codes expire at the end of the current month automatically.
+5. **Expiration**: All codes expire on the next 15th automatically.
 
 6. **Usage Limit**: All allowance codes are one-time use only (maxUsage = 1).
 

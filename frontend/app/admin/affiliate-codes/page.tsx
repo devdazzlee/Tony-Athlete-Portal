@@ -421,7 +421,7 @@ export default function AffiliateCodesPage() {
                 About Affiliate Allowance Codes
               </h3>
               <p className="text-sm text-indigo-800">
-                Generate unique one-time use allowance codes for affiliates. Each code automatically expires at the end of the month it's created.
+                Generate unique one-time use allowance codes for affiliates. Each code automatically expires on the next 15th.
                 You can customize each code with a discount percentage or fixed amount. If free shipping is enabled, a separate shipping code
                 is created for the same period.
               </p>
@@ -984,7 +984,7 @@ export default function AffiliateCodesPage() {
           <DialogHeader>
             <DialogTitle>Generate Affiliate Code</DialogTitle>
             <DialogDescription>
-              Create a unique one-time use code that expires at the end of this month
+              Create a unique one-time use code that expires on the next 15th
             </DialogDescription>
           </DialogHeader>
 
@@ -1197,7 +1197,7 @@ export default function AffiliateCodesPage() {
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-blue-600 font-bold">→</span>
-                      <span><strong>Expiration:</strong> End of current month (automatically set)</span>
+                      <span><strong>Expiration:</strong> Next 15th (automatically set)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-blue-600 font-bold">→</span>

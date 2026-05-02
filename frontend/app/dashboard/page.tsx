@@ -21,6 +21,7 @@ import {
   Target,
   Tag,
   Bell,
+  X,
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
@@ -28,13 +29,24 @@ import { DashboardLoading } from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+type DashboardNotification = {
+  id: string;
+  title: string;
+  message: string;
+  type?: string;
+  month?: string | null;
+  platform?: string | null;
+  reviewedAt?: string | null;
+};
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [isSavingSocials, setIsSavingSocials] = useState(false);
   const [copiedAudienceCode, setCopiedAudienceCode] = useState<string | null>(null);
   const copiedAudienceCodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dashboardNotifications, setDashboardNotifications] = useState<any[]>([]);
+  const [dashboardNotifications, setDashboardNotifications] = useState<DashboardNotification[]>([]);
+  const [dismissingDashboardNotificationId, setDismissingDashboardNotificationId] =
+    useState<string | null>(null);
   const [profileData, setProfileData] = useState({
     instagram: null as string | null,
     tiktok: null as string | null,
@@ -136,6 +148,25 @@ export default function DashboardPage() {
     }
   };
 
+  const dismissDashboardNotification = async (notificationId: string) => {
+    const previousNotifications = dashboardNotifications;
+
+    setDismissingDashboardNotificationId(notificationId);
+    setDashboardNotifications((prev) =>
+      prev.filter((notification) => notification.id !== notificationId)
+    );
+
+    try {
+      await apiClient.delete(`/athlete/dashboard-notifications/${notificationId}`);
+      toast.success("Notification dismissed");
+    } catch (error) {
+      setDashboardNotifications(previousNotifications);
+      toast.error("Failed to dismiss notification");
+    } finally {
+      setDismissingDashboardNotificationId(null);
+    }
+  };
+
   if (loading) {
     return <DashboardLoading message="Loading dashboard..." />;
   }
@@ -219,9 +250,25 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {dashboardNotifications.slice(0, 3).map((item) => (
-                <div key={item.id} className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-                  <p className="text-sm font-medium text-blue-900">{item.title}</p>
-                  <p className="text-sm text-blue-800">{item.message}</p>
+                <div
+                  key={item.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-blue-900">{item.title}</p>
+                    <p className="text-sm text-blue-800 break-words">{item.message}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 text-blue-700 hover:bg-blue-100 hover:text-blue-900"
+                    aria-label={`Dismiss notification: ${item.title}`}
+                    disabled={dismissingDashboardNotificationId === item.id}
+                    onClick={() => dismissDashboardNotification(item.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               ))}
             </CardContent>
