@@ -708,7 +708,7 @@ router.post(
           validUntil,
           maxUsage: undefined,
           status: "ACTIVE",
-          isAffiliate: true,
+          isAffiliate: false, // Audience/follower discount code, not a monthly allowance code
           freeShipping: validatedData.freeShipping,
           syncedToShopify,
           shopifyPriceRuleIds: Object.keys(shopifyPriceRuleIds).length > 0 ? shopifyPriceRuleIds : undefined,
@@ -1121,7 +1121,7 @@ router.post(
               discount: data.discountValue.toString(),
               affiliateId: affiliate.id,
               status: "ACTIVE",
-              isAffiliate: true,
+              isAffiliate: false, // Audience/follower discount code, not a monthly allowance code
               freeShipping: false,
               description: `Affiliate discount code for ${data.firstName} ${data.lastName}`,
               validUntil: validUntil,

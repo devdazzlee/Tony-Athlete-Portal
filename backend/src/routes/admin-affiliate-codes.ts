@@ -8,6 +8,7 @@ import { Readable } from "stream";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import shopifyService from "../services/ShopifyService";
 import emailService from "../services/EmailService";
+import { isMonthlyAllowanceCoupon } from "../utils/couponClassification";
 
 const router: Router = Router();
 const prisma = new PrismaClient();
@@ -126,7 +127,7 @@ router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, 
       filters.affiliateId = affiliateId;
     }
 
-    const codes = await prisma.coupon.findMany({
+    const candidateCodes = await prisma.coupon.findMany({
       where: filters,
       include: {
         affiliate: {
@@ -145,14 +146,17 @@ router.get("/", authenticateToken, requireRole(["ADMIN"]), async (req: Request, 
       orderBy: {
         createdAt: "desc",
       },
-      skip: (Number(page) - 1) * Number(limit),
-      take: Number(limit),
     });
 
-    const total = await prisma.coupon.count({ where: filters });
+    const filteredCodes = candidateCodes.filter(isMonthlyAllowanceCoupon);
+    const total = filteredCodes.length;
+    const paginatedCodes = filteredCodes.slice(
+      (Number(page) - 1) * Number(limit),
+      Number(page) * Number(limit)
+    );
 
     // Add expiration status and usage info
-    const codesWithStatus = codes.map((code) => {
+    const codesWithStatus = paginatedCodes.map((code) => {
       const isExpired = code.validUntil <= now;
       const isUsed = code.maxUsage ? code.usage >= code.maxUsage : false;
       return {
@@ -1028,19 +1032,39 @@ router.get("/stats/overview", authenticateToken, requireRole(["ADMIN"]), async (
 
     const visibleFilters = { ...filters, validUntil: { gt: now } };
 
-    const totalCodes = await prisma.coupon.count({ where: visibleFilters });
-    const activeCodes = await prisma.coupon.count({
-      where: { ...visibleFilters, status: "ACTIVE" },
-    });
-    const usedCodes = await prisma.coupon.count({
-      where: { ...visibleFilters, usage: { gt: 0 } },
-    });
-    const expiredCodes = await prisma.coupon.count({
-      where: {
-        ...filters,
-        validUntil: { lte: now },
-      },
-    });
+    const [visibleCodes, expiredCodesRaw] = await Promise.all([
+      prisma.coupon.findMany({
+        where: visibleFilters,
+        select: {
+          id: true,
+          description: true,
+          isAffiliate: true,
+          validUntil: true,
+          usage: true,
+          status: true,
+        },
+      }),
+      prisma.coupon.findMany({
+        where: {
+          ...filters,
+          validUntil: { lte: now },
+        },
+        select: {
+          id: true,
+          description: true,
+          isAffiliate: true,
+          validUntil: true,
+        },
+      }),
+    ]);
+
+    const monthlyAllowanceCodes = visibleCodes.filter(isMonthlyAllowanceCoupon);
+    const expiredCodes = expiredCodesRaw.filter(isMonthlyAllowanceCoupon).length;
+    const totalCodes = monthlyAllowanceCodes.length;
+    const activeCodes = monthlyAllowanceCodes.filter(
+      (code) => code.status === "ACTIVE"
+    ).length;
+    const usedCodes = monthlyAllowanceCodes.filter((code) => code.usage > 0).length;
 
     res.json({
       totalCodes,

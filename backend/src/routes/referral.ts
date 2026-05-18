@@ -4,6 +4,7 @@ import { authenticateToken } from "../middleware/auth";
 import { ReferralSystemModel } from "../models/ReferralSystem";
 import { prisma } from "../lib/prisma";
 import { SystemSettingsService } from "../services/SystemSettingsService";
+import { isMonthlyAllowanceCoupon } from "../utils/couponClassification";
 
 const router: Router = express.Router();
 
@@ -29,8 +30,10 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
       affiliate.id
     );
 
-    // Get affiliate allowance/discount codes from Coupon table (created by admin)
-    const affiliateCoupons = await prisma.coupon.findMany({
+    // Get monthly allowance codes from Coupon table (created by admin).
+    // Legacy audience codes can exist here with the wrong flag, so we filter them out
+    // after fetch instead of relying on isAffiliate alone.
+    const coupons = await prisma.coupon.findMany({
       where: {
         affiliateId: affiliate.id,
         isAffiliate: true, // Only fetch affiliate allowance codes
@@ -39,6 +42,8 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
       },
       orderBy: { createdAt: "desc" },
     });
+
+    const affiliateCoupons = coupons.filter(isMonthlyAllowanceCoupon);
 
     // Convert coupons to referral code format
     const couponCodesFormatted = affiliateCoupons

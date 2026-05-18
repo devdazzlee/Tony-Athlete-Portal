@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import shopifyService from "../services/ShopifyService";
 import { getCommissionableValue } from "../utils/orderValue";
+import { isAudienceCoupon } from "../utils/couponClassification";
 
 const router: Router = express.Router();
 const prisma = new PrismaClient();
@@ -69,12 +70,13 @@ router.get("/profile", async (req: any, res) => {
 
     const socialMedia = affiliate.socialMedia as any || {};
     
-    // Get audience-facing discount codes (exclude personal allowance codes)
+    // Get audience-facing discount codes.
+    // Legacy audience codes may still carry isAffiliate=true from the old flow,
+    // so we classify them with a compatibility helper instead of relying only on the flag.
     const coupons = await prisma.coupon.findMany({
       where: {
         affiliateId: affiliate.id,
         status: "ACTIVE",
-        isAffiliate: false,
         validUntil: { gt: new Date() },
       },
       orderBy: {
@@ -82,8 +84,10 @@ router.get("/profile", async (req: any, res) => {
       },
     });
 
+    const audienceCoupons = coupons.filter(isAudienceCoupon);
+
     // Format discount codes with descriptions
-    const discountCodes = coupons.map((coupon) => {
+    const discountCodes = audienceCoupons.map((coupon) => {
       const discountValue = parseFloat((coupon.discount || "").replace(/[^0-9.]/g, "")) || 0;
       const isFixedAmount =
         coupon.discount.includes("$") || /\$\s*\d+/.test(coupon.description || "");
