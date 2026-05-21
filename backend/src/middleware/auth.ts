@@ -174,11 +174,25 @@ export const requireAffiliate = (
   }
 
   if (req.user.role !== "AFFILIATE") {
-    return res.status(403).json({ error: "Affiliate access  q " });
+    return res.status(403).json({ error: "Affiliate access required" });
   }
 
   if (!req.user.affiliateProfile) {
     return res.status(404).json({ error: "Affiliate profile not found" });
+  }
+
+  const affiliateStatus = req.user.affiliateProfile.status;
+  if (affiliateStatus !== "ACTIVE") {
+    return res.status(403).json({
+      error:
+        affiliateStatus === "PENDING"
+          ? "Your affiliate account is pending approval"
+          : affiliateStatus === "REJECTED"
+            ? "Your affiliate application was not approved"
+            : "Your affiliate account is not active",
+      code: "AFFILIATE_NOT_ACTIVE",
+      status: affiliateStatus,
+    });
   }
 
   next();

@@ -396,6 +396,19 @@ router.get(
 
       const mergedPendingPayouts = [...pendingPayouts, ...commissionPendingPayouts];
 
+      const feedbackPeriodLabel =
+        dateRange === "7d"
+          ? "in the last 7 days"
+          : dateRange === "30d"
+            ? "in the last 30 days"
+            : dateRange === "90d"
+              ? "in the last 90 days"
+              : "";
+
+      const feedbackActionUrl = dateFilter
+        ? `/admin/feedback?startDate=${encodeURIComponent(dateFilter.toISOString())}`
+        : "/admin/feedback";
+
       const [newDeliverablesCount, feedbackCount] = await Promise.all([
         prisma.activity.count({
           where: {
@@ -404,7 +417,10 @@ router.get(
           },
         }),
         prisma.activity.count({
-          where: { action: "feedback_submitted" },
+          where: {
+            action: "feedback_submitted",
+            ...dateWhereClause,
+          },
         }),
       ]);
 
@@ -461,10 +477,12 @@ router.get(
           },
           {
             type: "info",
-            title: `${feedbackCount} general feedback submissions`,
-            description: "Review feedback sent from affiliates.",
-            time: "Live",
-            actionUrl: "/admin/feedback",
+            title: `${feedbackCount} general feedback submission${feedbackCount === 1 ? "" : "s"}${feedbackPeriodLabel ? ` ${feedbackPeriodLabel}` : ""}`,
+            description: feedbackPeriodLabel
+              ? `Review feedback submitted ${feedbackPeriodLabel}.`
+              : "Review all feedback sent from affiliates.",
+            time: dateRange === "7d" ? "Last 7 days" : dateRange === "30d" ? "Last 30 days" : dateRange === "90d" ? "Last 90 days" : "All time",
+            actionUrl: feedbackActionUrl,
           },
         ],
       });

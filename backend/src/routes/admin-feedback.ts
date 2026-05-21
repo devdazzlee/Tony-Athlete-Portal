@@ -135,25 +135,24 @@ router.get(
       const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      // Get all feedback activities to calculate stats
-      const allFeedback = await prisma.activity.findMany({
-        where: { action: "feedback_submitted" },
-        select: {
-          createdAt: true,
-          details: true,
-        },
-      });
+      const feedbackWhere = { action: "feedback_submitted" as const };
 
-      const total = allFeedback.length;
-      const last7DaysCount = allFeedback.filter(
-        (f) => f.createdAt >= last7Days
-      ).length;
-      const last30DaysCount = allFeedback.filter(
-        (f) => f.createdAt >= last30Days
-      ).length;
-      
-      // Count anonymous feedback
-      const anonymousCount = allFeedback.filter((f) => {
+      const [total, last7DaysCount, last30DaysCount, allFeedbackForAnonymous] =
+        await Promise.all([
+          prisma.activity.count({ where: feedbackWhere }),
+          prisma.activity.count({
+            where: { ...feedbackWhere, createdAt: { gte: last7Days } },
+          }),
+          prisma.activity.count({
+            where: { ...feedbackWhere, createdAt: { gte: last30Days } },
+          }),
+          prisma.activity.findMany({
+            where: feedbackWhere,
+            select: { details: true },
+          }),
+        ]);
+
+      const anonymousCount = allFeedbackForAnonymous.filter((f) => {
         const details = f.details as any;
         const hasName = details?.name && details.name.trim().length > 0;
         const hasEmail = details?.email && details.email.trim().length > 0;

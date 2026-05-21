@@ -87,7 +87,7 @@ model AffiliateProfile {
   totalConversions Int           @default(0)
   conversionRate   Float         @default(0)
   lastActivityAt   DateTime?
-  status           String        @default("ACTIVE")
+  status           String        @default("PENDING")
   deliverablesNote String?       // Custom note for deliverables requirements
   spendingLimit    Float?        // Product allowance amount for affiliate
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -86,7 +87,8 @@ interface FeedbackStats {
   withDetails: number;
 }
 
-export default function AdminFeedbackPage() {
+function AdminFeedbackPageContent() {
+  const searchParams = useSearchParams();
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [stats, setStats] = useState<FeedbackStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,12 +99,33 @@ export default function AdminFeedbackPage() {
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
+  const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
   const PAGE_SIZE = 20;
 
   useEffect(() => {
+    if (urlFiltersApplied) return;
+    const startParam = searchParams?.get("startDate");
+    const endParam = searchParams?.get("endDate");
+    if (startParam) {
+      const parsed = new Date(startParam);
+      if (!isNaN(parsed.getTime())) {
+        setStartDate(parsed);
+      }
+    }
+    if (endParam) {
+      const parsed = new Date(endParam);
+      if (!isNaN(parsed.getTime())) {
+        setEndDate(parsed);
+      }
+    }
+    setUrlFiltersApplied(true);
+  }, [searchParams, urlFiltersApplied]);
+
+  useEffect(() => {
+    if (!urlFiltersApplied) return;
     fetchFeedback();
     fetchStats();
-  }, [currentPage, startDate, endDate]);
+  }, [currentPage, startDate, endDate, urlFiltersApplied]);
 
   // Reset to page 1 when search query changes
   useEffect(() => {
@@ -664,5 +687,13 @@ export default function AdminFeedbackPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function AdminFeedbackPage() {
+  return (
+    <Suspense fallback={<AdminLoading message="Loading feedback submissions..." />}>
+      <AdminFeedbackPageContent />
+    </Suspense>
   );
 }

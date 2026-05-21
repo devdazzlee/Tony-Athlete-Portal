@@ -1,8 +1,11 @@
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
+
+const prisma = new PrismaClient();
 
 interface EmailOptions {
   to: string;
@@ -259,6 +262,185 @@ This verification link will expire in 24 hours. If you didn't create an account 
     await this.sendEmail({
       to: email,
       subject: "Verify Your Email - TC Nutrition Athlete Portal",
+      html,
+      text,
+    });
+  }
+
+  private async getAdminNotificationEmails(): Promise<string[]> {
+    const fromEnv = (process.env.ADMIN_NOTIFICATION_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (fromEnv.length > 0) {
+      return fromEnv;
+    }
+
+    const admins = await prisma.user.findMany({
+      where: {
+        role: { in: ["ADMIN", "MANAGER"] },
+        status: "ACTIVE",
+      },
+      select: { email: true },
+    });
+    return admins.map((a) => a.email).filter(Boolean);
+  }
+
+  async sendAffiliateApplicationReceivedEmail(
+    email: string,
+    firstName: string
+  ): Promise<boolean> {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Application Received - TC Nutrition Athlete Portal</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .container { background: #fff; border-radius: 8px; padding: 32px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .logo { font-size: 28px; font-weight: bold; color: #3b82f6; text-align: center; margin-bottom: 24px; }
+            .badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+            .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo">🎯 TC Nutrition</div>
+            <p>Hi <strong>${firstName}</strong>,</p>
+            <p>Thank you for applying to the TC Nutrition Athlete Portal affiliate program!</p>
+            <p><span class="badge">Pending Review</span></p>
+            <p>We've received your application and our team is reviewing it. You'll receive another email once your account has been approved so you can log in and complete your setup.</p>
+            <p>No action is needed right now — we'll be in touch soon.</p>
+            <div class="footer">
+              <p>© ${new Date().getFullYear()} TC Nutrition. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `Hi ${firstName},\n\nThank you for applying to the TC Nutrition Athlete Portal affiliate program!\n\nYour application is pending review. You'll receive another email once your account has been approved.\n\n© ${new Date().getFullYear()} TC Nutrition`;
+
+    return this.sendEmail({
+      to: email,
+      subject: "Application Received - TC Nutrition Athlete Portal",
+      html,
+      text,
+    });
+  }
+
+  async sendNewAffiliateApplicationAdminEmail(applicant: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  }): Promise<boolean> {
+    const adminEmails = await this.getAdminNotificationEmails();
+    if (adminEmails.length === 0) {
+      console.warn(
+        "[EmailService] No admin notification emails configured (ADMIN_NOTIFICATION_EMAILS or ADMIN/MANAGER users)"
+      );
+      return false;
+    }
+
+    const approvalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/manager/affiliates/approval`;
+    const fullName = `${applicant.firstName} ${applicant.lastName}`.trim();
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .container { background: #fff; border-radius: 8px; padding: 32px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .button { display: inline-block; padding: 12px 24px; background: #3b82f6; color: #fff !important; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 16px 0; }
+            .detail { background: #f9fafb; padding: 16px; border-radius: 6px; margin: 16px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>New Affiliate Application</h2>
+            <p>A new affiliate has signed up and needs your approval:</p>
+            <div class="detail">
+              <p><strong>Name:</strong> ${fullName}</p>
+              <p><strong>Email:</strong> ${applicant.email}</p>
+            </div>
+            <a href="${approvalUrl}" class="button">Review Pending Applications</a>
+            <p style="font-size: 13px; color: #6b7280;">Or copy this link: ${approvalUrl}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `New affiliate application\n\nName: ${fullName}\nEmail: ${applicant.email}\n\nReview: ${approvalUrl}`;
+
+    let sent = false;
+    for (const adminEmail of adminEmails) {
+      const result = await this.sendEmail({
+        to: adminEmail,
+        subject: `New affiliate application: ${fullName}`,
+        html,
+        text,
+      });
+      if (result) sent = true;
+    }
+    return sent;
+  }
+
+  async sendAffiliateApprovedEmail(email: string, firstName: string): Promise<boolean> {
+    const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>You're Approved! - TC Nutrition Athlete Portal</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .container { background: #fff; border-radius: 8px; padding: 40px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .logo { font-size: 32px; font-weight: bold; color: #3b82f6; text-align: center; margin-bottom: 20px; }
+            h1 { color: #10b981; text-align: center; }
+            .button { display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff !important; text-decoration: none; border-radius: 6px; font-weight: 600; }
+            .features { background: #f8fafc; padding: 20px; border-radius: 6px; margin: 20px 0; }
+            .footer { margin-top: 30px; text-align: center; font-size: 14px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo">🎯 TC Nutrition</div>
+            <h1>You're Approved, ${firstName}! 🎉</h1>
+            <p style="text-align: center;">Great news — your affiliate application has been approved. You can now log in and start using the Athlete Portal.</p>
+            <div style="text-align: center;">
+              <a href="${loginUrl}" class="button">Log In & Get Started</a>
+            </div>
+            <div class="features">
+              <h3 style="margin-top: 0;">What's next:</h3>
+              <ol>
+                <li>Log in with the email and password you registered with</li>
+                <li>Complete your profile</li>
+                <li>Create your first affiliate link</li>
+                <li>Start promoting and earning!</li>
+              </ol>
+            </div>
+            <div class="footer">
+              <p>Happy tracking! 🚀</p>
+              <p>The TC Nutrition Team</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `You're Approved, ${firstName}!\n\nYour affiliate application has been approved. Log in here: ${loginUrl}\n\nThe TC Nutrition Team`;
+
+    return this.sendEmail({
+      to: email,
+      subject: "You're Approved! Complete Your TC Nutrition Athlete Portal Setup 🚀",
       html,
       text,
     });

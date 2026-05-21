@@ -269,10 +269,48 @@ router.patch(
         return res.status(400).json({ error: "Invalid status" });
       }
 
+      const existingAffiliate = await prisma.affiliateProfile.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
+
+      if (!existingAffiliate) {
+        return res.status(404).json({ error: "Affiliate not found" });
+      }
+
+      const previousStatus = existingAffiliate.status;
+
       const updatedAffiliate = await prisma.affiliateProfile.update({
         where: { id },
         data: { status },
       });
+
+      if (status === "ACTIVE" && previousStatus === "PENDING") {
+        await prisma.user.update({
+          where: { id: existingAffiliate.userId },
+          data: { status: "ACTIVE" },
+        });
+
+        if (existingAffiliate.user?.email) {
+          try {
+            await emailService.sendAffiliateApprovedEmail(
+              existingAffiliate.user.email,
+              existingAffiliate.user.firstName
+            );
+          } catch (emailErr) {
+            console.warn("Failed to send affiliate approval email:", emailErr);
+          }
+        }
+      }
 
       res.json({
         success: true,

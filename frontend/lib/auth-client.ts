@@ -2,6 +2,11 @@
 // Types
 import apiClient from "@/lib/api-client";
 
+export interface AffiliateProfile {
+  id: string;
+  status: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -10,6 +15,26 @@ export interface User {
   phone?: string;
   role: "ADMIN" | "AFFILIATE" | "MANAGER";
   avatar: string | null;
+  affiliateProfile?: AffiliateProfile | null;
+}
+
+function mapUserFromApi(data: Record<string, unknown>): User {
+  const affiliateProfile = data.affiliateProfile as AffiliateProfile | null | undefined;
+  return {
+    id: data.id as string,
+    email: data.email as string,
+    firstName: data.firstName as string,
+    lastName: data.lastName as string,
+    phone: data.phone as string | undefined,
+    role: data.role as User["role"],
+    avatar: (data.avatar as string | null) ?? null,
+    affiliateProfile: affiliateProfile
+      ? {
+          id: affiliateProfile.id,
+          status: affiliateProfile.status,
+        }
+      : null,
+  };
 }
 
 export interface AuthResponse {
@@ -139,10 +164,10 @@ export class AuthClient {
         throw new Error(data.error || "Login failed");
       }
 
-      // Store token and user in localStorage
-      this.setAuth(data.token, data.user, data.refreshToken);
+      const user = mapUserFromApi(data.user);
+      this.setAuth(data.token, user, data.refreshToken);
 
-      return data;
+      return { ...data, user };
     } catch (error) {
       console.error("Login error:", error);
       throw error;
@@ -219,24 +244,10 @@ export class AuthClient {
       // before the API call. The interceptor may have refreshed it during the request.
       const currentToken = this.getToken() || tokenBefore;
 
-      // Update user in localStorage with the current (possibly refreshed) token
-      this.setAuth(currentToken, {
-        id: data.id,
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        role: data.role,
-        avatar: data.avatar,
-      });
+      const user = mapUserFromApi(data);
+      this.setAuth(currentToken, user);
 
-      return {
-        id: data.id,
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        role: data.role,
-        avatar: data.avatar,
-      };
+      return user;
     } catch (error) {
       console.error("Get profile error:", error);
       throw error;

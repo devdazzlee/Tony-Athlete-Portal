@@ -43,6 +43,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { getFullName, getInitials } from "@/lib/auth-client";
+import { isAffiliateApproved } from "@/lib/affiliate-status";
 import { config } from "@/config/config";
 import apiClient from "@/lib/api-client";
 import { AuthLoading } from "@/components/ui/loading";
@@ -110,13 +111,20 @@ export default function TCNutritionDashboardLayout({
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    // Only redirect to login when we're completely done loading AND
-    // there's no token left (meaning refresh failed or user never logged in)
     if (isLoading) return;
     if (!isAuthenticated && !hasToken) {
       router.replace("/auth/login");
+      return;
     }
-  }, [isLoading, isAuthenticated, hasToken, router]);
+    if (user?.role === "AFFILIATE" && !isAffiliateApproved(user)) {
+      const status = user.affiliateProfile?.status?.toUpperCase();
+      if (status === "REJECTED") {
+        router.replace("/auth/pending-approval?status=rejected");
+      } else {
+        router.replace("/auth/pending-approval");
+      }
+    }
+  }, [isLoading, isAuthenticated, hasToken, user, router]);
 
   async function fetchNotifications() {
     try {

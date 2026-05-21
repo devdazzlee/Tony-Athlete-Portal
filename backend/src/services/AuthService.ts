@@ -85,8 +85,8 @@ export class AuthService {
       parseInt(process.env.BCRYPT_ROUNDS || "12")
     );
 
-    // Generate verification token
-    const verificationToken = EmailService.generateToken();
+    const role = data.role || "AFFILIATE";
+    const isAffiliateSignup = role === "AFFILIATE";
 
     // Create user
     const user = await prisma.user.create({
@@ -95,12 +95,13 @@ export class AuthService {
         password: hashedPassword,
         firstName: data.firstName,
         lastName: data.lastName,
-        role: data.role || "AFFILIATE",
+        role,
+        ...(isAffiliateSignup ? { status: "PENDING" } : {}),
       },
     });
 
     // Create profile based on role
-    if (data.role === "AFFILIATE" || !data.role) {
+    if (isAffiliateSignup) {
       const defaultCommissionRate =
         await SystemSettingsService.getDefaultCommissionRate();
       await prisma.affiliateProfile.create({
@@ -108,6 +109,7 @@ export class AuthService {
           userId: user.id,
           paymentMethod: "BANK_TRANSFER",
           commissionRate: defaultCommissionRate,
+          status: "PENDING",
         },
       });
     } else if (data.role === "ADMIN") {
@@ -131,22 +133,31 @@ export class AuthService {
       },
     });
 
-    // Send verification email
-    try {
-      await emailService.sendVerificationEmail(
-        user.email,
-        user.firstName,
-        verificationToken
-      );
-      console.log(`Verification email sent to ${user.email}`);
-    } catch (error) {
-      console.error("Failed to send verification email:", error);
-      // Don't fail registration if email fails, but log it
+    if (isAffiliateSignup) {
+      try {
+        await emailService.sendAffiliateApplicationReceivedEmail(
+          user.email,
+          user.firstName
+        );
+      } catch (error) {
+        console.error("Failed to send affiliate application email:", error);
+      }
+
+      try {
+        await emailService.sendNewAffiliateApplicationAdminEmail({
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+        });
+      } catch (error) {
+        console.error("Failed to send admin notification email:", error);
+      }
     }
 
     return {
-      message:
-        "Registration successful! Please check your email to verify your account.",
+      message: isAffiliateSignup
+        ? "Registration successful! Your application is pending review. We'll email you once your account is approved."
+        : "Registration successful!",
     };
   }
 

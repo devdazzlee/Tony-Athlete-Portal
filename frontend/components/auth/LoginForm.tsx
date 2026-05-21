@@ -23,6 +23,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPostAuthRedirectPath } from "@/lib/affiliate-status";
 import { useTheme } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { StandardPageLoading } from "@/components/ui/loading";
@@ -64,14 +65,7 @@ export function LoginForm({
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Role-based redirects after login
-      if (user.role === "ADMIN") {
-        router.push("/admin");
-      } else if (user.role === "MANAGER") {
-        router.push("/manager");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push(getPostAuthRedirectPath(user));
     }
   }, [isAuthenticated, user, router]);
 
@@ -88,10 +82,9 @@ export function LoginForm({
       if (onSuccess) {
         onSuccess();
       } else {
-        // Default redirect behavior
-        if (response.user?.role === "ADMIN") router.replace("/admin");
-        else if (response.user?.role === "MANAGER") router.replace("/manager");
-        else router.replace("/dashboard");
+        if (response.user) {
+          router.replace(getPostAuthRedirectPath(response.user));
+        }
       }
     } catch (error: any) {
       setError(error.message || "Login failed. Please try again.");

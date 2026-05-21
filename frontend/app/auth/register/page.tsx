@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, ArrowLeft, Check, AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPostAuthRedirectPath } from "@/lib/affiliate-status";
 import { toast } from "sonner";
 
 function RegisterForm() {
@@ -44,13 +45,7 @@ function RegisterForm() {
   useEffect(() => {
     if (isAuthenticated && user) {
       // Role-based redirects after registration
-      if (user.role === "ADMIN") {
-        router.push("/admin");
-      } else if (user.role === "MANAGER") {
-        router.push("/manager");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push(getPostAuthRedirectPath(user));
     }
   }, [isAuthenticated, user, router]);
 
@@ -107,7 +102,7 @@ function RegisterForm() {
       // Show success message instead of logging in
       setRegistrationSuccess(true);
       setRegistrationEmail(formData.email);
-      toast.success("Registration successful! Please check your email to verify your account.");
+      toast.success("Application submitted! We'll email you once your account is approved.");
     } catch (error: any) {
       setError(error.message || "Registration failed. Please try again.");
       toast.error(error.message || "Registration failed. Please try again.");
@@ -139,30 +134,27 @@ function RegisterForm() {
                   <Check className="h-8 w-8 text-green-600" />
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900">
-                  Check Your Email
+                  Application Submitted
                 </CardTitle>
                 <CardDescription className="text-gray-600">
-                  We've sent a verification link to{" "}
+                  We&apos;ve sent a confirmation to{" "}
                   <strong className="text-gray-900">{registrationEmail}</strong>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
                   <p className="text-sm text-blue-700">
-                    <strong>Next Steps:</strong>
+                    <strong>What happens next:</strong>
                   </p>
                   <ol className="mt-2 text-sm text-blue-600 list-decimal list-inside space-y-1">
-                    <li>Check your email inbox</li>
-                    <li>Click the verification link we sent you</li>
-                    <li>Log in to start earning commissions</li>
+                    <li>Our team reviews your application</li>
+                    <li>You&apos;ll receive an email when you&apos;re approved</li>
+                    <li>Log in to complete your setup and start earning</li>
                   </ol>
                 </div>
                 
                 <p className="text-xs text-center text-gray-600">
-                  Didn't receive the email? Check your spam folder or{" "}
-                  <Link href="/auth/verify-email" className="text-blue-600 hover:text-blue-700 hover:underline">
-                    resend verification email
-                  </Link>
+                  Didn&apos;t receive the email? Check your spam folder.
                 </p>
                 
                 <Button

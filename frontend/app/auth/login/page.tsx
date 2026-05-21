@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { StandardPageLoading } from "@/components/ui/loading";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPostAuthRedirectPath } from "@/lib/affiliate-status";
 
 function LoginPageContent() {
   const searchParams = useSearchParams();
@@ -15,9 +16,7 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && user) {
-      if (user.role === "ADMIN") router.replace("/admin");
-      else if (user.role === "MANAGER") router.replace("/manager");
-      else router.replace("/dashboard");
+      router.replace(getPostAuthRedirectPath(user));
     }
   }, [isLoading, isAuthenticated, user, router]);
 
