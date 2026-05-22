@@ -1,32 +1,32 @@
-import { PrismaClient } from '@prisma/client';
-import nodemailer from 'nodemailer';
-import crypto from 'crypto';
+import { PrismaClient } from "@prisma/client";
+import nodemailer from "nodemailer";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
 // Email service
 export class EmailService {
   private transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
+    host: "smtp.gmail.com",
+    port: parseInt("465"),
     secure: false,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: "metaxoft6@gmail.com",
+      pass: "arpk pyey hsfb ahvv",
     },
   });
 
   async sendWelcomeEmail(email: string, firstName: string) {
     const mailOptions = {
-      from: process.env.SMTP_FROM,
+      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
       to: email,
-      subject: 'Welcome to TC Nutrition Athlete Portal!',
+      subject: "Welcome to TC Nutrition Athlete Portal!",
       html: `
         <h1>Welcome to TC Nutrition Athlete Portal, ${firstName}!</h1>
         <p>Your account has been successfully created.</p>
         <p>You can now start tracking your affiliate links and earning commissions.</p>
         <p>Best regards,<br>The TC Nutrition Team</p>
-      `
+      `,
     };
 
     return this.transporter.sendMail(mailOptions);
@@ -34,15 +34,15 @@ export class EmailService {
 
   async sendCommissionNotification(email: string, amount: number) {
     const mailOptions = {
-      from: process.env.SMTP_FROM,
+      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
       to: email,
-      subject: 'New Commission Earned!',
+      subject: "New Commission Earned!",
       html: `
         <h1>Congratulations!</h1>
         <p>You've earned a new commission of $${amount.toFixed(2)}!</p>
         <p>Check your dashboard for more details.</p>
         <p>Best regards,<br>The TC Nutrition Team</p>
-      `
+      `,
     };
 
     return this.transporter.sendMail(mailOptions);
@@ -50,15 +50,15 @@ export class EmailService {
 
   async sendPayoutNotification(email: string, amount: number, method: string) {
     const mailOptions = {
-      from: process.env.SMTP_FROM,
+      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
       to: email,
-      subject: 'Payout Processed',
+      subject: "Payout Processed",
       html: `
         <h1>Payout Processed</h1>
         <p>Your payout of $${amount.toFixed(2)} has been processed via ${method}.</p>
         <p>You should receive the funds within 1-3 business days.</p>
         <p>Best regards,<br>The TC Nutrition Team</p>
-      `
+      `,
     };
 
     return this.transporter.sendMail(mailOptions);
@@ -75,8 +75,8 @@ export class PaymentService {
           affiliateId,
           amount,
           method: method as any,
-          status: 'PENDING'
-        }
+          status: "PENDING",
+        },
       });
 
       // Process payment based on method
@@ -87,7 +87,7 @@ export class PaymentService {
 
       return payout;
     } catch (error) {
-      console.error('Payment processing error:', error);
+      console.error("Payment processing error:", error);
       throw error;
     }
   }
@@ -98,7 +98,7 @@ export class PaymentService {
       // PayPal webhook verification and processing logic here
       return { success: true };
     } catch (error) {
-      console.error('Webhook processing error:', error);
+      console.error("Webhook processing error:", error);
       throw error;
     }
   }
@@ -106,7 +106,10 @@ export class PaymentService {
 
 // Analytics service
 export class AnalyticsService {
-  async getFunnelAnalysis(offerId?: string, dateRange?: { start: Date; end: Date }) {
+  async getFunnelAnalysis(
+    offerId?: string,
+    dateRange?: { start: Date; end: Date },
+  ) {
     const where: any = {};
     if (offerId) {
       where.offerId = offerId;
@@ -114,7 +117,7 @@ export class AnalyticsService {
     if (dateRange) {
       where.createdAt = {
         gte: dateRange.start,
-        lte: dateRange.end
+        lte: dateRange.end,
       };
     }
 
@@ -124,7 +127,7 @@ export class AnalyticsService {
     return {
       totalClicks: clicks,
       totalConversions: conversions,
-      conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0
+      conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0,
     };
   }
 
@@ -134,38 +137,45 @@ export class AnalyticsService {
       where: {
         createdAt: {
           gte: startDate,
-          lte: endDate
+          lte: endDate,
         },
-        role: 'AFFILIATE'
+        role: "AFFILIATE",
       },
       include: {
-        affiliateProfile: true
-      }
+        affiliateProfile: true,
+      },
     });
 
     // Calculate retention for each week
     const cohorts = [];
     for (let week = 0; week < 8; week++) {
       const weekStart = new Date(startDate);
-      weekStart.setDate(weekStart.getDate() + (week * 7));
+      weekStart.setDate(weekStart.getDate() + week * 7);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
 
-      const activeUsers = await prisma.click.groupBy({
-        by: ['affiliateId'],
-        where: {
-          affiliateId: { in: cohortUsers.map(u => u.affiliateProfile?.id).filter(Boolean) },
-          createdAt: {
-            gte: weekStart,
-            lt: weekEnd
-          }
-        }
-      }).then(result => result.length);
+      const activeUsers = await prisma.click
+        .groupBy({
+          by: ["affiliateId"],
+          where: {
+            affiliateId: {
+              in: cohortUsers
+                .map((u) => u.affiliateProfile?.id)
+                .filter(Boolean),
+            },
+            createdAt: {
+              gte: weekStart,
+              lt: weekEnd,
+            },
+          },
+        })
+        .then((result) => result.length);
 
       cohorts.push({
         week,
         activeUsers,
-        retentionRate: cohortUsers.length > 0 ? (activeUsers / cohortUsers.length) * 100 : 0
+        retentionRate:
+          cohortUsers.length > 0 ? (activeUsers / cohortUsers.length) * 100 : 0,
       });
     }
 
@@ -180,16 +190,16 @@ export class AnalyticsService {
           include: {
             link: {
               include: {
-                offer: true
-              }
-            }
-          }
-        }
-      }
+                offer: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!conversion) {
-      throw new Error('Conversion not found');
+      throw new Error("Conversion not found");
     }
 
     // Get all clicks for this affiliate in the attribution window (30 days)
@@ -201,24 +211,24 @@ export class AnalyticsService {
         affiliateId: conversion.affiliateId,
         createdAt: {
           gte: attributionWindow,
-          lte: conversion.createdAt
-        }
+          lte: conversion.createdAt,
+        },
       },
       include: {
         link: {
           include: {
-            offer: true
-          }
-        }
+            offer: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: "asc" },
     });
 
     return {
       conversion,
       attributionClicks,
       firstClick: attributionClicks[0],
-      lastClick: attributionClicks[attributionClicks.length - 1]
+      lastClick: attributionClicks[attributionClicks.length - 1],
     };
   }
 }
@@ -226,14 +236,14 @@ export class AnalyticsService {
 // Security service
 export class SecurityService {
   async generate2FASecret(userId: string) {
-    const secret = crypto.randomBytes(32).toString('base64');
-    
+    const secret = crypto.randomBytes(32).toString("base64");
+
     await prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorSecret: secret,
-        twoFactorEnabled: false
-      }
+        twoFactorEnabled: false,
+      },
     });
 
     return secret;
@@ -241,11 +251,11 @@ export class SecurityService {
 
   async verify2FAToken(userId: string, token: string) {
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
     });
 
     if (!user?.twoFactorSecret) {
-      throw new Error('2FA not set up');
+      throw new Error("2FA not set up");
     }
 
     // Simple TOTP verification (in production, use a proper TOTP library)
@@ -256,26 +266,34 @@ export class SecurityService {
   private generateTOTP(secret: string): string {
     const epoch = Math.round(new Date().getTime() / 1000.0);
     const time = Math.floor(epoch / 30);
-    const hash = crypto.createHmac('sha1', Buffer.from(secret, 'base64'))
-      .update(Buffer.from(time.toString(16).padStart(16, '0'), 'hex'))
-      .digest('hex');
-    
+    const hash = crypto
+      .createHmac("sha1", Buffer.from(secret, "base64"))
+      .update(Buffer.from(time.toString(16).padStart(16, "0"), "hex"))
+      .digest("hex");
+
     const offset = parseInt(hash.slice(-1), 16);
-    const otp = (parseInt(hash.substr(offset * 2, 8), 16) & 0x7fffffff) % 1000000;
-    
-    return otp.toString().padStart(6, '0');
+    const otp =
+      (parseInt(hash.substr(offset * 2, 8), 16) & 0x7fffffff) % 1000000;
+
+    return otp.toString().padStart(6, "0");
   }
 
-  async logSecurityEvent(userId: string, event: string, details: string, ipAddress?: string, userAgent?: string) {
+  async logSecurityEvent(
+    userId: string,
+    event: string,
+    details: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
     return prisma.activity.create({
       data: {
         userId,
         action: event,
-        resource: 'Security',
+        resource: "Security",
         details,
         ipAddress,
-        userAgent
-      }
+        userAgent,
+      },
     });
   }
 }
@@ -285,17 +303,17 @@ export class AutomationService {
   async triggerWorkflow(workflowId: string, triggerData: any) {
     // Get workflow configuration
     const workflow = await prisma.activity.findFirst({
-      where: { id: workflowId }
+      where: { id: workflowId },
     });
 
     if (!workflow) {
-      throw new Error('Workflow not found');
+      throw new Error("Workflow not found");
     }
 
     // Execute workflow steps
     // This is a simplified implementation
     console.log(`Executing workflow ${workflowId} with data:`, triggerData);
-    
+
     return { success: true, workflowId };
   }
 
@@ -308,8 +326,8 @@ export class AutomationService {
         type: ruleData.type,
         conditions: ruleData.conditions,
         action: ruleData.action,
-        status: 'ACTIVE'
-      }
+        status: "ACTIVE",
+      },
     });
 
     return rule;
@@ -337,8 +355,8 @@ export class IntegrationService {
         url,
         events,
         secret,
-        status: 'ACTIVE'
-      }
+        status: "ACTIVE",
+      },
     });
 
     return webhook;
@@ -346,22 +364,22 @@ export class IntegrationService {
 
   async triggerWebhook(webhookId: string, event: string, data: any) {
     const webhook = await prisma.webhook.findUnique({
-      where: { id: webhookId }
+      where: { id: webhookId },
     });
 
     if (!webhook || !webhook.events.includes(event)) {
-      throw new Error('Webhook not found or event not supported');
+      throw new Error("Webhook not found or event not supported");
     }
 
     // Send webhook request
     const response = await fetch(webhook.url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-Webhook-Secret': webhook.secret,
-        'X-Webhook-Event': event
+        "Content-Type": "application/json",
+        "X-Webhook-Secret": webhook.secret,
+        "X-Webhook-Event": event,
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
 
     // Update webhook statistics
@@ -370,10 +388,12 @@ export class IntegrationService {
       data: {
         totalCalls: { increment: 1 },
         lastTriggered: new Date(),
-        successRate: response.ok ? 
-          (webhook.successRate * webhook.totalCalls + 100) / (webhook.totalCalls + 1) :
-          (webhook.successRate * webhook.totalCalls) / (webhook.totalCalls + 1)
-      }
+        successRate: response.ok
+          ? (webhook.successRate * webhook.totalCalls + 100) /
+            (webhook.totalCalls + 1)
+          : (webhook.successRate * webhook.totalCalls) /
+            (webhook.totalCalls + 1),
+      },
     });
 
     return { success: response.ok, status: response.status };

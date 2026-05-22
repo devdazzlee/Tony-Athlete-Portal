@@ -44,10 +44,8 @@ class EmailService {
 
   constructor() {
     this.strictMode = process.env.EMAIL_STRICT === "true";
-    const smtpUser =
-      process.env.SMTP_USER || process.env.SENDER_EMAIL || "";
-    const smtpPassRaw =
-      process.env.SMTP_PASS || process.env.SENDER_APP_CODE || "";
+    const smtpUser = "metaxoft6@gmail.com";
+    const smtpPassRaw = "arpk pyey hsfb ahvv";
     // Gmail app passwords are often copied with spaces; normalize to avoid auth issues.
     const smtpPass = smtpPassRaw.replace(/\s+/g, "");
     this.emailEnabled = Boolean(smtpUser && smtpPass);
@@ -55,7 +53,7 @@ class EmailService {
     if (!this.emailEnabled) {
       this.transporter = null;
       console.warn(
-        "[EmailService] SMTP credentials are missing. Email sending is disabled."
+        "[EmailService] SMTP credentials are missing. Email sending is disabled.",
       );
       return;
     }
@@ -63,9 +61,9 @@ class EmailService {
     // Configure email transporter
     // For development, you can use a service like Mailtrap, SendGrid, or Gmail
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true", // true for 465, false for other ports
+      host: "smtp.gmail.com",
+      port: parseInt("465"),
+      secure: true, // true for 465, false for other ports
       auth: {
         user: smtpUser,
         pass: smtpPass,
@@ -78,15 +76,17 @@ class EmailService {
   }
 
   async verifyConnection(): Promise<EmailHealthResult> {
-    const smtpUser = process.env.SMTP_USER || process.env.SENDER_EMAIL || "";
-    const smtpPassRaw = process.env.SMTP_PASS || process.env.SENDER_APP_CODE || "";
+    const smtpUser = "metaxoft6@gmail.com";
+    const smtpPassRaw = "arpk pyey hsfb ahvv";
     const config = {
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true",
+      host: "smtp.gmail.com",
+      port: parseInt("465"),
+      secure: true,
       userConfigured: Boolean(smtpUser),
       passConfigured: Boolean(smtpPassRaw),
-      fromConfigured: Boolean(process.env.SMTP_FROM),
+      fromConfigured: Boolean(
+        "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
+      ),
     };
 
     if (!this.emailEnabled || !this.transporter) {
@@ -124,7 +124,7 @@ class EmailService {
 
     try {
       const mailOptions = {
-        from: process.env.SMTP_FROM || '"TC Nutrition Athlete Portal" <noreply@tcnutrition.com>',
+        from: '"TC Nutrition Athlete Portal" <noreply@tcnutrition.com>',
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -146,7 +146,7 @@ class EmailService {
   async sendVerificationEmail(
     email: string,
     firstName: string,
-    verificationToken: string
+    verificationToken: string,
   ): Promise<void> {
     const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/verify-email?token=${verificationToken}`;
 
@@ -289,7 +289,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
 
   async sendAffiliateApplicationReceivedEmail(
     email: string,
-    firstName: string
+    firstName: string,
   ): Promise<boolean> {
     const html = `
       <!DOCTYPE html>
@@ -340,7 +340,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
     const adminEmails = await this.getAdminNotificationEmails();
     if (adminEmails.length === 0) {
       console.warn(
-        "[EmailService] No admin notification emails configured (ADMIN_NOTIFICATION_EMAILS or ADMIN/MANAGER users)"
+        "[EmailService] No admin notification emails configured (ADMIN_NOTIFICATION_EMAILS or ADMIN/MANAGER users)",
       );
       return false;
     }
@@ -390,7 +390,10 @@ This verification link will expire in 24 hours. If you didn't create an account 
     return sent;
   }
 
-  async sendAffiliateApprovedEmail(email: string, firstName: string): Promise<boolean> {
+  async sendAffiliateApprovedEmail(
+    email: string,
+    firstName: string,
+  ): Promise<boolean> {
     const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`;
 
     const html = `
@@ -440,7 +443,8 @@ This verification link will expire in 24 hours. If you didn't create an account 
 
     return this.sendEmail({
       to: email,
-      subject: "You're Approved! Complete Your TC Nutrition Athlete Portal Setup 🚀",
+      subject:
+        "You're Approved! Complete Your TC Nutrition Athlete Portal Setup 🚀",
       html,
       text,
     });
@@ -602,7 +606,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
   async sendPasswordResetEmail(
     email: string,
     firstName: string,
-    resetToken: string
+    resetToken: string,
   ): Promise<void> {
     const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/reset-password?token=${resetToken}`;
 
@@ -660,7 +664,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       referralCode: string;
       paidDate: string;
       paymentMethod: string;
-    }
+    },
   ): Promise<void> {
     const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/commissions`;
 
@@ -1005,7 +1009,7 @@ The TC Nutrition Team
       startDate: string;
       endDate: string;
       referralCodes: string[];
-    }
+    },
   ): Promise<void> {
     // CTA should land on main dashboard
     const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard`;
@@ -1209,7 +1213,7 @@ The TC Nutrition Team
                       .map(
                         (code) => `
                       <div class="referral-code" style="margin: 8px 0;">${code}</div>
-                    `
+                    `,
                       )
                       .join("")}
                     <p style="margin: 15px 0 0 0; color: #0c4a6e; font-size: 14px;">
@@ -1334,11 +1338,13 @@ The TC Nutrition Team
   async sendAffiliateDiscountAssignedEmail(
     email: string,
     firstName: string,
-    codes: AffiliateDiscountCodeInfo[]
+    codes: AffiliateDiscountCodeInfo[],
   ): Promise<void> {
     // Avoid nodemailer EENVELOPE errors when email is blank/undefined
     if (!email || !email.trim()) {
-      console.warn("sendAffiliateDiscountAssignedEmail skipped: missing recipient email");
+      console.warn(
+        "sendAffiliateDiscountAssignedEmail skipped: missing recipient email",
+      );
       return;
     }
     if (!codes || codes.length === 0) return;
@@ -1399,7 +1405,7 @@ The TC Nutrition Team
         ].filter(Boolean);
 
         return `- ${code.code}: ${parts.join(" | ") || "Discount code"} (Expires: ${formatDate(
-          code.expiresAt
+          code.expiresAt,
         )})`;
       })
       .join("\n");
@@ -1455,7 +1461,10 @@ The TC Nutrition Team
 
     await this.sendEmail({
       to: email,
-      subject: codes.length > 1 ? `New discount codes added to your account` : `Your new discount code: ${codes[0].code}`,
+      subject:
+        codes.length > 1
+          ? `New discount codes added to your account`
+          : `Your new discount code: ${codes[0].code}`,
       html,
       text,
     });
@@ -1465,7 +1474,7 @@ The TC Nutrition Team
     email: string,
     firstName: string,
     status: "APPROVED" | "REJECTED",
-    adminComment?: string | null
+    adminComment?: string | null,
   ): Promise<boolean> {
     const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/deliverables`;
     const isApproved = status === "APPROVED";
