@@ -148,7 +148,7 @@ class EmailService {
     firstName: string,
     verificationToken: string,
   ): Promise<void> {
-    const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/verify-email?token=${verificationToken}`;
+    const verificationUrl = `${"https://www.tcathlete.com"}/auth/verify-email?token=${verificationToken}`;
 
     const html = `
       <!DOCTYPE html>
@@ -345,7 +345,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       return false;
     }
 
-    const approvalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/manager/affiliates/approval`;
+    const approvalUrl = `${"https://www.tcathlete.com"}/manager/affiliates/approval`;
     const fullName = `${applicant.firstName} ${applicant.lastName}`.trim();
 
     const html = `
@@ -394,7 +394,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
     email: string,
     firstName: string,
   ): Promise<boolean> {
-    const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login`;
+    const loginUrl = `${"https://www.tcathlete.com"}/auth/login`;
 
     const html = `
       <!DOCTYPE html>
@@ -589,7 +589,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       3. Create your first affiliate link
       4. Start promoting and earning!
       
-      Get Started: ${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/login
+      Get Started: ${"https://www.tcathlete.com"}/auth/login
       
       Happy tracking!
       The TC Nutrition Team
@@ -608,7 +608,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
     firstName: string,
     resetToken: string,
   ): Promise<void> {
-    const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/auth/reset-password?token=${resetToken}`;
+    const resetUrl = `${"https://www.tcathlete.com"}/auth/reset-password?token=${resetToken}`;
 
     const html = `
       <!DOCTYPE html>
@@ -666,7 +666,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
       paymentMethod: string;
     },
   ): Promise<void> {
-    const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/commissions`;
+    const dashboardUrl = `${"https://www.tcathlete.com"}/dashboard/commissions`;
 
     const html = `
       <!DOCTYPE html>
@@ -1012,7 +1012,7 @@ The TC Nutrition Team
     },
   ): Promise<void> {
     // CTA should land on main dashboard
-    const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard`;
+    const dashboardUrl = `${"https://www.tcathlete.com"}/dashboard`;
 
     const html = `
       <!DOCTYPE html>
@@ -1476,7 +1476,7 @@ The TC Nutrition Team
     status: "APPROVED" | "REJECTED",
     adminComment?: string | null,
   ): Promise<boolean> {
-    const dashboardUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/deliverables`;
+    const dashboardUrl = `${"https://www.tcathlete.com"}/dashboard/deliverables`;
     const isApproved = status === "APPROVED";
     const subject = isApproved
       ? "Deliverable approved - TC Nutrition Athlete Portal"
