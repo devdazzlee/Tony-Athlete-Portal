@@ -25,6 +25,7 @@ import {
   BookOpen,
   Settings,
   User,
+  UserCheck,
   Users,
   Menu,
   LogOut,
@@ -193,6 +194,11 @@ const adminNavItems = [
     title: "Manage Affiliates",
     href: "/admin/affiliates",
     icon: User,
+  },
+  {
+    title: "Approval Queue",
+    href: "/admin/affiliates?status=pending",
+    icon: UserCheck,
   },
   {
     title: "Affiliate Codes",

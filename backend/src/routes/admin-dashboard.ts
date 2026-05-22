@@ -468,6 +468,18 @@ router.get(
         topAffiliates: sortedTopAffiliates,
         pendingPayouts: mergedPendingPayouts,
         systemAlerts: [
+          ...(pendingAffiliates > 0
+            ? [
+                {
+                  type: "warning",
+                  title: `${pendingAffiliates} affiliate${pendingAffiliates === 1 ? "" : "s"} awaiting approval`,
+                  description:
+                    "New affiliate applications need your review before they can access the portal.",
+                  time: "Action required",
+                  actionUrl: "/admin/affiliates?status=pending",
+                },
+              ]
+            : []),
           {
             type: "warning",
             title: `${newDeliverablesCount} new deliverable submissions`,

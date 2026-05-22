@@ -349,7 +349,7 @@ export default function AdminDashboardPage() {
             Program Overview Notifications
           </CardTitle>
           <p className="text-sm text-gray-600">
-            New deliverables, response follow-ups, and feedback updates
+            Affiliate approvals, deliverables, and feedback updates
           </p>
         </CardHeader>
         <CardContent>

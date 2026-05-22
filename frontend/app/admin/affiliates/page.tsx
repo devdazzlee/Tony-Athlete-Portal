@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -94,8 +94,11 @@ interface Affiliate {
   country: string;
 }
 
-export default function AffiliatesManagementPage() {
+const VALID_STATUS_FILTERS = ["all", "active", "pending", "suspended", "inactive"] as const;
+
+function AffiliatesManagementPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -163,6 +166,18 @@ export default function AffiliatesManagementPage() {
     codeName: string | null;
   }>({ isOpen: false, codeId: null, codeName: null });
   const [isDeletingCode, setIsDeletingCode] = useState(false);
+
+  useEffect(() => {
+    const statusParam = searchParams?.get("status")?.toLowerCase();
+    if (
+      statusParam &&
+      VALID_STATUS_FILTERS.includes(
+        statusParam as (typeof VALID_STATUS_FILTERS)[number]
+      )
+    ) {
+      setStatusFilter(statusParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchAffiliates();
@@ -1884,5 +1899,13 @@ export default function AffiliatesManagementPage() {
         isLoading={isDeletingCode}
       />
     </div>
+  );
+}
+
+export default function AffiliatesManagementPageWrapper() {
+  return (
+    <Suspense fallback={<AdminLoading message="Loading affiliates..." />}>
+      <AffiliatesManagementPage />
+    </Suspense>
   );
 }
