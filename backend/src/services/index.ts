@@ -11,8 +11,10 @@ export class EmailService {
     port: parseInt("465"),
     secure: false,
     auth: {
-      user: "metaxoft6@gmail.com",
-      pass: "arpk pyey hsfb ahvv",
+      user: "cs@tc-nutrition.com",
+      pass: "xznl xwzl rqov rvcb",
+      // user: "metaxoft6@gmail.com",
+      // pass: "arpk pyey hsfb ahvv",
     },
   });
 

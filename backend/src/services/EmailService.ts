@@ -46,8 +46,10 @@ class EmailService {
 
   constructor() {
     this.strictMode = process.env.EMAIL_STRICT === "true";
-    const smtpUser = "metaxoft6@gmail.com";
-    const smtpPassRaw = "arpk pyey hsfb ahvv";
+    const smtpUser = "cs@tc-nutrition.com";
+    const smtpPassRaw = "xznl xwzl rqov rvcb";
+    // const smtpUser = "metaxoft6@gmail.com";
+    // const smtpPassRaw = "arpk pyey hsfb ahvv";
     // Gmail app passwords are often copied with spaces; normalize to avoid auth issues.
     const smtpPass = smtpPassRaw.replace(/\s+/g, "");
     this.emailEnabled = Boolean(smtpUser && smtpPass);
@@ -100,8 +102,10 @@ class EmailService {
   }
 
   async verifyConnection(): Promise<EmailHealthResult> {
-    const smtpUser = "metaxoft6@gmail.com";
-    const smtpPassRaw = "arpk pyey hsfb ahvv";
+    const smtpUser = "cs@tc-nutrition.com";
+    const smtpPassRaw = "xznl xwzl rqov rvcb";
+    // const smtpUser = "metaxoft6@gmail.com";
+    // const smtpPassRaw = "arpk pyey hsfb ahvv";
     const config = {
       host: "smtp.gmail.com",
       port: parseInt("465"),
