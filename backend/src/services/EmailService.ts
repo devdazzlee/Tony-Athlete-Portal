@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import path from "path";
 import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
@@ -12,6 +13,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  attachments?: nodemailer.SendMailOptions["attachments"];
 }
 
 interface EmailHealthResult {
@@ -75,6 +77,28 @@ class EmailService {
     return this.emailEnabled;
   }
 
+  private getTcLogoEmailBranding(): {
+    logoHtml: string;
+    attachments: nodemailer.SendMailOptions["attachments"];
+  } {
+    const logoPath = path.join(
+      process.cwd(),
+      "public",
+      "images",
+      "TC_Logo.png",
+    );
+    return {
+      logoHtml: `<div class="logo"><img src="cid:tc-logo" alt="TC Nutrition" style="max-width: 220px; height: auto; display: block; margin: 0 auto;" /></div>`,
+      attachments: [
+        {
+          filename: "TC_Logo.png",
+          path: logoPath,
+          cid: "tc-logo",
+        },
+      ],
+    };
+  }
+
   async verifyConnection(): Promise<EmailHealthResult> {
     const smtpUser = "metaxoft6@gmail.com";
     const smtpPassRaw = "arpk pyey hsfb ahvv";
@@ -129,6 +153,7 @@ class EmailService {
         subject: options.subject,
         html: options.html,
         text: options.text || options.html.replace(/<[^>]*>/g, ""), // Strip HTML for text version
+        ...(options.attachments ? { attachments: options.attachments } : {}),
       };
 
       await this.transporter.sendMail(mailOptions);
@@ -268,49 +293,40 @@ This verification link will expire in 24 hours. If you didn't create an account 
   }
 
   private async getAdminNotificationEmails(): Promise<string[]> {
-    const fromEnv = (process.env.ADMIN_NOTIFICATION_EMAILS || "")
+    const fromEnv = "dylan@tc-nutrition.com"
       .split(",")
       .map((e) => e.trim())
-      .filter(Boolean);
+      .filter(Boolean) || ["dylan@tc-nutrition.com"];
 
-    if (fromEnv.length > 0) {
-      return fromEnv;
-    }
-
-    const admins = await prisma.user.findMany({
-      where: {
-        role: { in: ["ADMIN", "MANAGER"] },
-        status: "ACTIVE",
-      },
-      select: { email: true },
-    });
-    return admins.map((a) => a.email).filter(Boolean);
+    return fromEnv;
   }
 
   async sendAffiliateApplicationReceivedEmail(
     email: string,
     firstName: string,
   ): Promise<boolean> {
+    const { logoHtml, attachments } = this.getTcLogoEmailBranding();
+
     const html = `
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Application Received - TC Nutrition Athlete Portal</title>
+          <title>Application Received - TC Nutrition</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
             .container { background: #fff; border-radius: 8px; padding: 32px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            .logo { font-size: 28px; font-weight: bold; color: #3b82f6; text-align: center; margin-bottom: 24px; }
+            .logo { text-align: center; margin-bottom: 24px; }
             .badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
             .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: center; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="logo">🎯 TC Nutrition</div>
+            ${logoHtml}
             <p>Hi <strong>${firstName}</strong>,</p>
-            <p>Thank you for applying to the TC Nutrition Athlete Portal affiliate program!</p>
+            <p>Thank you for applying to the TC Nutrition affiliate program!</p>
             <p><span class="badge">Pending Review</span></p>
             <p>We've received your application and our team is reviewing it. You'll receive another email once your account has been approved so you can log in and complete your setup.</p>
             <p>No action is needed right now — we'll be in touch soon.</p>
@@ -322,13 +338,14 @@ This verification link will expire in 24 hours. If you didn't create an account 
       </html>
     `;
 
-    const text = `Hi ${firstName},\n\nThank you for applying to the TC Nutrition Athlete Portal affiliate program!\n\nYour application is pending review. You'll receive another email once your account has been approved.\n\n© ${new Date().getFullYear()} TC Nutrition`;
+    const text = `Hi ${firstName},\n\nThank you for applying to the TC Nutrition affiliate program!\n\nYour application is pending review. You'll receive another email once your account has been approved.\n\n© ${new Date().getFullYear()} TC Nutrition`;
 
     return this.sendEmail({
       to: email,
-      subject: "Application Received - TC Nutrition Athlete Portal",
+      subject: "Application Received - TC Nutrition",
       html,
       text,
+      attachments,
     });
   }
 
@@ -339,9 +356,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
   }): Promise<boolean> {
     const adminEmails = await this.getAdminNotificationEmails();
     if (adminEmails.length === 0) {
-      console.warn(
-        "[EmailService] No admin notification emails configured (ADMIN_NOTIFICATION_EMAILS or ADMIN/MANAGER users)",
-      );
+      console.warn("[EmailService] No admin notification emails configured");
       return false;
     }
 
@@ -395,6 +410,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
     firstName: string,
   ): Promise<boolean> {
     const loginUrl = `${"https://www.tcathlete.com"}/auth/login`;
+    const { logoHtml, attachments } = this.getTcLogoEmailBranding();
 
     const html = `
       <!DOCTYPE html>
@@ -402,11 +418,11 @@ This verification link will expire in 24 hours. If you didn't create an account 
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>You're Approved! - TC Nutrition Athlete Portal</title>
+          <title>You're Approved! - TC Nutrition</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
             .container { background: #fff; border-radius: 8px; padding: 40px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            .logo { font-size: 32px; font-weight: bold; color: #3b82f6; text-align: center; margin-bottom: 20px; }
+            .logo { text-align: center; margin-bottom: 20px; }
             h1 { color: #10b981; text-align: center; }
             .button { display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: #fff !important; text-decoration: none; border-radius: 6px; font-weight: 600; }
             .features { background: #f8fafc; padding: 20px; border-radius: 6px; margin: 20px 0; }
@@ -415,7 +431,7 @@ This verification link will expire in 24 hours. If you didn't create an account 
         </head>
         <body>
           <div class="container">
-            <div class="logo">🎯 TC Nutrition</div>
+            ${logoHtml}
             <h1>You're Approved, ${firstName}! 🎉</h1>
             <p style="text-align: center;">Great news — your affiliate application has been approved. You can now log in and start using the Athlete Portal.</p>
             <div style="text-align: center;">
@@ -426,27 +442,25 @@ This verification link will expire in 24 hours. If you didn't create an account 
               <ol>
                 <li>Log in with the email and password you registered with</li>
                 <li>Complete your profile</li>
-                <li>Create your first affiliate link</li>
                 <li>Start promoting and earning!</li>
               </ol>
             </div>
             <div class="footer">
-              <p>Happy tracking! 🚀</p>
-              <p>The TC Nutrition Team</p>
+              <p>© ${new Date().getFullYear()} TC Nutrition. All rights reserved.</p>
             </div>
           </div>
         </body>
       </html>
     `;
 
-    const text = `You're Approved, ${firstName}!\n\nYour affiliate application has been approved. Log in here: ${loginUrl}\n\nThe TC Nutrition Team`;
+    const text = `You're Approved, ${firstName}!\n\nYour affiliate application has been approved. Log in here: ${loginUrl}\n\n© ${new Date().getFullYear()} TC Nutrition. All rights reserved.`;
 
     return this.sendEmail({
       to: email,
-      subject:
-        "You're Approved! Complete Your TC Nutrition Athlete Portal Setup 🚀",
+      subject: "You're Approved! Complete Your TC Nutrition Setup 🚀",
       html,
       text,
+      attachments,
     });
   }
 

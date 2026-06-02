@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma";
 
 const DEFAULT_ACCOUNT_ID = process.env.SYSTEM_ACCOUNT_ID || "default";
-const DEFAULT_COMMISSION_RATE = 15;
+const DEFAULT_COMMISSION_RATE = 10;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 let cachedDefaultCommissionRate: number | null = null;
@@ -36,6 +36,31 @@ export class SystemSettingsService {
 
       if (typeof configuredRate === "number" && !isNaN(configuredRate)) {
         rate = configuredRate;
+      }
+
+      // Migrate legacy 15% program default to 10% for new affiliate signups
+      if (rate === 15) {
+        rate = 10;
+        const commissionSettings = {
+          ...(general.commissionSettings || {}),
+          defaultRate: 10,
+        };
+        await prisma.systemSettings
+          .update({
+            where: { accountId: DEFAULT_ACCOUNT_ID },
+            data: {
+              general: {
+                ...general,
+                commissionSettings,
+              },
+            },
+          })
+          .catch((err) =>
+            console.warn(
+              "[SystemSettingsService] Failed to migrate default commission rate:",
+              err,
+            ),
+          );
       }
     }
 

@@ -290,6 +290,12 @@ export default function DeliverablesPage() {
     return !expiryDate || expiryDate > new Date();
   };
 
+  const getCodeDiscountLabel = (code: AllowanceCode) => {
+    if (code.amountLabel) return code.amountLabel;
+    if (code.code.toUpperCase().endsWith("-SHIP")) return "Free Shipping";
+    return `${code.commissionRate || 0}% off`;
+  };
+
   const formatAllowanceExpiry = (code: AllowanceCode) => {
     const expiryDate = getAllowanceExpiryDate(code);
     if (!expiryDate) {
@@ -380,7 +386,7 @@ export default function DeliverablesPage() {
                     </p>
                   </div>
                   <Badge className="bg-purple-100 text-purple-800 border-purple-200">
-                    {code.amountLabel || `${code.commissionRate || 0}% off`}
+                    {getCodeDiscountLabel(code)}
                   </Badge>
                 </div>
               ))}

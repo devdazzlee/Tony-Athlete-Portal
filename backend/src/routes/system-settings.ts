@@ -28,7 +28,7 @@ router.get("/public", authenticateToken, async (req: any, res) => {
             currency: "USD",
             language: "en",
             commissionSettings: {
-              defaultRate: 15,
+              defaultRate: 10,
               minimumPayout: 50.0,
               payoutFrequency: "Monthly",
               approvalPeriod: 30,
@@ -81,7 +81,7 @@ router.get("/public", authenticateToken, async (req: any, res) => {
           general: {
             ...existingGeneral,
             commissionSettings: {
-              defaultRate: 15,
+              defaultRate: 10,
               minimumPayout: 50.0,
               payoutFrequency: "Monthly",
               approvalPeriod: 30,
@@ -96,7 +96,7 @@ router.get("/public", authenticateToken, async (req: any, res) => {
 
     return res.json({
       commission: {
-        defaultRate: commissionSettings?.defaultRate ?? 15,
+        defaultRate: commissionSettings?.defaultRate ?? 10,
       },
     });
   } catch (error) {
@@ -130,7 +130,7 @@ router.get("/", authenticateToken, async (req: any, res) => {
             currency: "USD",
             language: "en",
             commissionSettings: {
-              defaultRate: 15,
+              defaultRate: 10,
               minimumPayout: 50.0,
               payoutFrequency: "Monthly",
               approvalPeriod: 30,
@@ -197,25 +197,31 @@ router.get("/", authenticateToken, async (req: any, res) => {
       commissionSettings = (settings.general as any).commissionSettings;
     }
 
-    // If commission settings don't exist in database, initialize them
-    // Also update if defaultRate is 10% or less (old default) to 15%
-    if (!commissionSettings || (commissionSettings.defaultRate && commissionSettings.defaultRate <= 10)) {
+    // Initialize commission settings if missing, or migrate legacy 15% default to 10%
+    if (
+      !commissionSettings ||
+      commissionSettings.defaultRate === 15
+    ) {
       const existingGeneral =
         settings.general && typeof settings.general === "object"
           ? (settings.general as Record<string, any>)
           : {};
 
-      // Preserve existing values if they exist, but update defaultRate to 15% if it's 10% or less
-      const updatedCommissionSettings = commissionSettings ? {
-        ...commissionSettings,
-        defaultRate: commissionSettings.defaultRate <= 10 ? 15 : commissionSettings.defaultRate,
-      } : {
-        defaultRate: 15,
-        minimumPayout: 50.0,
-        payoutFrequency: "Monthly",
-        approvalPeriod: 30,
-        cookieDuration: 30,
-      };
+      const updatedCommissionSettings = commissionSettings
+        ? {
+            ...commissionSettings,
+            defaultRate:
+              commissionSettings.defaultRate === 15
+                ? 10
+                : commissionSettings.defaultRate,
+          }
+        : {
+            defaultRate: 10,
+            minimumPayout: 50.0,
+            payoutFrequency: "Monthly",
+            approvalPeriod: 30,
+            cookieDuration: 30,
+          };
 
       settings = await prisma.systemSettings.update({
         where: { accountId: ACCOUNT_ID },
@@ -228,6 +234,7 @@ router.get("/", authenticateToken, async (req: any, res) => {
       });
 
       commissionSettings = (settings.general as any).commissionSettings;
+      SystemSettingsService.clearCache();
     }
 
     // Get affiliate settings
@@ -335,7 +342,7 @@ router.post("/commission/preview", authenticateToken, async (req: any, res) => {
       where: { accountId: ACCOUNT_ID },
     });
 
-    let currentDefaultRate = 15; // Default fallback
+    let currentDefaultRate = 10; // Default fallback
     if (
       currentSettings?.general &&
       typeof currentSettings.general === "object" &&
@@ -427,7 +434,7 @@ router.put("/commission", authenticateToken, async (req: any, res) => {
       where: { accountId: ACCOUNT_ID },
     });
 
-    let currentDefaultRate = 15; // Default fallback
+    let currentDefaultRate = 10; // Default fallback
     if (
       currentSettings?.general &&
       typeof currentSettings.general === "object" &&

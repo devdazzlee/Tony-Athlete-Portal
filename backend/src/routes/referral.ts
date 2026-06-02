@@ -55,12 +55,19 @@ router.get("/codes", authenticateToken, async (req: any, res) => {
         const isFixedAmount =
           coupon.discount.includes("$") ||
           /\$\s*\d+/.test(coupon.description || "");
+        const isShippingCode = coupon.code.toUpperCase().endsWith("-SHIP");
+        const amountLabel =
+          isShippingCode && numericDiscount === 0
+            ? "Free Shipping"
+            : isFixedAmount
+              ? `$${numericDiscount} off`
+              : `${numericDiscount}% off`;
 
         return {
           id: coupon.id,
           code: coupon.code,
           commissionRate: numericDiscount,
-          amountLabel: isFixedAmount ? `$${numericDiscount} off` : `${numericDiscount}% off`,
+          amountLabel,
           discountType: isFixedAmount ? "FIXED_AMOUNT" : "PERCENTAGE",
           productId: null,
           maxUses: coupon.maxUsage || null,
