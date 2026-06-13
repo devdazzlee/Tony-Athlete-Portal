@@ -1,71 +1,7 @@
 import { PrismaClient } from "@prisma/client";
-import nodemailer from "nodemailer";
 import crypto from "crypto";
 
 const prisma = new PrismaClient();
-
-// Email service
-export class EmailService {
-  private transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: parseInt("465"),
-    secure: false,
-    auth: {
-      user: "cs@tc-nutrition.com",
-      pass: "xznl xwzl rqov rvcb",
-      // user: "metaxoft6@gmail.com",
-      // pass: "arpk pyey hsfb ahvv",
-    },
-  });
-
-  async sendWelcomeEmail(email: string, firstName: string) {
-    const mailOptions = {
-      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
-      to: email,
-      subject: "Welcome to TC Nutrition Athlete Portal!",
-      html: `
-        <h1>Welcome to TC Nutrition Athlete Portal, ${firstName}!</h1>
-        <p>Your account has been successfully created.</p>
-        <p>You can now start tracking your affiliate links and earning commissions.</p>
-        <p>Best regards,<br>The TC Nutrition Team</p>
-      `,
-    };
-
-    return this.transporter.sendMail(mailOptions);
-  }
-
-  async sendCommissionNotification(email: string, amount: number) {
-    const mailOptions = {
-      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
-      to: email,
-      subject: "New Commission Earned!",
-      html: `
-        <h1>Congratulations!</h1>
-        <p>You've earned a new commission of $${amount.toFixed(2)}!</p>
-        <p>Check your dashboard for more details.</p>
-        <p>Best regards,<br>The TC Nutrition Team</p>
-      `,
-    };
-
-    return this.transporter.sendMail(mailOptions);
-  }
-
-  async sendPayoutNotification(email: string, amount: number, method: string) {
-    const mailOptions = {
-      from: "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
-      to: email,
-      subject: "Payout Processed",
-      html: `
-        <h1>Payout Processed</h1>
-        <p>Your payout of $${amount.toFixed(2)} has been processed via ${method}.</p>
-        <p>You should receive the funds within 1-3 business days.</p>
-        <p>Best regards,<br>The TC Nutrition Team</p>
-      `,
-    };
-
-    return this.transporter.sendMail(mailOptions);
-  }
-}
 
 // Payment service
 export class PaymentService {
@@ -402,8 +338,10 @@ export class IntegrationService {
   }
 }
 
-// Export services
-export const emailService = new EmailService();
+// Export services — emailService uses hardcoded SMTP from EmailService.ts
+export { EmailService } from "./EmailService";
+import emailServiceDefault from "./EmailService";
+export const emailService = emailServiceDefault;
 export const paymentService = new PaymentService();
 export const analyticsService = new AnalyticsService();
 export const securityService = new SecurityService();

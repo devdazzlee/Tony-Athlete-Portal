@@ -14,20 +14,20 @@ router.get(
   requireRole(["ADMIN"]),
   async (req: any, res) => {
     try {
-      const {
-        page = 1,
-        limit = 50,
-        status,
-        month,
-        affiliateId,
-      } = req.query;
+      const { page = 1, limit = 50, status, month, affiliateId } = req.query;
+      const pageNum = Math.max(1, Number(page) || 1);
+      const limitNum = Math.min(Math.max(1, Number(limit) || 50), 500);
 
       const filters: any = {
         action: "deliverable_submitted",
       };
 
       if (status && status !== "all") {
-        filters.status = status;
+        if (status === "PENDING") {
+          filters.OR = [{ status: "PENDING" }, { status: null }];
+        } else {
+          filters.status = status;
+        }
       }
 
       if (month) {
@@ -56,8 +56,8 @@ router.get(
         orderBy: {
           createdAt: "desc",
         },
-        skip: (Number(page) - 1) * Number(limit),
-        take: Number(limit),
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
       });
 
       const total = await prisma.activity.count({ where: filters });
@@ -84,16 +84,18 @@ router.get(
         submissions: formattedSubmissions,
         pagination: {
           total,
-          page: Number(page),
-          limit: Number(limit),
-          pages: Math.ceil(total / Number(limit)),
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.ceil(total / limitNum) || 1,
         },
       });
     } catch (error) {
       console.error("Error fetching deliverable submissions:", error);
-      res.status(500).json({ error: "Failed to fetch deliverable submissions" });
+      res
+        .status(500)
+        .json({ error: "Failed to fetch deliverable submissions" });
     }
-  }
+  },
 );
 
 // Get deliverable submission by ID
@@ -120,7 +122,9 @@ router.get(
       });
 
       if (!submission || submission.action !== "deliverable_submitted") {
-        return res.status(404).json({ error: "Deliverable submission not found" });
+        return res
+          .status(404)
+          .json({ error: "Deliverable submission not found" });
       }
 
       const details = submission.details as any;
@@ -143,7 +147,7 @@ router.get(
       console.error("Error fetching deliverable submission:", error);
       res.status(500).json({ error: "Failed to fetch deliverable submission" });
     }
-  }
+  },
 );
 
 // Approve deliverable submission
@@ -165,7 +169,9 @@ router.patch(
       });
 
       if (!submission || submission.action !== "deliverable_submitted") {
-        return res.status(404).json({ error: "Deliverable submission not found" });
+        return res
+          .status(404)
+          .json({ error: "Deliverable submission not found" });
       }
 
       const updatedSubmission = await prisma.activity.update({
@@ -209,17 +215,17 @@ router.patch(
             updatedSubmission.user.email,
             updatedSubmission.user.firstName || "Athlete",
             "APPROVED",
-            comment || null
+            comment || null,
           );
           if (!sent) {
             console.warn(
-              `Deliverable approval email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`
+              `Deliverable approval email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`,
             );
           }
         } catch (emailError) {
           console.error(
             `Failed to send deliverable approval email for submission ${updatedSubmission.id}:`,
-            emailError
+            emailError,
           );
         }
       }
@@ -231,11 +237,13 @@ router.patch(
     } catch (error) {
       console.error("Error approving deliverable:", error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+        return res
+          .status(400)
+          .json({ error: "Invalid request data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to approve deliverable" });
     }
-  }
+  },
 );
 
 // Reject deliverable submission
@@ -257,7 +265,9 @@ router.patch(
       });
 
       if (!submission || submission.action !== "deliverable_submitted") {
-        return res.status(404).json({ error: "Deliverable submission not found" });
+        return res
+          .status(404)
+          .json({ error: "Deliverable submission not found" });
       }
 
       const updatedSubmission = await prisma.activity.update({
@@ -299,17 +309,17 @@ router.patch(
             updatedSubmission.user.email,
             updatedSubmission.user.firstName || "Athlete",
             "REJECTED",
-            comment
+            comment,
           );
           if (!sent) {
             console.warn(
-              `Deliverable rejection email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`
+              `Deliverable rejection email not sent for submission ${updatedSubmission.id} (email service unavailable or SMTP failed).`,
             );
           }
         } catch (emailError) {
           console.error(
             `Failed to send deliverable rejection email for submission ${updatedSubmission.id}:`,
-            emailError
+            emailError,
           );
         }
       }
@@ -321,11 +331,13 @@ router.patch(
     } catch (error) {
       console.error("Error rejecting deliverable:", error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+        return res
+          .status(400)
+          .json({ error: "Invalid request data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to reject deliverable" });
     }
-  }
+  },
 );
 
 // Get statistics for deliverables
@@ -343,10 +355,7 @@ router.get(
       const pendingSubmissions = await prisma.activity.count({
         where: {
           action: "deliverable_submitted",
-          OR: [
-            { status: "PENDING" },
-            { status: null },
-          ],
+          OR: [{ status: "PENDING" }, { status: null }],
         },
       });
 
@@ -374,22 +383,7 @@ router.get(
       console.error("Error fetching deliverable statistics:", error);
       res.status(500).json({ error: "Failed to fetch statistics" });
     }
-  }
+  },
 );
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

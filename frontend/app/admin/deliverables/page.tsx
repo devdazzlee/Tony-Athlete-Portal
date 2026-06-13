@@ -1,12 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -64,10 +59,19 @@ export default function AdminDeliverablesPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMonth, setFilterMonth] = useState("all");
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
-  const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [selectedSubmission, setSelectedSubmission] =
+    useState<Submission | null>(null);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject">(
+    "approve",
+  );
   const [adminComment, setAdminComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 1,
+  });
 
   const [stats, setStats] = useState<{
     totalSubmissions: number;
@@ -79,17 +83,28 @@ export default function AdminDeliverablesPage() {
   useEffect(() => {
     fetchSubmissions();
     fetchStats();
-  }, [filterStatus, filterMonth]);
+  }, [filterStatus, filterMonth, pagination.page]);
 
   const fetchSubmissions = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      params.append("page", String(pagination.page));
+      params.append("limit", String(pagination.limit));
       if (filterStatus !== "all") params.append("status", filterStatus);
       if (filterMonth !== "all") params.append("month", filterMonth);
 
-      const response = await api.get(`/admin/deliverables?${params.toString()}`);
+      const response = await api.get(
+        `/admin/deliverables?${params.toString()}`,
+      );
       setSubmissions(response.data.submissions);
+      if (response.data.pagination) {
+        setPagination((prev) => ({
+          ...prev,
+          total: response.data.pagination.total,
+          pages: response.data.pagination.pages,
+        }));
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || "Failed to fetch submissions");
     } finally {
@@ -106,7 +121,10 @@ export default function AdminDeliverablesPage() {
     }
   };
 
-  const handleReviewClick = (submission: Submission, action: "approve" | "reject") => {
+  const handleReviewClick = (
+    submission: Submission,
+    action: "approve" | "reject",
+  ) => {
     setSelectedSubmission(submission);
     setReviewAction(action);
     setAdminComment(submission.adminComment || "");
@@ -124,12 +142,15 @@ export default function AdminDeliverablesPage() {
     try {
       setSubmitting(true);
       const endpoint = reviewAction === "approve" ? "approve" : "reject";
-      await api.patch(`/admin/deliverables/${selectedSubmission.id}/${endpoint}`, {
-        comment: adminComment.trim() || undefined,
-      });
+      await api.patch(
+        `/admin/deliverables/${selectedSubmission.id}/${endpoint}`,
+        {
+          comment: adminComment.trim() || undefined,
+        },
+      );
 
       toast.success(
-        `Deliverable ${reviewAction === "approve" ? "approved" : "rejected"} successfully`
+        `Deliverable ${reviewAction === "approve" ? "approved" : "rejected"} successfully`,
       );
       setShowReviewModal(false);
       setSelectedSubmission(null);
@@ -137,7 +158,9 @@ export default function AdminDeliverablesPage() {
       fetchSubmissions();
       fetchStats();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || `Failed to ${reviewAction} deliverable`);
+      toast.error(
+        error.response?.data?.error || `Failed to ${reviewAction} deliverable`,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -178,8 +201,18 @@ export default function AdminDeliverablesPage() {
   };
 
   const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   return (
@@ -187,7 +220,9 @@ export default function AdminDeliverablesPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manage Deliverables</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Manage Deliverables
+          </h1>
           <p className="text-gray-600 mt-1">
             Review and approve affiliate deliverable submissions
           </p>
@@ -211,17 +246,19 @@ export default function AdminDeliverablesPage() {
               </>
             ) : (
               <>
-                <div className="text-2xl font-bold">{stats.totalSubmissions}</div>
-                <p className="text-xs text-muted-foreground">
-                  All submissions
-                </p>
+                <div className="text-2xl font-bold">
+                  {stats.totalSubmissions}
+                </div>
+                <p className="text-xs text-muted-foreground">All submissions</p>
               </>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Pending Review
+            </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -232,7 +269,9 @@ export default function AdminDeliverablesPage() {
               </>
             ) : (
               <>
-                <div className="text-2xl font-bold">{stats.pendingSubmissions}</div>
+                <div className="text-2xl font-bold">
+                  {stats.pendingSubmissions}
+                </div>
                 <p className="text-xs text-muted-foreground">Awaiting review</p>
               </>
             )}
@@ -251,17 +290,19 @@ export default function AdminDeliverablesPage() {
               </>
             ) : (
               <>
-                <div className="text-2xl font-bold">{stats.approvedSubmissions}</div>
-                <p className="text-xs text-muted-foreground">Approved submissions</p>
+                <div className="text-2xl font-bold">
+                  {stats.approvedSubmissions}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Approved submissions
+                </p>
               </>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Rejected
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Rejected</CardTitle>
             <XCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -272,8 +313,12 @@ export default function AdminDeliverablesPage() {
               </>
             ) : (
               <>
-                <div className="text-2xl font-bold">{stats.rejectedSubmissions}</div>
-                <p className="text-xs text-muted-foreground">Rejected submissions</p>
+                <div className="text-2xl font-bold">
+                  {stats.rejectedSubmissions}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Rejected submissions
+                </p>
               </>
             )}
           </CardContent>
@@ -285,7 +330,10 @@ export default function AdminDeliverablesPage() {
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
               <input
                 type="text"
                 placeholder="Search by affiliate name, email, or platform..."
@@ -296,7 +344,10 @@ export default function AdminDeliverablesPage() {
             </div>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
             >
               <option value="all">All Status</option>
@@ -306,7 +357,10 @@ export default function AdminDeliverablesPage() {
             </select>
             <select
               value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
+              onChange={(e) => {
+                setFilterMonth(e.target.value);
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
             >
               <option value="all">All Months</option>
@@ -338,22 +392,30 @@ export default function AdminDeliverablesPage() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="font-medium text-base">{submission.affiliateName}</div>
-                          <div className="text-sm text-muted-foreground">{submission.affiliateEmail}</div>
+                          <div className="font-medium text-base">
+                            {submission.affiliateName}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {submission.affiliateEmail}
+                          </div>
                         </div>
                         <div>{getStatusBadge(submission.status)}</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <span className="text-xs text-muted-foreground">Month</span>
+                          <span className="text-xs text-muted-foreground">
+                            Month
+                          </span>
                           <div className="flex items-center gap-1 mt-1">
                             <Calendar size={12} />
                             <span>{submission.month}</span>
                           </div>
                         </div>
                         <div>
-                          <span className="text-xs text-muted-foreground">Platform</span>
+                          <span className="text-xs text-muted-foreground">
+                            Platform
+                          </span>
                           <div className="mt-1">
                             <Badge className="bg-gray-200 text-gray-700 border-gray-300 text-xs">
                               {submission.platform}
@@ -375,7 +437,8 @@ export default function AdminDeliverablesPage() {
                       </div>
 
                       <div className="pt-2 border-t text-xs text-muted-foreground">
-                        Submitted: {new Date(submission.submittedAt).toLocaleDateString()}
+                        Submitted:{" "}
+                        {new Date(submission.submittedAt).toLocaleDateString()}
                       </div>
 
                       <div className="flex items-center gap-2 pt-2">
@@ -397,7 +460,9 @@ export default function AdminDeliverablesPage() {
                           <>
                             <Button
                               size="sm"
-                              onClick={() => handleReviewClick(submission, "approve")}
+                              onClick={() =>
+                                handleReviewClick(submission, "approve")
+                              }
                               className="flex-1 bg-green-600 hover:bg-green-700"
                             >
                               <CheckCircle size={14} className="mr-1" />
@@ -405,7 +470,9 @@ export default function AdminDeliverablesPage() {
                             </Button>
                             <Button
                               size="sm"
-                              onClick={() => handleReviewClick(submission, "reject")}
+                              onClick={() =>
+                                handleReviewClick(submission, "reject")
+                              }
                               variant="destructive"
                               className="flex-1"
                             >
@@ -457,7 +524,9 @@ export default function AdminDeliverablesPage() {
                           <div className="font-medium text-gray-900">
                             {submission.affiliateName}
                           </div>
-                          <div className="text-gray-500">{submission.affiliateEmail}</div>
+                          <div className="text-gray-500">
+                            {submission.affiliateEmail}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -505,14 +574,18 @@ export default function AdminDeliverablesPage() {
                           {submission.status === "PENDING" && (
                             <>
                               <button
-                                onClick={() => handleReviewClick(submission, "approve")}
+                                onClick={() =>
+                                  handleReviewClick(submission, "approve")
+                                }
                                 className="text-green-600 hover:text-green-900 p-1"
                                 title="Approve"
                               >
                                 <CheckCircle size={18} />
                               </button>
                               <button
-                                onClick={() => handleReviewClick(submission, "reject")}
+                                onClick={() =>
+                                  handleReviewClick(submission, "reject")
+                                }
                                 className="text-red-600 hover:text-red-900 p-1"
                                 title="Reject"
                               >
@@ -528,6 +601,44 @@ export default function AdminDeliverablesPage() {
               </table>
             </div>
           </>
+        )}
+        {!loading && filteredSubmissions.length > 0 && pagination.pages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-gray-200">
+            <div className="text-sm text-muted-foreground text-center sm:text-left">
+              Page {pagination.page} of {pagination.pages} — Showing{" "}
+              {(pagination.page - 1) * pagination.limit + 1} to{" "}
+              {Math.min(pagination.page * pagination.limit, pagination.total)}{" "}
+              of {pagination.total} submissions
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPagination((prev) => ({
+                    ...prev,
+                    page: Math.max(1, prev.page - 1),
+                  }))
+                }
+                disabled={pagination.page === 1 || loading}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPagination((prev) => ({
+                    ...prev,
+                    page: Math.min(prev.pages, prev.page + 1),
+                  }))
+                }
+                disabled={pagination.page === pagination.pages || loading}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         )}
       </Card>
 
@@ -545,7 +656,9 @@ export default function AdminDeliverablesPage() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {reviewAction === "approve" ? "Review Deliverable" : "Reject Deliverable"}
+              {reviewAction === "approve"
+                ? "Review Deliverable"
+                : "Reject Deliverable"}
             </DialogTitle>
             <DialogDescription>
               {reviewAction === "approve"
@@ -558,7 +671,9 @@ export default function AdminDeliverablesPage() {
             <div className="space-y-6 py-4">
               {/* Affiliate Info */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Affiliate Information</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  Affiliate Information
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-gray-600">Name</Label>
@@ -577,11 +692,15 @@ export default function AdminDeliverablesPage() {
 
               {/* Submission Details */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Submission Details</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  Submission Details
+                </h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-gray-600">Month</Label>
-                    <p className="text-sm font-medium text-gray-900">{selectedSubmission.month}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {selectedSubmission.month}
+                    </p>
                   </div>
                   <div className="flex items-center justify-between">
                     <Label className="text-gray-600">Platform</Label>
@@ -592,7 +711,9 @@ export default function AdminDeliverablesPage() {
                   <div className="flex items-center justify-between">
                     <Label className="text-gray-600">Submitted On</Label>
                     <p className="text-sm font-medium text-gray-900">
-                      {new Date(selectedSubmission.submittedAt).toLocaleString()}
+                      {new Date(
+                        selectedSubmission.submittedAt,
+                      ).toLocaleString()}
                     </p>
                   </div>
                   <div>
@@ -613,7 +734,9 @@ export default function AdminDeliverablesPage() {
               {/* Photo */}
               {selectedSubmission.photoUrl && (
                 <div>
-                  <Label className="text-gray-600 mb-2 block">Attached Photo</Label>
+                  <Label className="text-gray-600 mb-2 block">
+                    Attached Photo
+                  </Label>
                   <div className="relative w-full h-64 rounded-lg overflow-hidden border border-gray-200">
                     <Image
                       src={selectedSubmission.photoUrl}
@@ -651,12 +774,16 @@ export default function AdminDeliverablesPage() {
                       </h4>
                       {selectedSubmission.adminComment && (
                         <p className="text-sm text-blue-800">
-                          <strong>Admin Comment:</strong> {selectedSubmission.adminComment}
+                          <strong>Admin Comment:</strong>{" "}
+                          {selectedSubmission.adminComment}
                         </p>
                       )}
                       {selectedSubmission.reviewedAt && (
                         <p className="text-xs text-blue-700 mt-1">
-                          Reviewed on: {new Date(selectedSubmission.reviewedAt).toLocaleString()}
+                          Reviewed on:{" "}
+                          {new Date(
+                            selectedSubmission.reviewedAt,
+                          ).toLocaleString()}
                         </p>
                       )}
                     </div>
@@ -667,7 +794,10 @@ export default function AdminDeliverablesPage() {
               {/* Admin Comment */}
               <div>
                 <Label htmlFor="admin-comment">
-                  Admin Comment {reviewAction === "reject" && <span className="text-red-600">*</span>}
+                  Admin Comment{" "}
+                  {reviewAction === "reject" && (
+                    <span className="text-red-600">*</span>
+                  )}
                 </Label>
                 <textarea
                   id="admin-comment"
@@ -728,4 +858,3 @@ export default function AdminDeliverablesPage() {
     </div>
   );
 }
-

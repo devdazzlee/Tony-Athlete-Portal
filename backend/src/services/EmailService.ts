@@ -8,6 +8,16 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 
+// Hardcoded SMTP configuration (production integration — not read from env)
+const SMTP_CONFIG = {
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  user: "cs@tc-nutrition.com",
+  pass: "xznlxwzlrqovrvcb", // normalized app password (spaces removed)
+  from: '"TC Nutrition Athlete Portal" <cs@tc-nutrition.com>',
+} as const;
+
 interface EmailOptions {
   to: string;
   subject: string;
@@ -46,12 +56,8 @@ class EmailService {
 
   constructor() {
     this.strictMode = process.env.EMAIL_STRICT === "true";
-    const smtpUser = "cs@tc-nutrition.com";
-    const smtpPassRaw = "xznl xwzl rqov rvcb";
-    // const smtpUser = "metaxoft6@gmail.com";
-    // const smtpPassRaw = "arpk pyey hsfb ahvv";
-    // Gmail app passwords are often copied with spaces; normalize to avoid auth issues.
-    const smtpPass = smtpPassRaw.replace(/\s+/g, "");
+    const smtpUser = SMTP_CONFIG.user;
+    const smtpPass = SMTP_CONFIG.pass;
     this.emailEnabled = Boolean(smtpUser && smtpPass);
 
     if (!this.emailEnabled) {
@@ -62,17 +68,19 @@ class EmailService {
       return;
     }
 
-    // Configure email transporter
-    // For development, you can use a service like Mailtrap, SendGrid, or Gmail
     this.transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: parseInt("465"),
-      secure: true, // true for 465, false for other ports
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.secure,
       auth: {
         user: smtpUser,
         pass: smtpPass,
       },
     });
+
+    console.log(
+      `[EmailService] SMTP configured (${SMTP_CONFIG.host}:${SMTP_CONFIG.port}, user: ${smtpUser})`,
+    );
   }
 
   isEmailEnabled(): boolean {
@@ -102,19 +110,13 @@ class EmailService {
   }
 
   async verifyConnection(): Promise<EmailHealthResult> {
-    const smtpUser = "cs@tc-nutrition.com";
-    const smtpPassRaw = "xznl xwzl rqov rvcb";
-    // const smtpUser = "metaxoft6@gmail.com";
-    // const smtpPassRaw = "arpk pyey hsfb ahvv";
     const config = {
-      host: "smtp.gmail.com",
-      port: parseInt("465"),
-      secure: true,
-      userConfigured: Boolean(smtpUser),
-      passConfigured: Boolean(smtpPassRaw),
-      fromConfigured: Boolean(
-        "TC Nutrition Athlete Portal <noreply@tcnutrition.com>",
-      ),
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.secure,
+      userConfigured: Boolean(SMTP_CONFIG.user),
+      passConfigured: Boolean(SMTP_CONFIG.pass),
+      fromConfigured: Boolean(SMTP_CONFIG.from),
     };
 
     if (!this.emailEnabled || !this.transporter) {
@@ -122,8 +124,7 @@ class EmailService {
         enabled: false,
         verified: false,
         config,
-        error:
-          "SMTP credentials are missing (SMTP_USER/SMTP_PASS or SENDER_EMAIL/SENDER_APP_CODE).",
+        error: "SMTP credentials are missing.",
       };
     }
 
@@ -152,7 +153,7 @@ class EmailService {
 
     try {
       const mailOptions = {
-        from: '"TC Nutrition Athlete Portal" <noreply@tcnutrition.com>',
+        from: SMTP_CONFIG.from,
         to: options.to,
         subject: options.subject,
         html: options.html,
