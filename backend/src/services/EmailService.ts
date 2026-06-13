@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import fs from "fs";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
 
@@ -91,12 +92,26 @@ class EmailService {
     logoHtml: string;
     attachments: nodemailer.SendMailOptions["attachments"];
   } {
-    const logoPath = path.join(
-      process.cwd(),
-      "public",
-      "images",
-      "TC_Logo.png",
+    const candidatePaths = [
+      path.join(__dirname, "../../public/images/TC_Logo.png"),
+      path.join(process.cwd(), "public/images/TC_Logo.png"),
+      path.join(process.cwd(), "backend/public/images/TC_Logo.png"),
+    ];
+    const logoPath = candidatePaths.find((candidate) =>
+      fs.existsSync(candidate),
     );
+
+    if (!logoPath) {
+      console.warn(
+        "[EmailService] TC logo not found — sending email without image attachment.",
+        { checked: candidatePaths },
+      );
+      return {
+        logoHtml: `<div class="logo" style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:bold;color:#dc2626;">TC Nutrition</div>`,
+        attachments: undefined,
+      };
+    }
+
     return {
       logoHtml: `<div class="logo"><img src="cid:tc-logo" alt="TC Nutrition" style="max-width: 220px; height: auto; display: block; margin: 0 auto;" /></div>`,
       attachments: [
@@ -158,7 +173,7 @@ class EmailService {
         subject: options.subject,
         html: options.html,
         text: options.text || options.html.replace(/<[^>]*>/g, ""), // Strip HTML for text version
-        ...(options.attachments ? { attachments: options.attachments } : {}),
+        ...(options.attachments?.length ? { attachments: options.attachments } : {}),
       };
 
       await this.transporter.sendMail(mailOptions);
@@ -298,12 +313,12 @@ This verification link will expire in 24 hours. If you didn't create an account 
   }
 
   private async getAdminNotificationEmails(): Promise<string[]> {
-    const fromEnv = "dylan@tc-nutrition.com"
+    const fromEnv = (process.env.ADMIN_NOTIFICATION_EMAILS || "dylan@tc-nutrition.com")
       .split(",")
       .map((e) => e.trim())
-      .filter(Boolean) || ["dylan@tc-nutrition.com"];
+      .filter(Boolean);
 
-    return fromEnv;
+    return fromEnv.length > 0 ? fromEnv : ["dylan@tc-nutrition.com"];
   }
 
   async sendAffiliateApplicationReceivedEmail(

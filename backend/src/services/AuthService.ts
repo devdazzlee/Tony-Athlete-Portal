@@ -135,20 +135,32 @@ export class AuthService {
 
     if (isAffiliateSignup) {
       try {
-        await emailService.sendAffiliateApplicationReceivedEmail(
-          user.email,
-          user.firstName
-        );
+        const applicantSent =
+          await emailService.sendAffiliateApplicationReceivedEmail(
+            user.email,
+            user.firstName,
+          );
+        if (!applicantSent) {
+          console.error(
+            `[AuthService] Affiliate application email NOT sent to ${user.email} (SMTP send returned false).`,
+          );
+        }
       } catch (error) {
         console.error("Failed to send affiliate application email:", error);
       }
 
       try {
-        await emailService.sendNewAffiliateApplicationAdminEmail({
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-        });
+        const adminSent =
+          await emailService.sendNewAffiliateApplicationAdminEmail({
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+          });
+        if (!adminSent) {
+          console.error(
+            `[AuthService] Admin notification email NOT sent for new affiliate ${user.email}.`,
+          );
+        }
       } catch (error) {
         console.error("Failed to send admin notification email:", error);
       }
